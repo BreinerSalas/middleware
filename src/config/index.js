@@ -16,6 +16,8 @@ const OPTIONAL_KEYS = [
   'HS_PROPERTY_ODOO_ORDER_ID',
   'ODOO_CLIENT_MODE',
   'ODOO_BASE_URL',
+  'ODOO_DB',
+  'ODOO_LOGIN',
   'ODOO_API_KEY',
   'PORT',
   'NODE_ENV',
@@ -61,7 +63,9 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
     },
     odoo: {
       mode: (env.ODOO_CLIENT_MODE || 'stub').toLowerCase(),
-      baseUrl: env.ODOO_BASE_URL || '',
+      baseUrl: (env.ODOO_BASE_URL || '').replace(/\/+$/, ''),
+      db: env.ODOO_DB || '',
+      login: env.ODOO_LOGIN || '',
       apiKey: env.ODOO_API_KEY || ''
     },
     server: {
