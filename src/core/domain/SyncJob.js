@@ -72,12 +72,10 @@ class SyncJob {
   }
 
   markSkipped(reason, now = new Date()) {
-    if (!(reason instanceof SkipSyncError) && typeof reason === 'string') {
-      reason = new SkipSyncError(reason)
-    }
+    if (typeof reason === 'string') reason = new SkipSyncError(reason)
     this.status = JOB_STATUS.SKIPPED
     this.completedAt = now
-    this.lastError = reason instanceof Error ? reason.reason || reason.message : String(reason)
+    this.lastError = reason instanceof SkipSyncError ? (reason.reason || reason.message) : (reason && reason.message) || String(reason)
     this.lastErrorStack = reason instanceof Error ? reason.stack : null
     this.nextRetryAt = null
     this.updatedAt = now

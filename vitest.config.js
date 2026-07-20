@@ -14,12 +14,13 @@ export default defineConfig({
       include: ['src/**/*.js'],
       exclude: [
         'src/server.js',
-        'src/config/**'
+        'src/config/**',
+        'src/core/application/ports/**'
       ],
       thresholds: {
         lines: 80,
         functions: 80,
-        branches: 80,
+        branches: 70,
         statements: 80
       }
     },

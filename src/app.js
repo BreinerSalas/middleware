@@ -9,7 +9,7 @@ const { createHealthRoutes } = require('./adapters/inbound/http/health.routes')
 function createApp({ config, logger = null, dealSyncModule = null } = {}) {
   if (!config) throw new Error('createApp requires config')
   const log = logger || createLogger({ level: config.logging.level })
-  const app = Fastify({ logger: false, disableRequestLogging: true })
+  const app = Fastify({ logger: false })
 
   app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
     req.rawBody = body
