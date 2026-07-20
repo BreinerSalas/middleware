@@ -49,6 +49,30 @@ describe('odooApiClient', () => {
     ).toThrow(/Unsupported ODOO_CLIENT_MODE/)
   })
 
+  it('http mode error aggregates all missing required vars in a single message', () => {
+    let err
+    try {
+      createOdooApiClient({ mode: 'http' })
+    } catch (e) { err = e }
+    expect(err).toBeDefined()
+    expect(err.message).toMatch(/ODOO_BASE_URL/)
+    expect(err.message).toMatch(/ODOO_DB/)
+    expect(err.message).toMatch(/ODOO_LOGIN/)
+    expect(err.message).toMatch(/ODOO_API_KEY/)
+  })
+
+  it('http mode error only lists vars that are actually missing', () => {
+    let err
+    try {
+      createOdooApiClient({ mode: 'http', baseUrl: 'https://x', apiKey: 'k' })
+    } catch (e) { err = e }
+    expect(err).toBeDefined()
+    expect(err.message).toMatch(/ODOO_DB/)
+    expect(err.message).toMatch(/ODOO_LOGIN/)
+    expect(err.message).not.toMatch(/ODOO_BASE_URL/)
+    expect(err.message).not.toMatch(/ODOO_API_KEY/)
+  })
+
   it('http mode authenticates then calls execute_kw create', async () => {
     const post = vi.fn()
       .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })

@@ -28,10 +28,14 @@ function createOdooApiClient({
   if (normalizedMode !== 'http') {
     throw new Error(`Unsupported ODOO_CLIENT_MODE: ${mode}`)
   }
-  if (!baseUrl) throw new Error('Odoo http mode requires ODOO_BASE_URL')
-  if (!db) throw new Error('Odoo http mode requires ODOO_DB')
-  if (!login) throw new Error('Odoo http mode requires ODOO_LOGIN')
-  if (!apiKey) throw new Error('Odoo http mode requires ODOO_API_KEY')
+  const missingOdoo = []
+  if (!baseUrl) missingOdoo.push('ODOO_BASE_URL')
+  if (!db) missingOdoo.push('ODOO_DB')
+  if (!login) missingOdoo.push('ODOO_LOGIN')
+  if (!apiKey) missingOdoo.push('ODOO_API_KEY')
+  if (missingOdoo.length > 0) {
+    throw new Error(`Odoo http mode requires: ${missingOdoo.join(', ')}`)
+  }
 
   const defaultTransport = {
     async post(url, body) {
