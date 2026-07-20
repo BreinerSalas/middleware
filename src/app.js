@@ -1,6 +1,7 @@
 'use strict'
 
 const Fastify = require('fastify')
+const mongoose = require('mongoose')
 const { createLogger } = require('./lib/logger')
 const { createAuthMiddleware } = require('./adapters/inbound/http/auth.middleware')
 const { createCorrelationMiddleware } = require('./adapters/inbound/http/correlation.middleware')
@@ -30,8 +31,12 @@ function createApp({ config, logger = null, dealSyncModule = null } = {}) {
     isDev: config.server.nodeEnv !== 'production'
   })
 
+  const mongoForHealth = dealSyncModule && dealSyncModule._internals && dealSyncModule._internals.jobRepository && dealSyncModule._internals.jobRepository.model
+    ? dealSyncModule._internals.jobRepository.model.db
+    : mongoose.connection
+
   // health
-  app.register(createHealthRoutes({ mongo: dealSyncModule && dealSyncModule._internals ? null : null }), { prefix: '' })
+  app.register(createHealthRoutes({ mongo: mongoForHealth }), { prefix: '' })
 
   // webhook
   app.post('/webhooks/hubspot', { preHandler: auth }, async (req, reply) => {

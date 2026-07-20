@@ -5,11 +5,13 @@ function createHealthRoutes({ mongo }) {
     app.get('/health', async (req, reply) => {
       let mongoState = 'down'
       try {
-        if (mongo && typeof mongo.ping === 'function') {
-          await mongo.ping()
-          mongoState = 'up'
-        } else if (mongo && typeof mongo.readyState === 'number') {
+        if (mongo && typeof mongo.readyState === 'number') {
           mongoState = mongo.readyState === 1 ? 'up' : 'down'
+        }
+        if (mongoState === 'up' && mongo && typeof mongo.db === 'function' && mongo.db()) {
+          await mongo.db().admin().ping()
+        } else if (mongoState === 'up' && mongo && typeof mongo.admin === 'function') {
+          await mongo.admin().ping()
         }
       } catch (_) {
         mongoState = 'down'
