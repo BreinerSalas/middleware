@@ -43,6 +43,12 @@ describe('odooApiClient', () => {
     ).toThrow(/ODOO_API_KEY/)
   })
 
+  it('throws on unsupported mode', () => {
+    expect(() =>
+      createOdooApiClient({ mode: 'grpc', baseUrl: 'https://x', db: 'd', login: 'l@x.com', apiKey: 'k' })
+    ).toThrow(/Unsupported ODOO_CLIENT_MODE/)
+  })
+
   it('http mode authenticates then calls execute_kw create', async () => {
     const post = vi.fn()
       .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
@@ -66,7 +72,7 @@ describe('odooApiClient', () => {
     expect(post.mock.calls[1][1].params).toMatchObject({
       service: 'object',
       method: 'execute_kw',
-      args: ['test-db', 2, 'k', 'mrp.production', 'create', [{ partner_id: 1 }]]
+      args: ['test-db', 2, 'k', 'mrp.production', 'create', [{ partner_id: 1 }], {}]
     })
   })
 
@@ -82,7 +88,7 @@ describe('odooApiClient', () => {
     const r = await api.updateManufacturingOrder(42, { state: 'confirmed' })
     expect(r.id).toBe('42')
     expect(post.mock.calls[1][1].params.args).toEqual([
-      'db', 7, 'k', 'mrp.production', 'write', [[42], { state: 'confirmed' }]
+      'db', 7, 'k', 'mrp.production', 'write', [[42], { state: 'confirmed' }], {}
     ])
   })
 
@@ -109,7 +115,7 @@ describe('odooApiClient', () => {
     await api.createManufacturingOrder({ a: 1 })
     await api.createManufacturingOrder({ a: 2 })
     await api.updateManufacturingOrder(99, { b: 3 })
-    expect(post).toHaveBeenCalledTimes(3)
+    expect(post).toHaveBeenCalledTimes(4)
     const authCalls = post.mock.calls.filter(([, body]) => body.params.method === 'authenticate')
     expect(authCalls).toHaveLength(1)
     for (const c of post.mock.calls.slice(1)) {
