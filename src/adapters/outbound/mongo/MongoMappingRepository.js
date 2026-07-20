@@ -28,12 +28,14 @@ class MongoMappingRepository {
   }
 
   async upsert(mapping) {
+    const existing = await this.model.findOne({ sourceId: mapping.sourceId }).lean()
+    const mergedMetadata = { ...((existing && existing.metadata) || {}), ...(mapping.metadata || {}) }
     const update = {
       targetId: mapping.targetId,
       targetRef: mapping.targetRef,
       payloadHash: mapping.payloadHash,
       lastSyncedAt: mapping.lastSyncedAt || new Date(),
-      metadata: mapping.metadata || {},
+      metadata: mergedMetadata,
       updatedAt: new Date()
     }
     const doc = await this.model.findOneAndUpdate(

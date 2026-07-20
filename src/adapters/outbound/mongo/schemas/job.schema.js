@@ -1,7 +1,7 @@
 'use strict'
 
 const { Schema, model } = require('mongoose')
-const { JOB_STATUS } = require('../../../config/constants')
+const { JOB_STATUS } = require('../../../../config/constants')
 
 const TERMINAL = [JOB_STATUS.COMPLETED, JOB_STATUS.SKIPPED, JOB_STATUS.DEAD_LETTER]
 
