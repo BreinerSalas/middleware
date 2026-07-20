@@ -39,9 +39,8 @@ function loadEnvFile({ envFile = null, override = false } = {}) {
 }
 
 function load({ env = process.env, envFile = null, override = false } = {}) {
-  if (envFile !== null || override) {
-    loadEnvFile({ envFile: envFile || path.resolve(process.cwd(), '.env'), override })
-  }
+  const targetFile = envFile === null ? path.resolve(process.cwd(), '.env') : envFile
+  loadEnvFile({ envFile: targetFile, override })
   const missing = REQUIRED_KEYS.filter((k) => !env[k] || String(env[k]).trim() === '')
   if (missing.length > 0) {
     const err = new Error(`Missing required env var(s): ${missing.join(', ')}`)

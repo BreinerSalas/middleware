@@ -90,4 +90,24 @@ describe('config', () => {
     const cfg = load({ env })
     expect(cfg.odoo.baseUrl).toBe('https://bsalas.odoo.com')
   })
+
+  it('auto-loads .env from cwd when called without envFile', () => {
+    const saved = {
+      MONGODB_URI: process.env.MONGODB_URI,
+      HUBSPOT_ACCESS_TOKEN: process.env.HUBSPOT_ACCESS_TOKEN,
+      WEBHOOK_SHARED_SECRET: process.env.WEBHOOK_SHARED_SECRET
+    }
+    process.env.HUBSPOT_ACCESS_TOKEN = 'dummy-hubspot'
+    process.env.WEBHOOK_SHARED_SECRET = 'dummy-secret'
+    delete process.env.MONGODB_URI
+    try {
+      const cfg = load()
+      expect(cfg.mongodbUri).toBe('mongodb://localhost:27017/smartflow')
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
+  })
 })
