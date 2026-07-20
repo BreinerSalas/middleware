@@ -43,7 +43,12 @@ class JobPoller {
         if (this.logger) this.logger.warn('poller.recoverOrphans failed', { error: err.message })
       }
     }
-    this._timer = this.setIntervalFn(() => this._tick(), this.pollIntervalMs)
+    this._timer = this.setIntervalFn(() => {
+      if (!this._running) return
+      this._tick().catch((err) => {
+        if (this.logger) this.logger.warn('poller.tick error', { error: err.message })
+      })
+    }, this.pollIntervalMs)
     await this._tick()
   }
 
@@ -59,7 +64,6 @@ class JobPoller {
   }
 
   async _tick() {
-    if (!this._running) return
     const free = Math.max(0, this.concurrency - this._inflight)
     if (free === 0) return
     let claimed = []
@@ -72,7 +76,7 @@ class JobPoller {
     if (!claimed || claimed.length === 0) return
     for (const job of claimed) {
       this._inflight += 1
-      this.mutex(job.sourceId, async () => {
+      const run = async () => {
         try {
           await this.processFn(job)
         } catch (err) {
@@ -80,7 +84,8 @@ class JobPoller {
         } finally {
           this._inflight -= 1
         }
-      }).catch((err) => {
+      }
+      this.mutex(job.sourceId, run).catch((err) => {
         if (this.logger) this.logger.error('poller.mutex error', { error: err.message })
         this._inflight -= 1
       })

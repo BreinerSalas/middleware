@@ -1,7 +1,7 @@
 'use strict'
 
-const { SyncJob, JOB_STATUS } = require('../domain/SyncJob')
-const { buildDedupeKey } = require('../shared/hash')
+const { SyncJob, JOB_STATUS } = require('../../domain/SyncJob')
+const { buildDedupeKey } = require('../../shared/hash')
 
 class EnqueueSyncJobUseCase {
   constructor({ jobRepository, dedupeGuard, logger = null } = {}) {

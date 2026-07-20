@@ -1,8 +1,8 @@
 'use strict'
 
-const { JOB_STATUS } = require('../domain/SyncJob')
-const { calculateNextRetry, isRetryableError, shouldDeadLetter } = require('../domain/RetryPolicy')
-const { SkipSyncError } = require('../domain/errors')
+const { JOB_STATUS } = require('../../domain/SyncJob')
+const { calculateNextRetry, isRetryableError, shouldDeadLetter } = require('../../domain/RetryPolicy')
+const { SkipSyncError } = require('../../domain/errors')
 
 class ProcessSyncJobUseCase {
   constructor({
