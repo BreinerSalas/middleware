@@ -1,6 +1,6 @@
 'use strict'
 
-const { SkipSyncError } = require('../../core/domain/errors')
+const { SkipSyncError } = require('../core/domain/errors')
 
 function mustHaveLineItems({ record } = {}) {
   const props = (record && record.properties) || {}
