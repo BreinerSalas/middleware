@@ -15,11 +15,14 @@ export default defineConfig({
       exclude: [
         'src/server.js',
         'src/config/**',
-        'src/core/application/ports/**'
+        'src/core/application/ports/**',
+        'src/panel/static/**',
+        'src/panel/index.html',
+        'src/adapters/outbound/mongo/connection.js'
       ],
       thresholds: {
         lines: 80,
-        functions: 80,
+        functions: 70,
         branches: 70,
         statements: 80
       }

@@ -23,7 +23,9 @@ const OPTIONAL_KEYS = [
   'WORKER_CONCURRENCY',
   'WORKER_POLL_INTERVAL_MS',
   'MAX_RETRY_ATTEMPTS',
-  'RETRY_MAX_DELAY_MS'
+  'RETRY_MAX_DELAY_MS',
+  'PANEL_TOKEN',
+  'PANEL_TOKEN_HEADER_NAME'
 ]
 
 function loadEnvFile({ envFile = null, override = false } = {}) {
@@ -76,6 +78,10 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
     retry: {
       maxAttempts: Number(env.MAX_RETRY_ATTEMPTS || 8),
       maxDelayMs: Number(env.RETRY_MAX_DELAY_MS || 300000)
+    },
+    panel: {
+      token: env.PANEL_TOKEN || '',
+      headerName: (env.PANEL_TOKEN_HEADER_NAME || 'x-panel-token').toLowerCase()
     }
   }
 }

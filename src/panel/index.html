@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Panel Integración HubSpot + Odoo</title>
+    <link rel="stylesheet" href="/static/panel.css" />
+  </head>
+  <body>
+    <div id="login" class="login-overlay" hidden>
+      <div class="login-card">
+        <h1>Panel Integración HubSpot + Odoo</h1>
+        <p>Introduce el token de acceso (env <code>PANEL_TOKEN</code>).</p>
+        <input type="password" id="login-token" placeholder="x-panel-token" autocomplete="off" />
+        <div class="login-actions">
+          <button id="login-submit" type="button">Entrar</button>
+          <span id="login-error" class="error-text"></span>
+        </div>
+      </div>
+    </div>
+
+    <header class="topbar">
+      <div>
+        <h1>Panel Integración HubSpot + Odoo</h1>
+        <p class="subtitle">Estado de conexión, sincronizaciones y registros recientes.</p>
+      </div>
+      <div class="topbar-actions">
+        <label class="auto-refresh">
+          <input type="checkbox" id="auto-refresh" />
+          Auto-refresh tarjetas
+        </label>
+        <button id="refresh-status" type="button">Refrescar estado</button>
+        <button id="logout" type="button">Salir</button>
+      </div>
+    </header>
+
+    <section class="cards" id="status-cards">
+      <article class="card" id="card-hubspot">
+        <h2>HubSpot</h2>
+        <div class="badge-row">
+          <span class="badge pending">—</span>
+          <span class="latency"></span>
+        </div>
+        <p class="card-detail">—</p>
+      </article>
+      <article class="card" id="card-odoo">
+        <h2>Odoo</h2>
+        <div class="badge-row">
+          <span class="badge pending">—</span>
+          <span class="latency"></span>
+        </div>
+        <p class="card-detail">—</p>
+      </article>
+    </section>
+
+    <section class="panel-section">
+      <div class="panel-section-head">
+        <div>
+          <h2>Órdenes sincronizadas</h2>
+          <p class="section-sub">Mostrando <span id="mappings-shown">0</span> de <span id="mappings-total">0</span> registros.</p>
+        </div>
+        <div class="filters">
+          <input id="mappings-q" type="search" placeholder="Buscar por sourceId o targetId" />
+          <select id="mappings-page-size">
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+          <button id="mappings-clear" type="button" class="danger">Borrar todo</button>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="mappings-select-all" /></th>
+              <th>Source ID</th>
+              <th>Target ID</th>
+              <th>Target Ref</th>
+              <th>Payload Hash</th>
+              <th>Última sync</th>
+              <th>Creado</th>
+              <th>Actualizado</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="mappings-tbody"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="mappings-pagination"></div>
+      <div class="bulk-actions">
+        <button id="mappings-delete-selected" type="button" class="danger" disabled>Borrar seleccionados</button>
+      </div>
+    </section>
+
+    <section class="panel-section">
+      <div class="panel-section-head">
+        <div>
+          <h2>Logs recientes</h2>
+          <p class="section-sub">Mostrando <span id="logs-shown">0</span> de <span id="logs-total">0</span> registros.</p>
+        </div>
+        <div class="filters">
+          <input id="logs-q" type="search" placeholder="Buscar por sourceId" />
+          <select id="logs-event">
+            <option value="">Todos los eventos</option>
+          </select>
+          <select id="logs-success">
+            <option value="">Todos los estados</option>
+            <option value="true">Éxito</option>
+            <option value="false">Fallos</option>
+          </select>
+          <select id="logs-page-size">
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+          <button id="logs-clear" type="button" class="danger">Borrar todo</button>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="logs-select-all" /></th>
+              <th>ID</th>
+              <th>Source ID</th>
+              <th>Evento</th>
+              <th>Estado</th>
+              <th>Mensaje</th>
+              <th>Payload</th>
+              <th>Fecha</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="logs-tbody"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="logs-pagination"></div>
+      <div class="bulk-actions">
+        <button id="logs-delete-selected" type="button" class="danger" disabled>Borrar seleccionados</button>
+      </div>
+    </section>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script src="/static/panel.js"></script>
+  </body>
+</html>

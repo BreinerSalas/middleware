@@ -1,13 +1,19 @@
 'use strict'
 
+const fs = require('node:fs/promises')
+const path = require('node:path')
 const Fastify = require('fastify')
 const mongoose = require('mongoose')
 const { createLogger } = require('./lib/logger')
 const { createAuthMiddleware } = require('./adapters/inbound/http/auth.middleware')
 const { createCorrelationMiddleware } = require('./adapters/inbound/http/correlation.middleware')
 const { createHealthRoutes } = require('./adapters/inbound/http/health.routes')
+const { createPanelRoutes } = require('./adapters/inbound/http/panel.routes')
+const { MongoPanelRepository } = require('./adapters/outbound/mongo/MongoPanelRepository')
+const { hubspotHealthCheck } = require('./adapters/outbound/hubspot/hubspotHealthCheck')
+const { odooHealthCheck } = require('./adapters/outbound/odoo/odooHealthCheck')
 
-function createApp({ config, logger = null, dealSyncModule = null } = {}) {
+function createApp({ config, logger = null, dealSyncModule = null, panelRepository = null, staticRoot = null } = {}) {
   if (!config) throw new Error('createApp requires config')
   const log = logger || createLogger({ level: config.logging.level })
   const app = Fastify({ logger: false })
@@ -52,6 +58,29 @@ function createApp({ config, logger = null, dealSyncModule = null } = {}) {
       return reply.code(500).send({ ok: false, error: 'enqueue_failed' })
     }
   })
+
+  // panel: API + static assets
+  if (config.panel) {
+    const repo = panelRepository || new MongoPanelRepository()
+    const healthCheck = {
+      hubspot: () => hubspotHealthCheck({ baseUrl: config.hubspot.apiBase, accessToken: config.hubspot.accessToken, timeoutMs: 5000 }),
+      odoo: () => odooHealthCheck({ mode: config.odoo.mode, baseUrl: config.odoo.baseUrl, timeoutMs: 5000 })
+    }
+    app.register(createPanelRoutes, { panelRepository: repo, healthCheck, config })
+  }
+
+  if (staticRoot) {
+    const staticAssetsDir = path.join(staticRoot, 'static')
+    app.register(require('@fastify/static'), { root: staticAssetsDir, prefix: '/static/', decorateReply: false })
+    app.get('/', async (req, reply) => {
+      try {
+        const html = await fs.readFile(path.join(staticRoot, 'index.html'), 'utf8')
+        reply.type('text/html; charset=utf-8').send(html)
+      } catch (err) {
+        reply.code(500).send({ ok: false, error: 'panel_html_missing' })
+      }
+    })
+  }
 
   return app
 }
