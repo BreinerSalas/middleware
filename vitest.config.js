@@ -1,6 +1,9 @@
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
+  resolve: {
+    extensions: ['.js', '.json']
+  },
   test: {
     environment: 'node',
     globals: false,

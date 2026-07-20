@@ -1,0 +1,50 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: smartflow-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: smartflow-app
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/smartflow
+      HUBSPOT_ACCESS_TOKEN: ${HUBSPOT_ACCESS_TOKEN}
+      HUBSPOT_API_BASE: ${HUBSPOT_API_BASE:-https://api.hubapi.com}
+      WEBHOOK_SHARED_SECRET: ${WEBHOOK_SHARED_SECRET}
+      WEBHOOK_SHARED_SECRET_HEADER_NAME: ${WEBHOOK_SHARED_SECRET_HEADER_NAME:-x-smartflow-secret}
+      HS_PROPERTY_ODOO_CUSTOMER_ID: ${HS_PROPERTY_ODOO_CUSTOMER_ID:-id_cliente_odoo}
+      HS_PROPERTY_ODOO_ORDER_ID: ${HS_PROPERTY_ODOO_ORDER_ID:-id_orden_odoo}
+      ODOO_CLIENT_MODE: ${ODOO_CLIENT_MODE:-stub}
+      ODOO_BASE_URL: ${ODOO_BASE_URL:-}
+      ODOO_API_KEY: ${ODOO_API_KEY:-}
+      PORT: ${PORT:-3007}
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-3}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-5000}
+      MAX_RETRY_ATTEMPTS: ${MAX_RETRY_ATTEMPTS:-8}
+      RETRY_MAX_DELAY_MS: ${RETRY_MAX_DELAY_MS:-300000}
+    ports:
+      - "${PORT:-3007}:3007"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3007/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mongo-data:
