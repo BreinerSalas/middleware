@@ -1,5 +1,6 @@
 'use strict'
 
+const path = require('node:path')
 const { load } = require('./config')
 const { createLogger } = require('./lib/logger')
 const { createApp } = require('./app')
@@ -11,7 +12,8 @@ async function start({ config = null } = {}) {
   const logger = createLogger({ level: cfg.logging.level })
   await connectMongo({ uri: cfg.mongodbUri, logger })
   const dealSyncModule = createDealSyncModule({ config: cfg, logger })
-  const app = createApp({ config: cfg, logger, dealSyncModule })
+  const staticRoot = path.resolve(__dirname, 'panel')
+  const app = createApp({ config: cfg, logger, dealSyncModule, staticRoot })
 
   await dealSyncModule.startWorker()
   await app.listen({ port: cfg.server.port, host: '0.0.0.0' })
