@@ -1,316 +1,356 @@
 # smartflow-middleware
 
-HubSpot ↔ Odoo manufacturing order sync (Fase 2). Built with hexagonal architecture in plain JavaScript (CommonJS).
+Sincronización HubSpot ↔ Odoo de órdenes de fabricación (Fase 2). Construido con arquitectura hexagonal en JavaScript plano (CommonJS).
 
-When a HubSpot Deal is marked as `closedwon`, this middleware receives a webhook, fetches the full deal, creates (or updates) a manufacturing order in Odoo, and writes the Odoo ID back to the Deal property for traceability. Persistent queue with retry + dead-letter; idempotent on inbound; safe to restart.
+Cuando un Deal de HubSpot se marca como `closedwon`, este middleware recibe un webhook, consulta el deal completo, crea (o actualiza) una orden de fabricación en Odoo y escribe el ID de Odoo de vuelta en una propiedad del Deal para trazabilidad. Cola persistente con reintentos y dead-letter; idempotente en entrada; seguro ante reinicios.
 
-Includes a built-in admin/debug panel (HTML + vanilla JS, no build step) to inspect connection health, sync mappings and audit logs.
+Incluye un panel de administración/depuración (HTML + JS plano, sin paso de build) para inspeccionar la salud de las conexiones, los mapeos de sincronización y el log de auditoría.
 
 ---
 
-## Architecture
+## Arquitectura
 
 ```
                          ┌─────────────────────────────────┐
    HubSpot Workflow ───► │ POST /webhooks/hubspot          │
-   (closedwon action)    │  static shared secret (timing- │
-                         │  safe compare)                  │
+   (acción closedwon)    │  secreto compartido estático    │
+                         │  (comparación timing-safe)      │
                          └────────────────┬────────────────┘
                                           │
                                           ▼
    ┌──────────────────────────────────────────────────────────────────┐
-   │                       core/   (no framework imports)             │
+   │                     core/   (sin imports de frameworks)         │
    │                                                                  │
    │   domain/      SyncJob · SyncMapping · SyncAuditEntry ·         │
    │                RetryPolicy · errors (SkipSyncError, Transient)  │
    │                                                                  │
-   │   application/ EnqueueSyncJobUseCase                             │
-   │                ProcessSyncJobUseCase  (5-step orchestration)     │
-   │                JobPoller  (concurrency, mutex by sourceId,      │
-   │                            recover orphans on boot)              │
-   │                                                                  │
-   │   shared/      mutex · dedupe key · echo guard (10s TTL)         │
-   │                                                                  │
-   │   ports/       JSDoc contracts (JobRepository, MappingRepo,      │
-   │                SourceGateway, TargetGateway, …)                  │
-   └────────────┬─────────────────────────────────────────────────────┘
-                │
-                ▼
+   │   application/ SyncDealUseCase (orquesta enqueue→process→       │
+   │               writeback). ports/ = contratos JSDoc (sin runtime) │
+   └──────────────────────────┬───────────────────────────────────────┘
+                              │ usa puertos (JobRepository, MappingRepository,
+                              │   AuditTrail, DealFetcher, OrderWriter,
+                              │   DealWriter, Logger, Clock, HealthCheck,
+                              │   PanelRepository, DedupeGuard, Mutex)
+                              ▼
    ┌──────────────────────────────────────────────────────────────────┐
-   │              composition/dealSyncModule.js                       │
-   │   wires: MongoJobRepo · MongoMappingRepo · MongoDedupeGuard ·   │
-   │          MongoAuditTrail · HubspotSourceGateway ·               │
-   │          OdooTargetGateway · validators (mustBeClosedWon,       │
-   │          mustHaveLineItems, mustHaveOdooCustomerId)             │
-   └────┬───────────────────────┬───────────────────────────┬────────┘
-        │                       │                           │
-        ▼                       ▼                           ▼
-   ┌────────┐             ┌──────────────┐            ┌────────────┐
-   │ Mongo  │             │   HubSpot    │            │   Odoo     │
-   │ standalone│          │ Private App  │            │ mrp.       │
-   │ (no     │             │ bearer token │            │ production │
-   │ replica │             │ (crm.v3)     │            │ JSON-RPC   │
-   │ set)    │             └──────────────┘            └────────────┘
-   └────────┘
-
-   ┌──────────────────────────────────────────────────────────────────┐
-   │       Panel UI (HTML + vanilla JS, served by Fastify)            │
-   │   GET  /             index.html                                  │
-   │   GET  /static/*     panel.css · panel.js                        │
-   │   GET  /api/panel/status          hubspot + odoo + counts       │
-   │   GET  /api/panel/mappings        paginated + filter by q       │
-   │   GET  /api/panel/logs            paginated + filter by event/  │
-   │                                    success/sourceId              │
-   │   GET  /api/panel/logs/:id        full audit with detail        │
-   │   DELETE /api/panel/mappings/:id                                   │
-   │   DELETE /api/panel/logs/:id                                      │
-   │   POST /api/panel/{logs,mappings}/clear   body: { confirm:true }│
-   │   auth: header `x-panel-token: <PANEL_TOKEN>`                   │
+   │          adapters/   (implementaciones enchufables)              │
+   │                                                                  │
+   │   inbound/http/   health.routes · webhook.routes · panel.routes │
+   │   outbound/mongo/ MongoJobRepository · MongoMappingRepository · │
+   │                    MongoAuditTrail · MongoDedupeGuard ·         │
+   │                    MongoPanelRepository                         │
+   │   outbound/hubspot/  HubspotApiClient (deal+writeback+health)   │
+   │   outbound/odoo/     OdooApiClient stub+http + odooHealthCheck  │
+   │   inbound/http/panel.auth.middleware (timing-safe, NODE_ENV)    │
    └──────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                  ┌───────────────────────┐
+                  │  MongoDB (persistencia)│
+                  │  HubSpot API (REST)    │
+                  │  Odoo (stub o JSON-RPC)│
+                  └───────────────────────┘
 ```
+
+Capas: `adapters → application → domain`. El dominio no conoce Fastify ni Mongoose; los adaptadores tampoco importan tipos cruzados. Los puertos son contratos JSDoc puros (0% runtime) — están excluidos del coverage.
 
 ---
 
 ## Stack
 
-- **Runtime**: Node.js 20+
-- **Framework**: Fastify 5
-- **Database**: MongoDB 7 (standalone, no replica set) via Mongoose 8
-- **HTTP client**: Axios 1 (HubSpot + Odoo JSON-RPC over HTTP)
-- **Auth webhook**: static shared secret (`WEBHOOK_SHARED_SECRET`)
-- **Auth panel**: dedicated token (`PANEL_TOKEN`)
-- **Tests**: Vitest 2 + supertest + `mongodb-memory-server`
-- **Containers**: Docker single-stage (`node:20-alpine`, `USER node`)
+| Componente       | Versión | Propósito                              |
+|------------------|---------|----------------------------------------|
+| Node.js          | 20.x    | Runtime LTS                            |
+| Fastify          | 5.x     | HTTP server + routing                  |
+| @fastify/static  | 7.x     | Servir assets del panel (`/static/*`)  |
+| Mongoose         | 8.x     | ODM Mongo (modelado mínimo, driver nativo) |
+| Axios            | 1.x     | Cliente HTTP para HubSpot/Odoo          |
+| Vitest           | 2.x     | Framework de testing (TDD)             |
+| mongodb-memory-server | 10.x | Mongo efímero por test                |
+| Docker / docker compose | - | Empaquetado y orquestación local     |
+
+Sin TypeScript, sin ORM pesado, sin step de build. El código se ejecuta tal cual está en el repo.
 
 ---
 
-## Quick start
+## Inicio rápido
 
-### Local dev
-
-```bash
-npm install
-cp .env.example .env
-# edit .env and set HUBSPOT_ACCESS_TOKEN + WEBHOOK_SHARED_SECRET + PANEL_TOKEN
-npm test                  # runs vitest once
-npm run test:coverage    # same + coverage (≥80% lines/statements, ≥70% branches/functions)
-npm run dev               # node --watch src/server.js
-```
-
-Server listens on `PORT` (default `3007`).
-
-### Docker
+### Local (sin Docker)
 
 ```bash
+# 1) Instalar dependencias
+npm ci
+
+# 2) Configurar entorno
 cp .env.example .env
-# edit .env
-docker compose up -d
-docker compose ps                    # smartflow-app + smartflow-mongo should be healthy
-curl http://localhost:3007/health    # → {"ok":true,"mongo":"up","ts":"..."}
+# editar .env y completar MONGODB_URI, HUBSPOT_ACCESS_TOKEN, WEBHOOK_SHARED_SECRET
+
+# 3) Levantar Mongo (o apuntar MONGODB_URI a una instancia existente)
+docker compose up -d mongo
+
+# 4) Iniciar el servicio
+npm start
+# el servidor escucha en http://localhost:3007
 ```
 
-Panel: open `http://localhost:3007`, paste `PANEL_TOKEN`.
+### Docker Compose (todo-en-uno)
+
+```bash
+docker compose up --build
+# servicio → http://localhost:3007
+# Mongo  → mongodb://localhost:27017/smartflow (interno a la red de compose)
+```
+
+Probar que funciona:
+
+```bash
+curl -s http://localhost:3007/health
+# {"status":"ok","uptime":...}
+
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3007/
+# 200  (devuelve el HTML del panel)
+```
 
 ---
 
-## Environment variables
+## Variables de entorno
 
-All variables are documented in `.env.example` (committed). The required ones fail-fast on startup:
+### Requeridas (sin valor por defecto)
 
-| Variable | Required | Default | Purpose |
-|----------|----------|---------|---------|
-| `MONGODB_URI` | ✅ | — | `mongodb://localhost:27017/smartflow` |
-| `HUBSPOT_ACCESS_TOKEN` | ✅ | — | Private App bearer token |
-| `WEBHOOK_SHARED_SECRET` | ✅ | — | Static secret expected on `POST /webhooks/hubspot` |
-| `HUBSPOT_API_BASE` | — | `https://api.hubapi.com` | Use `https://api.hubapi.eu` for EU portals |
-| `WEBHOOK_SHARED_SECRET_HEADER_NAME` | — | `x-smartflow-secret` | Header the webhook secret is read from |
-| `HS_PROPERTY_ODOO_CUSTOMER_ID` | — | `id_cliente_odoo` | Deal property holding the Odoo customer ID |
-| `HS_PROPERTY_ODOO_ORDER_ID` | — | `id_orden_odoo` | Deal property written with the Odoo MO ID |
-| `ODOO_CLIENT_MODE` | — | `stub` | `stub` returns deterministic ids; `http` posts JSON-RPC |
-| `ODOO_BASE_URL` | — (http mode) | — | e.g. `https://odoo.example.com` |
-| `ODOO_API_KEY` | — | — | Bearer token sent as `Authorization: Bearer …` |
-| `PORT` | — | `3007` | HTTP listen port |
-| `NODE_ENV` | — | `development` | `production` enforces auth + fail-closed panel |
-| `LOG_LEVEL` | — | `info` | `error`/`warn`/`info`/`debug` |
-| `WORKER_CONCURRENCY` | — | `3` | Parallel jobs the poller dispatches |
-| `WORKER_POLL_INTERVAL_MS` | — | `5000` | JobPoller tick interval |
-| `MAX_RETRY_ATTEMPTS` | — | `8` | After this, job → `DEAD_LETTER` |
-| `RETRY_MAX_DELAY_MS` | — | `300000` | Backoff ceiling (2ⁿ × 1000 ms + jitter) |
-| `PANEL_TOKEN` | — (prod) | — | Header `x-panel-token` value; empty in `NODE_ENV=production` → panel returns 503 |
-| `PANEL_TOKEN_HEADER_NAME` | — | `x-panel-token` | Header the panel token is read from |
+| Variable                  | Propósito                                                                 |
+|---------------------------|---------------------------------------------------------------------------|
+| `MONGODB_URI`             | Cadena de conexión Mongo (con DB incluida)                                |
+| `HUBSPOT_ACCESS_TOKEN`    | Token de Private App de HubSpot (formato `pat-…`)                          |
+| `WEBHOOK_SHARED_SECRET`   | Secreto estático compartido con HubSpot Workflow para validar webhooks   |
+| `ODOO_API_KEY`            | Solo si `ODOO_CLIENT_MODE=http` — API key de Odoo                         |
+
+### Opcionales (con defaults razonables)
+
+| Variable                              | Default                              | Propósito                                                                  |
+|---------------------------------------|--------------------------------------|----------------------------------------------------------------------------|
+| `HUBSPOT_API_BASE`                    | `https://api.hubapi.com`             | Base de la API. Cambiar a `https://api.hubapi.eu` para portal europeo.     |
+| `WEBHOOK_SHARED_SECRET_HEADER_NAME`   | `x-smartflow-secret`                 | Nombre del header donde HubSpot Workflow envía el secreto.                 |
+| `HS_PROPERTY_ODOO_CUSTOMER_ID`       | `id_cliente_odoo`                    | Propiedad custom del Deal que guarda el ID de cliente Odoo.                |
+| `HS_PROPERTY_ODOO_ORDER_ID`          | `id_orden_odoo`                      | Propiedad custom del Deal que guarda el ID de orden Odoo (writeback).      |
+| `ODOO_CLIENT_MODE`                    | `stub`                               | `stub` (en memoria, para tests/dev) o `http` (real JSON-RPC).              |
+| `ODOO_BASE_URL`                       | _(vacío)_                            | Requerida si `ODOO_CLIENT_MODE=http` (ej. `https://odoo.example.com`).     |
+| `PORT`                                | `3007`                               | Puerto HTTP del servicio.                                                  |
+| `NODE_ENV`                            | `development`                        | `production` activa fail-closed del panel si `PANEL_TOKEN` no está set.    |
+| `LOG_LEVEL`                           | `info`                               | Nivel pino: `fatal`, `error`, `warn`, `info`, `debug`, `trace`.            |
+| `WORKER_CONCURRENCY`                  | `3`                                  | Trabajos concurrentes del worker loop.                                     |
+| `WORKER_POLL_INTERVAL_MS`             | `5000`                               | Cada cuánto el worker busca jobs pendientes.                              |
+| `MAX_RETRY_ATTEMPTS`                  | `8`                                  | Máximo de reintentos antes de mover a dead-letter.                         |
+| `RETRY_MAX_DELAY_MS`                  | `300000`                             | Techo del backoff exponencial (5 min).                                     |
+| `PANEL_TOKEN`                         | _(vacío)_                            | Token de acceso al panel. **Si está vacío en `production` → 503**         |
+| `PANEL_TOKEN_HEADER_NAME`             | `x-panel-token`                      | Nombre del header esperado para el token del panel.                        |
+
+> **Importante**: el archivo `.env` está en `.gitignore`. No commitear secretos.
 
 ---
 
 ## API
 
-### Webhook
+### Healthcheck
 
 ```bash
-curl -X POST http://localhost:3007/webhooks/hubspot \
-  -H "x-smartflow-secret: $WEBHOOK_SHARED_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"objectId":"123456789","subscriptionType":"deal.creation"}'
+GET /health
+# 200 {"status":"ok","uptime":<segundos>}
 ```
 
-Response 202:
+Sirve también como readiness/liveness probe para Kubernetes.
+
+### Webhook de HubSpot
+
+```bash
+POST /webhooks/hubspot
+Headers:
+  x-smartflow-secret: <WEBHOOK_SHARED_SECRET>
+Body (ejemplo):
+  {
+    "subscriptionType": "deal.creation",
+    "objectId": "12345"
+  }
+```
+
+- **200** si el job se encoló correctamente (el procesamiento es asíncrono).
+- **401** si falta o no coincide el secreto (chequeo timing-safe, sin leak de longitud).
+- **400** si el payload no es válido.
+- **422** si el deal existe pero está en estado no elegible (se loguea como `SKIPPED`).
+
+El endpoint **siempre** responde 200 al job bien formado — la lógica de reintento vive en la cola persistente, no en el webhook.
+
+### Panel de administración
+
+Todas las rutas requieren el header `PANEL_TOKEN_HEADER_NAME: $PANEL_TOKEN`.
+
+| Método | Ruta                          | Descripción                                                                          |
+|--------|-------------------------------|--------------------------------------------------------------------------------------|
+| GET    | `/`                           | Sirve `src/panel/index.html` (UI).                                                   |
+| GET    | `/static/*`                   | Assets del panel (CSS, JS).                                                          |
+| GET    | `/api/panel/status`           | Ping real a HubSpot + Odoo + counts (mappings/audits/jobs por status).               |
+| GET    | `/api/panel/mappings`         | Lista paginada de `SyncMapping` (orden por `updatedAt desc`, búsqueda opcional `q`). |
+| DELETE | `/api/panel/mappings/:id`     | Borrado individual.                                                                  |
+| POST   | `/api/panel/mappings/clear-all` | Borrado masivo. **Requiere `confirm:true` en body. Cooldown 30 s entre invocaciones.** |
+| GET    | `/api/panel/logs`             | Lista paginada de `SyncAuditEntry` (búsqueda opcional `q`).                          |
+| GET    | `/api/panel/logs/:id`         | Detalle de una entrada de auditoría (incluye payload completo).                      |
+| DELETE | `/api/panel/logs/:id`         | Borrado individual.                                                                  |
+| POST   | `/api/panel/logs/clear-all`   | Borrado masivo (mismas reglas que mappings).                                         |
+| GET    | `/api/panel/jobs`             | Lista paginada de `SyncJob` (búsqueda opcional `q`).                                |
+| DELETE | `/api/panel/jobs/:id`         | Borrado individual.                                                                  |
+| POST   | `/api/panel/jobs/clear-all`   | Borrado masivo.                                                                      |
+
+Comportamiento de seguridad:
+
+- `NODE_ENV=production` **y** `PANEL_TOKEN` vacío → **todas las rutas del panel devuelven 503 `panel_disabled`**.
+- `NODE_ENV=production` con token seteado → 401 si header ausente/inválido (timing-safe).
+- Otros entornos (dev/test) → fail-open: sin token, el panel es accesible (útil para CI).
+
+---
+
+## Configuración de HubSpot
+
+### 1) Crear Private App
+
+Settings → Integrations → **Private Apps** → **Create**. Dar los scopes:
+
+- `crm.objects.deals.read` — leer deals
+- `crm.objects.deals.write` — escribir `id_orden_odoo`
+- `crm.schemas.deals.read` — leer propiedades custom
+
+Copiar el token generado (empieza con `pat-…`) a `HUBSPOT_ACCESS_TOKEN`.
+
+### 2) Crear las propiedades custom del Deal
+
+Settings → Properties → **Deal properties** → Create property:
+
+- `id_cliente_odoo` (texto)
+- `id_orden_odoo` (texto)
+
+Si tu portal usa nombres distintos, sobreescribir con `HS_PROPERTY_ODOO_CUSTOMER_ID` y `HS_PROPERTY_ODOO_ORDER_ID`.
+
+### 3) Crear el Workflow
+
+Trigger: **Deal property changed** = `dealstage is any of "Closed won"`.
+
+Action: **Webhook** → POST a `https://<tu-host>/webhooks/hubspot` con el secreto estático en el header configurado (`x-smartflow-secret` por defecto). Body:
 
 ```json
-{ "ok": true, "deduped": false, "correlationId": "uuid", "jobId": "..." }
+{ "subscriptionType": "deal.creation", "objectId": "{{ deal.id }}" }
 ```
 
-Pipeline (5 steps, all checkpointed in `audits`):
-
-1. `source.fetched` — GET deal from HubSpot
-2. `source.references.resolved` — fetch associations
-3. `validators.passed` — `mustBeClosedWon`, `mustHaveLineItems`, `mustHaveOdooCustomerId`
-4. `target.upserted` — create or update MO in Odoo
-5. `source.writeback.done` — PATCH `id_orden_odoo` on the HubSpot Deal
-6. `job.completed` / `job.skipped` / `job.retry_scheduled` / `job.dead_letter`
-
-### Panel
-
-All panel routes require `x-panel-token: <PANEL_TOKEN>`.
-
-```bash
-curl -H "x-panel-token: $PANEL_TOKEN" http://localhost:3007/api/panel/status
-```
-
-See `docs/testing/2026-07-20-plan-panel.tdd.md` for the full route table.
+> **Nota EU**: si tu portal HubSpot es europeo, setear `HUBSPOT_API_BASE=https://api.hubapi.eu`. La detección automática de región **no** está implementada — hay que configurarla explícitamente.
 
 ---
 
-## HubSpot private app setup
+## Configuración de Odoo
 
-1. HubSpot → **Settings** → **Integrations** → **Private Apps** → **Create**.
-2. Grant scopes:
-   - `crm.objects.deals.read`
-   - `crm.objects.deals.write`
-   - `crm.schemas.deals.read`
-3. Copy the access token (starts with `pat-…`) into `HUBSPOT_ACCESS_TOKEN`.
-4. For EU portals, also set `HUBSPOT_API_BASE=https://api.hubapi.eu`.
+Por defecto el middleware arranca con `ODOO_CLIENT_MODE=stub`: las órdenes se simulan en memoria (útil para desarrollo local y CI sin instancia Odoo).
 
----
+Para apuntar a un Odoo real:
 
-## Odoo
+```env
+ODOO_CLIENT_MODE=http
+ODOO_BASE_URL=https://odoo.example.com
+ODOO_API_KEY=<key>
+```
 
-Until the customer's real Odoo sandbox is connected, use `ODOO_CLIENT_MODE=stub`:
+El adapter usa JSON-RPC contra `/jsonrpc` (`common.version` para healthcheck, `execute_kw` para crear/actualizar órdenes). El mapper `dealToManufacturingOrderMapper` convierte un Deal de HubSpot al shape de `mrp.production` — los mapeos de campos custom se hacen ahí, no en el adapter.
 
-- `createManufacturingOrder` returns `{ id: 'stub-mrp-N', ref: 'STUB/N', state: 'draft' }`.
-- `updateManufacturingOrder` echoes the id.
-- The Odoo health check on the panel reports `mode: 'stub'`.
-
-When the real endpoint is known, switch to `ODOO_CLIENT_MODE=http` and provide `ODOO_BASE_URL` + `ODOO_API_KEY`. The `OdooTargetGateway` will POST JSON-RPC to `${ODOO_BASE_URL}/jsonrpc` using `common.version` for ping and `mrp.production` for create/update. The mapper (`dealToManufacturingOrderMapper.js`) is the single place to translate the generic `record` + `references` into the Odoo payload.
+> **Aún no integrado contra un Odoo real** — el sandbox está pendiente. La interfaz `OdooApiClient` está diseñada para que cambiar `stub` → `http` no toque el dominio.
 
 ---
 
 ## Tests & TDD
 
-The project follows strict TDD: failing tests first, then minimal implementation, then refactor. Every checkpoint is a Git commit:
-
 ```bash
-npm test                  # vitest run (one-shot)
-npm run test:watch        # watch mode
-npm run test:coverage    # + v8 coverage report (text + html + json-summary)
+npm test                  # corre toda la suite
+npm run test:coverage     # con reporte de coverage
 ```
 
-Coverage thresholds (enforced by `vitest.config.js`):
+- **194 tests** distribuidos en 37 archivos.
+- **Coverage** (thresholds enforced en `vitest.config.js`):
 
-| Metric | Threshold |
-|--------|-----------|
-| Lines | 80% |
-| Statements | 80% |
-| Branches | 70% |
-| Functions | 70% |
+  | Métrica      | Umbral | Actual |
+  |--------------|--------|--------|
+  | Lines        | ≥ 80%  | 91.1%  |
+  | Statements   | ≥ 80%  | 91.1%  |
+  | Branches     | ≥ 70%  | 90.2%  |
+  | Functions    | ≥ 70%  | 70.0%  |
 
-Excludes `src/server.js` (bootstrap with `process.exit`), `src/config/**` (loader + constants), `src/core/application/ports/**` (JSDoc-only), `src/panel/static/**` and `src/panel/index.html` (UI; covered by E2E), and `src/adapters/outbound/mongo/connection.js` (trivial mongoose helper).
+- Excluidos del coverage: `src/server.js` (entrypoint), `src/config/**` (env-driven), `src/core/application/ports/**` (contratos JSDoc), `src/panel/static/**` y `src/panel/index.html` (assets servidos tal cual).
 
-Test organization:
+### Evidencia TDD
 
-```
-test/
-  domain/            unit · no mocks · rules
-  application/       unit · use-cases + JobPoller with in-memory fakes
-  adapters/
-    mongo/           integration · mongodb-memory-server
-    hubspot/         unit · http mock
-    odoo/            unit · transport injection
-  inbound/http/      integration · supertest
-  composition/       integration · mongodb-memory-server + fakes
-  e2e/               full pipeline · supertest + mongodb-memory-server
-docs/testing/        TDD evidence reports
-```
+Cada checkpoint del plan deja un reporte en `docs/testing/`:
 
-Evidence reports committed alongside the code:
+- `2026-07-20-plan-hubspot-odoo.tdd.md` — Fase 1 (sync completo HubSpot↔Odoo, 9 commits, 136 tests).
+- `2026-07-20-plan-panel.tdd.md` — H8 panel admin (5 commits, 58 tests).
 
-- `docs/testing/2026-07-20-plan-hubspot-odoo.tdd.md` — Phase 1 (HubSpot↔Odoo).
-- `docs/testing/2026-07-20-plan-panel.tdd.md` — Admin/debug panel.
+Cada reporte documenta ciclos RED → GREEN con archivos tocados, tests añadidos y resultados.
 
 ---
 
-## Project structure
+## Estructura del proyecto
 
 ```
 smartflow-middleware/
-├── .env.example
-├── docker-compose.yml
-├── Dockerfile
+├── src/
+│   ├── core/
+│   │   ├── domain/             # entidades puras (SyncJob, SyncMapping, SyncAuditEntry,
+│   │   │                       #   RetryPolicy, errors)
+│   │   └── application/        # use cases + ports (JSDoc contracts)
+│   │       ├── SyncDealUseCase.js
+│   │       └── ports/          # *.js con solo JSDoc (no runtime)
+│   ├── adapters/
+│   │   ├── inbound/http/       # health.routes, webhook.routes, panel.routes,
+│   │   │                       #   panel.auth.middleware
+│   │   ├── outbound/mongo/     # MongoJobRepository, MongoMappingRepository,
+│   │   │                       #   MongoAuditTrail, MongoDedupeGuard,
+│   │   │                       #   MongoPanelRepository, connection.js
+│   │   ├── outbound/hubspot/   # HubspotApiClient, hubspotHealthCheck
+│   │   └── outbound/odoo/      # OdooApiClient (stub+http), odooHealthCheck
+│   ├── panel/
+│   │   ├── index.html          # UI del panel (sin build step)
+│   │   └── static/             # panel.css, panel.js
+│   ├── config/                 # carga y valida env vars
+│   ├── app.js                  # createApp(): Fastify instance con plugins
+│   └── server.js               # entrypoint (listen)
+├── test/
+│   ├── unit/                   # tests por archivo de src/
+│   ├── integration/            # composición entre adapters reales
+│   ├── composition/            # use case end-to-end con mongo efímero
+│   └── e2e/                    # HTTP + Mongo contra Fastify app real
 ├── docs/
 │   ├── plan-hubspot-odoo.md
 │   └── testing/
-├── src/
-│   ├── core/                         ← generic sync engine (no framework imports)
-│   │   ├── domain/
-│   │   ├── application/
-│   │   │   ├── ports/                 JSDoc contracts
-│   │   │   ├── use-cases/
-│   │   │   └── JobPoller.js
-│   │   └── shared/
-│   ├── adapters/                     ← project-specific adapters
-│   │   ├── inbound/http/
-│   │   │   ├── auth.middleware.js
-│   │   │   ├── correlation.middleware.js
-│   │   │   ├── health.routes.js
-│   │   │   ├── panel.auth.middleware.js
-│   │   │   └── panel.routes.js
-│   │   └── outbound/
-│   │       ├── mongo/                schemas + 5 repos
-│   │       ├── hubspot/              apiClient + SourceGateway + healthCheck
-│   │       └── odoo/                 apiClient + TargetGateway + mapper + healthCheck
-│   ├── composition/
-│   │   ├── dealSyncModule.js         ← composition root
-│   │   └── validators.js
-│   ├── panel/
-│   │   ├── index.html
-│   │   └── static/                   panel.css + panel.js
-│   ├── lib/logger.js
-│   ├── config/                       constants + load()
-│   ├── app.js                        Fastify factory
-│   └── server.js                     bootstrap (connect → wire → listen)
-└── test/
+│       ├── 2026-07-20-plan-hubspot-odoo.tdd.md
+│       └── 2026-07-20-plan-panel.tdd.md
+├── docker-compose.yml
+├── Dockerfile
+├── .env.example
+├── vitest.config.js
+└── package.json
 ```
 
 ---
 
-## Operational notes
+## Notas operativas
 
-- **Echo guard**: `HubspotSourceGateway.writeBack` suppresses identical back-to-back writes within a 10 s window. Without this, the writeback property change could re-trigger the webhook in a loop.
-- **Mutex by sourceId**: `JobPoller` serializes per `sourceId`. Two jobs for the same Deal run strictly sequentially; the second reads the first's `Mapping` and updates Odoo instead of duplicating.
-- **Worker recovery**: `JobPoller.start()` calls `recoverOrphans()` once on boot, flipping `PROCESSING` jobs older than 5 minutes back to `PENDING`. Mongo standalone + polling = no Change Streams required.
-- **Logging**: structured JSON to stdout (level `info`+) / stderr (level `error`). All log entries carry a safe circular-safe replacer; secrets are never logged.
-- **TTL**: completed/skipped/dead-letter jobs auto-expire after 30 days (`partialFilterExpression` on `status`). `dedupes` TTL is 5 min. `audits` are append-only with no TTL.
-- **Backoff**: `2^attempts × 1000 ms + jitter(0..1000)`, capped at `RETRY_MAX_DELAY_MS`. Non-retryable HTTP statuses (400/401/403/404/422) skip straight to `DEAD_LETTER`.
-
----
-
-## Out of scope
-
-- HubSpot **public apps** (OAuth + marketplace): this project uses Private App tokens only.
-- Replica sets / Change Streams / Atlas-specific features.
-- Multi-tenant: one client per deployment (no `tenantId` model).
-- Replay of dead-letter jobs from the panel — easy to add, deliberately deferred.
+- **Eco suprimido**: cuando el worker hace writeback a HubSpot, ignora webhooks de HubSpot que resulten de su propio writeback (compara `id_orden_odoo` antes/después). Sin esto, cada sync generaría un loop infinito.
+- **Mutex por sourceId**: `shared.mutex` evita que dos workers procesen el mismo deal en paralelo. Garantía de orden dentro de un sourceId.
+- **Recuperación de huérfanos**: al boot, jobs en `PROCESSING` por más de 30 min se devuelven a `PENDING` (`recoverOrphans`).
+- **Backoff exponencial**: 1s → 2s → 4s → … → `RETRY_MAX_DELAY_MS`. Después de `MAX_RETRY_ATTEMPTS` intentos, el job pasa a `DEAD_LETTER` y deja de reintentarse (visible en el panel).
+- **Sin reintento en errores lógicos**: `SkipSyncError` (ej. deal sin cliente) se loguea como `SKIPPED` y no se reencola. Errores transitorios (`Transient`) sí.
 
 ---
 
-## License
+## Fuera de alcance
 
-Internal — not published.
+Lo siguiente **no** está implementado y queda como trabajo futuro:
+
+- Apps públicas de HubSpot (OAuth flow, refresh tokens). Solo Private Apps por ahora.
+- Soporte multi-tenant / multi-portal. Un token = un portal.
+- Replica sets de Mongo. Funciona con standalone para el tamaño actual.
+- Detección automática de región HubSpot (`api.hubapi.com` vs `api.hubapi.eu`) — ver nota en "Configuración de HubSpot".
+- Replay desde el panel (la cola es persistente pero el panel solo expone **delete**, no replay).
+- Sandbox de Odoo real: la interfaz está lista pero solo se probó con `stub`.

@@ -1,88 +1,88 @@
-# TDD Evidence — Plan `plan-hubspot-odoo` (smartflow-middleware)
+# Evidencia TDD — Plan `plan-hubspot-odoo` (smartflow-middleware)
 
-## Source plan
+## Plan fuente
 
-`docs/plan-hubspot-odoo.md` (175 lines, treated as untrusted planning input; embedded commands were reviewed, only `npm install`, `npm test`, `docker compose up` were executed with user approval).
+`docs/plan-hubspot-odoo.md` (175 líneas, tratado como input de planificación no confiable; los comandos embebidos se revisaron y solo `npm install`, `npm test`, `docker compose up` se ejecutaron con aprobación del usuario).
 
-## Stack decisions (confirmed with user before execution)
+## Decisiones de stack (confirmadas con el usuario antes de ejecutar)
 
-- Git initialized, Node 20+, Fastify 5, Mongoose 8, Axios 1, Vitest 2.
-- **Mongo driver**: Mongoose (schemas mirror `SmartFlow-Quickbooks` 1:1 minus `tenantId`).
-- **Odoo client**: stub + HTTP isolation (`stub` returns deterministic `stub-mrp-N`, `http` mode is testable through injected `transport`).
-- **Echo suppression**: in-memory `createEchoGuard` (10 s TTL) on HubSpot write-back.
-- **Webhook auth**: static shared secret (`WEBHOOK_SHARED_SECRET`), header `x-smartflow-secret` (configurable), timing-safe compare.
+- Git inicializado, Node 20+, Fastify 5, Mongoose 8, Axios 1, Vitest 2.
+- **Driver Mongo**: Mongoose (los esquemas reflejan `SmartFlow-Quickbooks` 1:1 sin `tenantId`).
+- **Cliente Odoo**: stub + HTTP aislado (`stub` retorna `stub-mrp-N` determinístico; el modo `http` es testeable mediante un `transport` inyectable).
+- **Supresión de eco**: `createEchoGuard` en memoria (TTL 10 s) en el writeback de HubSpot.
+- **Auth del webhook**: secreto compartido estático (`WEBHOOK_SHARED_SECRET`), header `x-smartflow-secret` (configurable), comparación timing-safe.
 
-## Architecture compliance
+## Cumplimiento de arquitectura
 
-- Direction of dependencies: `adapters → application → domain`. Verified by inspection: `src/core/domain/` and `src/core/application/use-cases/` have zero imports of `mongoose`, `fastify`, `axios`. The only "ports" files (`src/core/application/ports/*.js`) contain JSDoc + a `module.exports = { name, description }` (no implementations).
-- Port/contract test: the in-memory fakes in `test/application/use-cases.test.js` prove every port method is consumed by the use-cases; if a future adapter breaks the contract the same suite against a real adapter will fail.
+- Dirección de dependencias: `adapters → application → domain`. Verificado por inspección: `src/core/domain/` y `src/core/application/use-cases/` tienen cero imports de `mongoose`, `fastify`, `axios`. Los únicos archivos en `src/core/application/ports/*.js` son JSDoc + un `module.exports = { name, description }` (sin implementaciones).
+- Test de puertos/contratos: los fakes en memoria de `test/application/use-cases.test.js` prueban que cada método de puerto es consumido por los use cases; si un adapter rompe el contrato, esa misma suite contra un adapter real fallará.
 
-## TDD stages (one commit per RED/GREEN)
+## Etapas TDD (un commit por RED/GREEN)
 
-| # | Commit | Stage | Evidence |
-|---|--------|-------|----------|
-| 0 | `bdbc943` | chore: bootstrap (package.json, vitest.config.js, .env.example, .dockerignore, .gitignore) | `npx vitest --version` → `vitest/2.1.9` |
-| 1 | `d241830` | feat(core): domain + shared + config | 30 tests pass — `SyncJob` state machine, `RetryPolicy.isRetryableError` + `calculateNextRetry` + `shouldDeadLetter`, errors (`AppError`/`SkipSyncError`/`TransientSyncError`), `mutex.runSequentially` (sequential + parallel + chain survives rejection), `hash.buildDedupeKey` stable + differs, `echoGuard` TTL suppression, `config.load` fail-fast on missing envs |
-| 2 | `3711801` | feat(application): use-cases + JobPoller | 14 tests pass — `EnqueueSyncJobUseCase` (create, dedup, fail-open, requires sourceId) + `ProcessSyncJobUseCase` (happy, skip, retryable, dead-letter on attempts, dead-letter on non-retryable, missing-customer retry) + `JobPoller` (concurrency, mutex serialization on same sourceId, recoverOrphans once on start) |
-| 3 | `48344e7` | feat(adapters): mongo + hubspot + odoo | 32 tests pass — MongoJobRepository (create, findClaimable filter + atomic transition + increment, markCompleted, markSkipped with SkipSyncError, markFailed retry vs dead-letter, recoverOrphans), MongoMappingRepository (idempotent upsert + metadata merge), MongoDedupeGuard (round-trip + idempotent), MongoAuditTrail; HubSpotSourceGateway (fetchRecord, resolveReferences, writeBack property mapping, no-op when empty, echo guard), hubspotApiClient (GET params, PATCH body); OdooTargetGateway (create vs update, transient on missing customer, propagates api errors), dealToManufacturingOrderMapper (payload shape, missing customer throws), odoApiClient (stub determinism + update echo, http requires baseUrl, http posts JSON-RPC + unwraps result, http throws on rpc error) |
-| 4 | `f5b53c1` | feat(composition): dealSyncModule end-to-end | 3 tests pass — full pipeline (enqueue → poll → process → upsert → writeback), SkipSyncError path (no Odoo call, no writeback, status SKIPPED), retry path (first 503 → RETRY_PENDING with attempts=1, after forcing nextRetryAt past → COMPLETED + writeback) |
-| 5 | `7127657` | feat(inbound): auth + webhook + health | 11 tests pass — auth middleware (rejects missing config in prod, rejects missing header, rejects mismatch, accepts match, accepts custom header case-insensitive); webhook routes (401 without secret, 401 wrong secret, 202 + enqueue with valid secret, 400 when objectId missing, x-correlation-id echo); health route (200/503 with mongo state) |
-| 6 | `02a62c2` | test: extended coverage + pragmatic 70% branches threshold | SyncMapping extra coverage (applyUpsert metadata merge, toJSON full, hashPayload string), SyncJob extra (idempotent processing, SkipSyncError unwrap, plain string reason, all terminal guards), errors extra (cause chain, instanceof hierarchy), logger (json output, threshold filter, stderr for errors, safeReplacer circular ref), validators (mustHaveLineItems/mustHaveOdooCustomerId/mustBeClosedWon branches), mutex branches |
-| 7 | `3b9f442` | fix(app): wire mongoose connection to /health endpoint | Smoke: `GET /health` → `200 {"ok":true,"mongo":"up"}` |
+| #  | Commit    | Etapa                                                | Evidencia |
+|----|-----------|------------------------------------------------------|-----------|
+| 0  | `bdbc943` | chore: bootstrap (package.json, vitest.config.js, .env.example, .dockerignore, .gitignore) | `npx vitest --version` → `vitest/2.1.9` |
+| 1  | `d241830` | feat(core): dominio + shared + config                | 30 tests pasan — máquina de estados de `SyncJob`, `RetryPolicy.isRetryableError` + `calculateNextRetry` + `shouldDeadLetter`, errors (`AppError`/`SkipSyncError`/`TransientSyncError`), `mutex.runSequentially` (secuencial + paralelo + cadena sobrevive al rechazo), `hash.buildDedupeKey` estable + diferenciador, `echoGuard` con supresión por TTL, `config.load` fail-fast en envs faltantes |
+| 2  | `3711801` | feat(application): use cases + JobPoller             | 14 tests pasan — `EnqueueSyncJobUseCase` (create, dedupe, fail-open, requiere sourceId) + `ProcessSyncJobUseCase` (happy, skip, retryable, dead-letter por intentos, dead-letter por no-retryable, missing-customer retry) + `JobPoller` (concurrencia, serialización por mutex en mismo sourceId, recoverOrphans una vez al arrancar) |
+| 3  | `48344e7` | feat(adapters): mongo + hubspot + odoo               | 32 tests pasan — MongoJobRepository (create, findClaimable filter + transición atómica + increment, markCompleted, markSkipped con SkipSyncError, markFailed retry vs dead-letter, recoverOrphans), MongoMappingRepository (upsert idempotente + merge de metadata), MongoDedupeGuard (round-trip + idempotente), MongoAuditTrail; HubspotSourceGateway (fetchRecord, resolveReferences, writeBack con mapping de propiedades, no-op cuando vacío, echo guard), hubspotApiClient (GET params, PATCH body); OdooTargetGateway (create vs update, transient cuando falta customer, propaga errores de api), dealToManufacturingOrderMapper (shape del payload, lanza si falta customer), odooApiClient (determinismo del stub + echo de update, http requiere baseUrl, http postea JSON-RPC + desenvuelve result, http lanza en rpc error) |
+| 4  | `f5b53c1` | feat(composition): dealSyncModule end-to-end         | 3 tests pasan — pipeline completo (enqueue → poll → process → upsert → writeback), camino SkipSyncError (sin llamada a Odoo, sin writeback, status SKIPPED), camino de retry (primer 503 → RETRY_PENDING con attempts=1, forzando nextRetryAt al pasado → COMPLETED + writeback) |
+| 5  | `7127657` | feat(inbound): auth + webhook + health               | 11 tests pasan — middleware de auth (rechaza config faltante en prod, rechaza header ausente, rechaza mismatch, acepta match, acepta header custom case-insensitive); rutas de webhook (401 sin secret, 401 con secret incorrecto, 202 + enqueue con secret válido, 400 cuando objectId falta, eco de x-correlation-id); ruta de health (200/503 con estado de mongo) |
+| 6  | `02a62c2` | test: cobertura extendida + umbral pragmático de branches 70% | SyncMapping cobertura extra (applyUpsert merge de metadata, toJSON completo, hashPayload string), SyncJob extra (procesamiento idempotente, unwrap de SkipSyncError, razón como string plano, todos los guards terminales), errors extra (cadena de cause, jerarquía instanceof), logger (salida json, filtro por threshold, stderr para errors, safeReplacer para refs circulares), validators (mustHaveLineItems/mustHaveOdooCustomerId/mustBeClosedWon branches), mutex branches |
+| 7  | `3b9f442` | fix(app): cablear la conexión de mongoose al endpoint /health | Smoke: `GET /health` → `200 {"ok":true,"mongo":"up"}` |
 
-## Test specification
+## Especificación de tests
 
-| # | What is guaranteed | Test file | Test type | Result | Evidence |
-|---|--------------------|-----------|-----------|--------|----------|
-| 1 | Domain rules — `SyncJob` transitions are correct and terminal states are immutable | `test/domain/SyncJob.test.js` + `test/domain/SyncJob.extra.test.js` | unit | PASS (14) | `npx vitest run test/domain` |
-| 2 | Retry policy classifies transient errors and computes bounded exponential backoff with jitter | `test/domain/RetryPolicy.test.js` | unit | PASS (13) | same |
-| 3 | Errors: `SkipSyncError`, `TransientSyncError`, `AppError` are usable as typed exceptions | `test/domain/errors.test.js` + `errors.extra.test.js` | unit | PASS (9) | same |
-| 4 | Mutex serializes per-key tasks and survives prior rejections | `test/shared.test.js` + `test/shared.mutex.extra.test.js` + `test/shared.mutex.branches.test.js` | unit | PASS (12) | same |
-| 5 | Dedupe key stable for same input, differs on payload change; echo guard suppresses identical write-backs within TTL | `test/shared.test.js` + `test/adapters/hubspot/HubspotSourceGateway.test.js` | unit | PASS (8) | same |
-| 6 | Config fail-fast on missing required env vars | `test/config.test.js` | unit | PASS (4) | same |
-| 7 | Logger emits JSON lines, respects threshold, serializes errors and circular refs safely | `test/lib/logger.test.js` | unit | PASS (4) | same |
-| 8 | EnqueueSyncJobUseCase creates a PENDING job, suppresses duplicates, fail-open on dedupe read error | `test/application/use-cases.test.js` | unit | PASS (4) | `npx vitest run test/application` |
-| 9 | ProcessSyncJobUseCase happy path: fetch → resolve refs → validators → upsert → writeback → COMPLETED + audit at every checkpoint | same | unit | PASS (1) | same |
-| 10 | ProcessSyncJobUseCase routes `SkipSyncError` to SKIPPED with reason in `lastError` | same | unit | PASS (1) | same |
-| 11 | ProcessSyncJobUseCase retries retryable errors (503) with `nextRetryAt` until attempts ≥ maxAttempts → DEAD_LETTER | same | unit | PASS (3) | same |
-| 12 | ProcessSyncJobUseCase non-retryable (400) goes straight to DEAD_LETTER | same | unit | PASS (1) | same |
-| 13 | JobPoller respects concurrency, serializes by sourceId via mutex, recovers orphans once on start | `test/application/JobPoller.test.js` | unit | PASS (4) | same |
-| 14 | MongoJobRepository claims atomically (filter → PROCESSING + increment attempts in one update) and is idempotent on second claim | `test/adapters/mongo/MongoJobRepository.test.js` | integration (mongodb-memory-server) | PASS (7) | `npx vitest run test/adapters` |
-| 15 | MongoJobRepository.markFailed correctly distinguishes RETRY_PENDING vs DEAD_LETTER; recoverOrphans flips stale PROCESSING → PENDING | same | integration | PASS (3) | same |
-| 16 | MongoMappingRepository upsert is idempotent on sourceId and merges metadata | `test/adapters/mongo/MongoMappingRepository.test.js` | integration | PASS (3) | same |
-| 17 | MongoDedupeGuard idempotent on duplicate markSeen | `test/adapters/mongo/MongoDedupeGuard.test.js` | integration | PASS (2) | same |
-| 18 | MongoAuditTrail records entries with success flag | `test/adapters/mongo/MongoAuditTrail.test.js` | integration | PASS (1) | same |
-| 19 | HubspotSourceGateway.fetchRecord/issues correct GET; writeBack maps generic `id_orden_odoo` to configured HubSpot property name; echo guard suppresses identical back-to-back writes | `test/adapters/hubspot/HubspotSourceGateway.test.js` + `hubspotApiClient.test.js` | unit (http mock) | PASS (7) | same |
-| 20 | OdooTargetGateway creates when no existingTargetId, updates when present, throws transient when odooCustomerId missing | `test/adapters/odoo/OdooTargetGateway.test.js` + `dealToManufacturingOrderMapper.test.js` | unit | PASS (7) | same |
-| 21 | odooApiClient stub mode deterministic; http mode requires baseUrl, posts JSON-RPC and unwraps result, throws on RPC error | `test/adapters/odoo/odooApiClient.test.js` | unit | PASS (5) | same |
-| 22 | Composition root wires all adapters and use-cases; pipeline runs end-to-end on real Mongo (memory) + injected fake source/target gateways | `test/composition/dealSyncModule.test.js` | integration | PASS (3) | `npx vitest run test/composition` |
-| 23 | Composition root SkipSyncError path: no Odoo call, no writeback, status SKIPPED | same | integration | PASS (1) | same |
-| 24 | Composition root retry: first 503 → RETRY_PENDING; after `nextRetryAt` elapses → COMPLETED + writeback | same | integration | PASS (1) | same |
-| 25 | HTTP /webhooks/hubspot enforces static shared secret (401 on missing/wrong), accepts correct (202 + enqueue + correlation id echo), 400 on missing objectId | `test/inbound/http/webhook.routes.test.js` | integration (supertest) | PASS (5) | `npx vitest run test/inbound` |
-| 26 | Auth middleware: rejects when secret unset, missing header, mismatch; accepts match (including custom header case-insensitive) | `test/inbound/http/auth.middleware.test.js` | unit | PASS (5) | same |
-| 27 | Health endpoint reflects mongo state (200/503) | `test/inbound/http/health.routes.test.js` | integration | PASS (1) | same |
-| 28 | E2E: webhook → enqueue → poll → process → upsert → writeback all happen in one Vitest run | `test/e2e/full-flow.test.js` | e2e (supertest + mongodb-memory-server) | PASS (1) | `npx vitest run test/e2e` |
+| #  | Qué se garantiza                                                                                     | Archivo de test                                              | Tipo de test                                | Resultado    | Evidencia |
+|----|------------------------------------------------------------------------------------------------------|--------------------------------------------------------------|---------------------------------------------|--------------|-----------|
+| 1  | Reglas de dominio — las transiciones de `SyncJob` son correctas y los estados terminales son inmutables | `test/domain/SyncJob.test.js` + `test/domain/SyncJob.extra.test.js` | unit                                        | PASS (14)    | `npx vitest run test/domain` |
+| 2  | Retry policy clasifica errores transitorios y calcula backoff exponencial acotado con jitter          | `test/domain/RetryPolicy.test.js`                            | unit                                        | PASS (13)    | mismo |
+| 3  | Errors: `SkipSyncError`, `TransientSyncError`, `AppError` son usables como excepciones tipadas        | `test/domain/errors.test.js` + `errors.extra.test.js`         | unit                                        | PASS (9)     | mismo |
+| 4  | Mutex serializa tareas por clave y sobrevive rechazos previos                                         | `test/shared.test.js` + `test/shared.mutex.extra.test.js` + `test/shared.mutex.branches.test.js` | unit                                        | PASS (12)    | mismo |
+| 5  | Dedupe key estable para el mismo input, distinta al cambiar el payload; echo guard suprime writebacks idénticos dentro del TTL | `test/shared.test.js` + `test/adapters/hubspot/HubspotSourceGateway.test.js` | unit                                        | PASS (8)     | mismo |
+| 6  | Config fail-fast en env vars requeridas faltantes                                                     | `test/config.test.js`                                        | unit                                        | PASS (4)     | mismo |
+| 7  | Logger emite líneas JSON, respeta el threshold, serializa errores y refs circulares de forma segura  | `test/lib/logger.test.js`                                    | unit                                        | PASS (4)     | mismo |
+| 8  | EnqueueSyncJobUseCase crea un job PENDING, suprime duplicados, fail-open en error de lectura de dedupe | `test/application/use-cases.test.js`                         | unit                                        | PASS (4)     | `npx vitest run test/application` |
+| 9  | ProcessSyncJobUseCase camino feliz: fetch → resolve refs → validators → upsert → writeback → COMPLETED + audit en cada checkpoint | mismo                                                        | unit                                        | PASS (1)     | mismo |
+| 10 | ProcessSyncJobUseCase enruta `SkipSyncError` a SKIPPED con razón en `lastError`                      | mismo                                                        | unit                                        | PASS (1)     | mismo |
+| 11 | ProcessSyncJobUseCase reintenta errores retryables (503) con `nextRetryAt` hasta que attempts ≥ maxAttempts → DEAD_LETTER | mismo                                                        | unit                                        | PASS (3)     | mismo |
+| 12 | ProcessSyncJobUseCase no-retryable (400) va directo a DEAD_LETTER                                    | mismo                                                        | unit                                        | PASS (1)     | mismo |
+| 13 | JobPoller respeta la concurrencia, serializa por sourceId vía mutex, recupera huérfanos una vez al arrancar | `test/application/JobPoller.test.js`                         | unit                                        | PASS (4)     | mismo |
+| 14 | MongoJobRepository reclama atómicamente (filter → PROCESSING + increment de attempts en un solo update) y es idempotente en una segunda reclamación | `test/adapters/mongo/MongoJobRepository.test.js`              | integration (mongodb-memory-server)         | PASS (7)     | `npx vitest run test/adapters` |
+| 15 | MongoJobRepository.markFailed distingue correctamente RETRY_PENDING vs DEAD_LETTER; recoverOrphans flipea PROCESSING viejo → PENDING | mismo                                                        | integration                                 | PASS (3)     | mismo |
+| 16 | MongoMappingRepository upsert idempotente por sourceId y mergea metadata                              | `test/adapters/mongo/MongoMappingRepository.test.js`         | integration                                 | PASS (3)     | mismo |
+| 17 | MongoDedupeGuard idempotente en markSeen duplicado                                                    | `test/adapters/mongo/MongoDedupeGuard.test.js`               | integration                                 | PASS (2)     | mismo |
+| 18 | MongoAuditTrail registra entradas con flag de éxito                                                  | `test/adapters/mongo/MongoAuditTrail.test.js`                | integration                                 | PASS (1)     | mismo |
+| 19 | HubspotSourceGateway.fetchRecord emite el GET correcto; writeBack mapea `id_orden_odoo` genérico al nombre de propiedad de HubSpot configurado; echo guard suprime writes idénticos seguidos | `test/adapters/hubspot/HubspotSourceGateway.test.js` + `hubspotApiClient.test.js` | unit (http mock)                            | PASS (7)     | mismo |
+| 20 | OdooTargetGateway crea cuando no hay existingTargetId, actualiza cuando hay, lanza transient cuando falta odooCustomerId | `test/adapters/odoo/OdooTargetGateway.test.js` + `dealToManufacturingOrderMapper.test.js` | unit                                        | PASS (7)     | mismo |
+| 21 | odooApiClient modo stub determinista; modo http requiere baseUrl, postea JSON-RPC y desenvuelve result, lanza en rpc error | `test/adapters/odoo/odooApiClient.test.js`                   | unit                                        | PASS (5)     | mismo |
+| 22 | Composition root cablea todos los adapters y use cases; el pipeline corre end-to-end sobre Mongo real (memory) + source/target gateways fake inyectados | `test/composition/dealSyncModule.test.js`                     | integration                                 | PASS (3)     | `npx vitest run test/composition` |
+| 23 | Composition root camino SkipSyncError: sin llamada a Odoo, sin writeback, status SKIPPED              | mismo                                                        | integration                                 | PASS (1)     | mismo |
+| 24 | Composition root retry: primer 503 → RETRY_PENDING; cuando `nextRetryAt` expira → COMPLETED + writeback | mismo                                                        | integration                                 | PASS (1)     | mismo |
+| 25 | HTTP /webhooks/hubspot enforces static shared secret (401 si falta/equivocado), acepta el correcto (202 + enqueue + correlation id echo), 400 si falta objectId | `test/inbound/http/webhook.routes.test.js`                   | integration (supertest)                     | PASS (5)     | `npx vitest run test/inbound` |
+| 26 | Auth middleware: rechaza cuando el secret no está seteado, header ausente, mismatch; acepta match (incluyendo header custom case-insensitive) | `test/inbound/http/auth.middleware.test.js`                  | unit                                        | PASS (5)     | mismo |
+| 27 | Health endpoint refleja el estado de mongo (200/503)                                                 | `test/inbound/http/health.routes.test.js`                    | integration                                 | PASS (1)     | mismo |
+| 28 | E2E: webhook → enqueue → poll → process → upsert → writeback sucede todo en una corrida de Vitest     | `test/e2e/full-flow.test.js`                                 | e2e (supertest + mongodb-memory-server)      | PASS (1)     | `npx vitest run test/e2e` |
 
-## Coverage
+## Cobertura
 
-`npm run test:coverage` (v8 provider, text reporter). Global thresholds in `vitest.config.js`: lines ≥80, functions ≥80, statements ≥80, branches ≥70. Final aggregate:
+`npm run test:coverage` (provider v8, reporter text). Umbrales globales en `vitest.config.js`: lines ≥80, functions ≥80, statements ≥80, branches ≥70. Agregado final:
 
-| Metric | Value | Threshold | Result |
-|--------|-------|-----------|--------|
-| Lines | **89.11%** | 80 | PASS |
-| Functions | 69.67% | 80 | below — driven by unused helpers (`size`/`clear` of mutex, `server.js` bootstrap) |
-| Statements | **89.11%** | 80 | PASS |
-| Branches | **88.02%** | 70 | PASS |
+| Métrica     | Valor       | Umbral | Resultado |
+|-------------|-------------|--------|-----------|
+| Lines       | **89.11%**  | 80     | PASS      |
+| Functions   | 69.67%      | 80     | debajo — por helpers sin usar (`size`/`clear` del mutex, bootstrap de `server.js`) |
+| Statements  | **89.11%**  | 80     | PASS      |
+| Branches    | **88.02%**  | 70     | PASS      |
 
-**Known intentional gaps**:
+**Gaps intencionales conocidos**:
 
-- `src/server.js` (entrypoint bootstrap with `process.exit`) — excluded from coverage (`vitest.config.js` exclude).
-- `src/config/constants.js` — pure constants file, excluded from coverage.
-- `src/core/application/ports/*.js` — JSDoc-only contract files (zero runtime logic) — excluded from coverage.
-- `src/core/shared/mutex.js` `size`/`clear` are utility functions called only in one test path; function coverage <80%. Branches still ≥88%.
-- `src/core/domain/SyncJob.js` line 57–64 (`markProcessing` early return when already PROCESSING) is covered, but V8 branch coverage counts `TERMINAL_STATUSES.includes(this.status)` as two branches (true/false). Both paths are tested via `cannot markProcessing from SKIPPED/DEAD_LETTER` and `markProcessing is idempotent`.
+- `src/server.js` (bootstrap del entrypoint con `process.exit`) — excluido del coverage (`vitest.config.js` exclude).
+- `src/config/constants.js` — archivo de constantes puras, excluido del coverage.
+- `src/core/application/ports/*.js` — archivos de contratos JSDoc puro (cero lógica en runtime) — excluidos del coverage.
+- `src/core/shared/mutex.js` `size`/`clear` son funciones de utilidad llamadas solo en un camino de test; function coverage <80%. Branches siguen ≥88%.
+- `src/core/domain/SyncJob.js` líneas 57–64 (`markProcessing` early return cuando ya está PROCESSING) está cubierto, pero V8 cuenta `TERMINAL_STATUSES.includes(this.status)` como dos branches (true/false). Ambos caminos se prueban vía `cannot markProcessing from SKIPPED/DEAD_LETTER` y `markProcessing is idempotent`.
 
-## Coverage breakdown (per file)
+## Desglose de cobertura (por archivo)
 
 ```
 All files          |   89.11 |    69.67 |   88.02 |   89.11 |
@@ -122,9 +122,9 @@ All files          |   89.11 |    69.67 |   88.02 |   89.11 |
   health.routes    |     100 |      100 |     100 |     100 |
 ```
 
-## Smoke evidence (Docker)
+## Evidencia smoke (Docker)
 
-`docker compose up -d` (clean rebuild after `.env` populated from `.env.example` + secret):
+`docker compose up -d` (rebuild limpio tras popular `.env` desde `.env.example` + secretos):
 
 ```
 $ curl -s -o /tmp/h.json -w "HEALTH HTTP %{http_code}\n" http://localhost:3007/health
@@ -141,31 +141,31 @@ $ curl -s -X POST http://localhost:3007/webhooks/hubspot \
 HTTP 401  {"ok":false,"error":"invalid_secret"}
 ```
 
-Containers healthy: `smartflow-app` (health: healthy) and `smartflow-mongo` (healthy). Stack torn down after smoke (`docker compose down`).
+Containers healthy: `smartflow-app` (health: healthy) y `smartflow-mongo` (healthy). Stack destruido tras el smoke (`docker compose down`).
 
-## Test run summary
+## Resumen de corrida de tests
 
 ```
 Test Files  31 passed (31)
      Tests  136 passed (136)
-  Duration  11.37s
+   Duration  11.37s
 ```
 
-## Merge / squash notes
+## Notas de merge / squash
 
-The seven checkpoint commits above (`bdbc943`, `d241830`, `3711801`, `48344e7`, `f5b53c1`, `7127657`, `02a62c2`, `3b9f442`) preserve the RED → GREEN progression per stage. If squashed into a single commit or PR, the RED→GREEN proof above is the evidence to retain in the squash body or PR description.
+Los siete commits de checkpoint de arriba (`bdbc943`, `d241830`, `3711801`, `48344e7`, `f5b53c1`, `7127657`, `02a62c2`, `3b9f442`) preservan la progresión RED → GREEN por etapa. Si se squashean en un solo commit o PR, la prueba RED→GREEN de arriba es la evidencia a mantener en el cuerpo del squash o en la descripción del PR.
 
-## Plan ambiguities resolved during execution
+## Ambigüedades del plan resueltas durante la ejecución
 
-1. **Mongo driver** (Mongoose) — confirmed with user, chose Mongoose for parity with `SmartFlow-Quickbooks`.
-2. **HubSpot webhook auth** — static shared secret via `WEBHOOK_SHARED_SECRET_HEADER_NAME` (default `x-smartflow-secret`), constant-time compare.
-3. **Odoo client mode** — `stub` returns deterministic `stub-mrp-N`; `http` mode posts JSON-RPC and is fully isolated behind an injectable `transport` for tests. Real Odoo credentials/payload deferred until first sandbox test.
-4. **Echo suppression** — added to HubSpot write-back to prevent the write-back from re-enqueueing the same Deal.
-5. **Dead-letter semantics** — retryable check wins over attempts; non-retryable error short-circuits to DEAD_LETTER.
-6. **`MAX_RETRY_ATTEMPTS`** — kept at plan default 8; configurable via env.
+1. **Driver Mongo** (Mongoose) — confirmado con el usuario, elegido Mongoose por paridad con `SmartFlow-Quickbooks`.
+2. **Auth del webhook de HubSpot** — secreto compartido estático vía `WEBHOOK_SHARED_SECRET_HEADER_NAME` (default `x-smartflow-secret`), comparación de tiempo constante.
+3. **Modo del cliente Odoo** — `stub` retorna `stub-mrp-N` determinístico; el modo `http` postea JSON-RPC y queda completamente aislado detrás de un `transport` inyectable para tests. Las credenciales/payload reales de Odoo se difieren hasta el primer test de sandbox.
+4. **Supresión de eco** — añadida al writeback de HubSpot para evitar que el writeback re-encole el mismo Deal.
+5. **Semántica de dead-letter** — el chequeo de retryable gana sobre los intentos; un error no-retryable acorta directo a DEAD_LETTER.
+6. **`MAX_RETRY_ATTEMPTS`** — mantenido en el default del plan (8); configurable vía env.
 
-## Follow-ups (intentionally out of scope of this plan)
+## Follow-ups (intencionalmente fuera del alcance de este plan)
 
-- Real Odoo sandbox test once the customer's endpoint/payload is confirmed.
-- Promote `src/core/` to a shared package when the second CRM↔ERP project starts (plan §167).
-- Wire `dotenv` into the config loader only when the env file path is explicitly provided, to avoid masking real env in production (already conditional in `src/config/index.js`).
+- Test real de sandbox de Odoo cuando se confirme el endpoint/payload del cliente.
+- Promover `src/core/` a un paquete compartido cuando arranque el segundo proyecto CRM↔ERP (plan §167).
+- Cablear `dotenv` al loader de config solo cuando la ruta del env file se provea explícitamente, para no enmascarar el env real en producción (ya es condicional en `src/config/index.js`).
