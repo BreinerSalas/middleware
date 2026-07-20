@@ -88,6 +88,44 @@ function mustHaveOdooCustomerId({ references, record } = {}) {
 }
 
 describe('composition/dealSyncModule end-to-end', () => {
+  it('forwards odoo.db and odoo.login to createOdooApiClient factory', () => {
+    const clientModule = require('../../src/adapters/outbound/odoo/odooApiClient.js')
+    const realFactory = clientModule.createOdooApiClient
+    let capturedArgs = null
+    clientModule.createOdooApiClient = function (...args) {
+      capturedArgs = args[0]
+      return realFactory.apply(this, args)
+    }
+    try {
+      createDealSyncModule({
+        config: {
+          mongodbUri: 'mongodb://x',
+          hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com', propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' },
+          webhook: { sharedSecret: 's', headerName: 'x' },
+          odoo: { mode: 'http', baseUrl: 'https://odoo.example.com', db: 'mydb', login: 'me@x.com', apiKey: 'k' },
+          server: { port: 0, nodeEnv: 'test' },
+          logging: { level: 'error' },
+          worker: { concurrency: 1, pollIntervalMs: 50 },
+          retry: { maxAttempts: 8, maxDelayMs: 60_000 }
+        },
+        sourceGateway: makeSourceGateway(),
+        logger: null,
+        recoverOrphansOnStart: false,
+        validators: []
+      })
+    } finally {
+      clientModule.createOdooApiClient = realFactory
+    }
+    expect(capturedArgs).toBeDefined()
+    expect(capturedArgs).toMatchObject({
+      mode: 'http',
+      baseUrl: 'https://odoo.example.com',
+      db: 'mydb',
+      login: 'me@x.com',
+      apiKey: 'k'
+    })
+  })
+
   it('runs full pipeline: enqueue -> process -> writeback', async () => {
     const r = await moduleUnderTest.enqueueWebhook({ rawBody: { objectId: 'D-1' }, objectId: 'D-1', eventType: 'deal.creation' })
     expect(r.job).toBeTruthy()

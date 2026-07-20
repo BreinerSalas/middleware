@@ -59,6 +59,8 @@ function createDealSyncModule({
     apiClient: require('../adapters/outbound/odoo/odooApiClient').createOdooApiClient({
       mode: config.odoo.mode,
       baseUrl: config.odoo.baseUrl,
+      db: config.odoo.db,
+      login: config.odoo.login,
       apiKey: config.odoo.apiKey
     }),
     hashPayload,
