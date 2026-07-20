@@ -49,4 +49,45 @@ describe('config', () => {
     expect(cfg.hubspot.propertyOdooCustomerId).toBe('cust')
     expect(cfg.hubspot.propertyOdooOrderId).toBe('order')
   })
+
+  it('parses ODOO_DB and ODOO_LOGIN when provided', () => {
+    const env = {
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      WEBHOOK_SHARED_SECRET: 's',
+      ODOO_CLIENT_MODE: 'http',
+      ODOO_BASE_URL: 'https://bsalas.odoo.com/',
+      ODOO_DB: 'bsalas',
+      ODOO_LOGIN: 'admin@example.com',
+      ODOO_API_KEY: 'abc123hex'
+    }
+    const cfg = load({ env })
+    expect(cfg.odoo.mode).toBe('http')
+    expect(cfg.odoo.db).toBe('bsalas')
+    expect(cfg.odoo.login).toBe('admin@example.com')
+    expect(cfg.odoo.apiKey).toBe('abc123hex')
+  })
+
+  it('defaults cfg.odoo.db and cfg.odoo.login to empty string when missing', () => {
+    const env = {
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      WEBHOOK_SHARED_SECRET: 's',
+      ODOO_CLIENT_MODE: 'stub'
+    }
+    const cfg = load({ env })
+    expect(cfg.odoo.db).toBe('')
+    expect(cfg.odoo.login).toBe('')
+  })
+
+  it('normalizes trailing slashes in ODOO_BASE_URL', () => {
+    const env = {
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      WEBHOOK_SHARED_SECRET: 's',
+      ODOO_BASE_URL: 'https://bsalas.odoo.com/'
+    }
+    const cfg = load({ env })
+    expect(cfg.odoo.baseUrl).toBe('https://bsalas.odoo.com')
+  })
 })
