@@ -2,7 +2,15 @@
 
 const axios = require('axios')
 
-function createOdooApiClient({ mode = 'stub', baseUrl = '', apiKey = '', timeoutMs = 10000, transport = null } = {}) {
+function createOdooApiClient({
+  mode = 'stub',
+  baseUrl = '',
+  db = '',
+  login = '',
+  apiKey = '',
+  timeoutMs = 10000,
+  transport = null
+} = {}) {
   const normalizedMode = String(mode || 'stub').toLowerCase()
   if (normalizedMode === 'stub') {
     let counter = 0
@@ -21,24 +29,28 @@ function createOdooApiClient({ mode = 'stub', baseUrl = '', apiKey = '', timeout
     throw new Error(`Unsupported ODOO_CLIENT_MODE: ${mode}`)
   }
   if (!baseUrl) throw new Error('Odoo http mode requires ODOO_BASE_URL')
+  if (!db) throw new Error('Odoo http mode requires ODOO_DB')
+  if (!login) throw new Error('Odoo http mode requires ODOO_LOGIN')
+  if (!apiKey) throw new Error('Odoo http mode requires ODOO_API_KEY')
 
   const defaultTransport = {
     async post(url, body) {
       const res = await axios.post(url, body, {
         baseURL: baseUrl,
         timeout: timeoutMs,
-        headers: { 'Content-Type': 'application/json', Authorization: apiKey ? `Bearer ${apiKey}` : undefined }
+        headers: { 'Content-Type': 'application/json' }
       })
       return { data: res.data, status: res.status }
     }
   }
   const t = transport || defaultTransport
 
-  async function rpcCall(method, params) {
-    const body = { jsonrpc: '2.0', method, params, id: Date.now() }
+  async function rpcCall(service, method, args) {
+    const body = { jsonrpc: '2.0', method: 'call', params: { service, method, args }, id: Date.now() }
     const res = await t.post('/jsonrpc', body)
     if (res.data && res.data.error) {
-      const e = new Error(res.data.error.data && res.data.error.data.message ? res.data.error.data.message : 'Odoo RPC error')
+      const msg = (res.data.error.data && res.data.error.data.message) || res.data.error.message || 'Odoo RPC error'
+      const e = new Error(msg)
       e.httpStatus = res.status
       e.code = res.data.error.code
       e.cause = res.data.error
@@ -46,16 +58,38 @@ function createOdooApiClient({ mode = 'stub', baseUrl = '', apiKey = '', timeout
     }
     return res.data && res.data.result
   }
+
+  let uidPromise = null
+  function ensureUid() {
+    if (!uidPromise) {
+      uidPromise = (async () => {
+        const result = await rpcCall('common', 'authenticate', [db, login, apiKey, {}])
+        if (!result) {
+          const e = new Error(`Odoo authenticate failed for db=${db} login=${login}`)
+          e.code = 'ODOO_AUTH_FAILED'
+          throw e
+        }
+        return result
+      })()
+    }
+    return uidPromise
+  }
+
+  async function executeKw(modelName, opName, opArgs, kwargs = {}) {
+    const uid = await ensureUid()
+    return rpcCall('object', 'execute_kw', [db, uid, apiKey, modelName, opName, opArgs, kwargs])
+  }
+
   return {
     mode: 'http',
     _transport: t,
     async createManufacturingOrder(payload) {
-      const result = await rpcCall('call', { service: 'object', method: 'execute_kw', args: ['mrp.production', 'create', [payload]] })
+      const result = await executeKw('mrp.production', 'create', [payload])
       return { id: String(result), ref: null, state: 'draft', raw: payload }
     },
     async updateManufacturingOrder(targetId, payload) {
-      const result = await rpcCall('call', { service: 'object', method: 'execute_kw', args: ['mrp.production', 'write', [[Number(targetId)], payload]] })
-      return { id: targetId, ref: null, state: 'confirmed', raw: payload, rpcResult: result }
+      const result = await executeKw('mrp.production', 'write', [[Number(targetId)], payload])
+      return { id: String(targetId), ref: null, state: 'confirmed', raw: payload, rpcResult: result }
     }
   }
 }
