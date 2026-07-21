@@ -6,11 +6,14 @@ const { SkipSyncError } = require('../../src/core/domain/errors.js')
 
 describe('composition/validators', () => {
   describe('mustHaveLineItems', () => {
-    it('throws SkipSyncError when line items empty', () => {
-      expect(() => mustHaveLineItems({ record: { id: 'D-1', properties: { line_items: [] } } })).toThrow(SkipSyncError)
+    it('throws SkipSyncError when references.lineItems is missing', () => {
+      expect(() => mustHaveLineItems({ record: { id: 'D-1', properties: {} }, references: {} })).toThrow(SkipSyncError)
     })
-    it('passes when line items present', () => {
-      expect(() => mustHaveLineItems({ record: { id: 'D-1', properties: { line_items: [{ id: 'L-1' }] } } })).not.toThrow()
+    it('throws SkipSyncError when references.lineItems is empty', () => {
+      expect(() => mustHaveLineItems({ record: { id: 'D-1', properties: {} }, references: { lineItems: [] } })).toThrow(SkipSyncError)
+    })
+    it('passes when references.lineItems has at least one item', () => {
+      expect(() => mustHaveLineItems({ record: { id: 'D-1', properties: {} }, references: { lineItems: [{ id: 'L-1' }] } })).not.toThrow()
     })
   })
 

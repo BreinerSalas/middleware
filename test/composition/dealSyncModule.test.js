@@ -48,9 +48,9 @@ beforeEach(async () => {
 function makeSourceGateway() {
   return {
     async fetchRecord(sourceId) {
-      return { id: sourceId, properties: { id_cliente_odoo: '42', dealstage: 'closedwon', line_items: [{ id: 'L-1' }] } }
+      return { id: sourceId, properties: { id_cliente_odoo: '42', dealstage: 'closedwon' } }
     },
-    async resolveReferences() { return { odooCustomerId: '42', lineItems: [] } },
+    async resolveReferences() { return { odooCustomerId: '42', lineItems: [{ id: 'L-1' }] } },
     async writeBack(sourceId, properties) { calls.writeBack.push({ sourceId, properties }) }
   }
 }
@@ -73,8 +73,8 @@ function mustBeClosedWon({ record } = {}) {
   if (stage !== 'closedwon') throw new SkipSyncError(`dealstage=${stage}`)
 }
 
-function mustHaveLineItems({ record } = {}) {
-  const items = record && record.properties && record.properties.line_items
+function mustHaveLineItems({ references = {} } = {}) {
+  const items = references && references.lineItems
   const { SkipSyncError } = require('../../src/core/domain/errors.js')
   if (!items || items.length === 0) throw new SkipSyncError('no line items')
 }

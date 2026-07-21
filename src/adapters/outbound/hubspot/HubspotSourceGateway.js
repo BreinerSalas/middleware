@@ -38,8 +38,14 @@ class HubspotSourceGateway {
       const data = await this.apiClient.getDealAssociations(record.id, ['contact', 'company'])
       references.associations = data && data.results ? data.results : []
     } catch (err) {
-      this.logger && this.logger.warn('hubspot.resolveReferences failed', { sourceId: record.id, error: err.message })
+      this.logger && this.logger.warn('hubspot.resolveReferences.associations failed', { sourceId: record.id, error: err.message })
       references.associations = []
+    }
+    try {
+      references.lineItems = await this.apiClient.getDealLineItems(record.id)
+    } catch (err) {
+      this.logger && this.logger.warn('hubspot.resolveReferences.lineItems failed', { sourceId: record.id, error: err.message })
+      references.lineItems = []
     }
     return references
   }

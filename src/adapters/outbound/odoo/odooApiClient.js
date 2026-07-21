@@ -13,12 +13,26 @@ function createOdooApiClient({
 } = {}) {
   const normalizedMode = String(mode || 'stub').toLowerCase()
   if (normalizedMode === 'stub') {
-    let counter = 0
+    let soCounter = 0
+    let moCounter = 0
     return {
       mode: 'stub',
+      async createSalesOrder(payload) {
+        soCounter += 1
+        return { id: `stub-so-${soCounter}`, ref: `STUB/SO/${soCounter}`, state: 'draft', raw: payload }
+      },
+      async updateSalesOrder(targetId, payload) {
+        return { id: String(targetId), ref: null, state: 'draft', raw: payload }
+      },
+      async searchSalesOrderByOrigin(_origin) {
+        return []
+      },
+      async searchProductIdsByDefaultCodes(_codes) {
+        return {}
+      },
       async createManufacturingOrder(payload) {
-        counter += 1
-        return { id: `stub-mrp-${counter}`, ref: `STUB/${counter}`, state: 'draft', raw: payload }
+        moCounter += 1
+        return { id: `stub-mrp-${moCounter}`, ref: `STUB/${moCounter}`, state: 'draft', raw: payload }
       },
       async updateManufacturingOrder(targetId, payload) {
         return { id: targetId, ref: targetId, state: 'confirmed', raw: payload }
@@ -87,6 +101,35 @@ function createOdooApiClient({
   return {
     mode: 'http',
     _transport: t,
+    async createSalesOrder(payload) {
+      const result = await executeKw('sale.order', 'create', [payload])
+      return { id: String(result), ref: null, state: 'draft', raw: payload }
+    },
+    async updateSalesOrder(targetId, payload) {
+      const result = await executeKw('sale.order', 'write', [[Number(targetId)], payload])
+      return { id: String(targetId), ref: null, state: 'draft', raw: payload, rpcResult: result }
+    },
+    async searchSalesOrderByOrigin(origin) {
+      const result = await executeKw('sale.order', 'search', [[['origin', '=', String(origin)]]])
+      return Array.isArray(result) ? result : []
+    },
+    async searchProductIdsByDefaultCodes(codes) {
+      const cleaned = Array.isArray(codes) ? codes.filter((c) => c != null && String(c).length > 0).map(String) : []
+      if (cleaned.length === 0) return {}
+      const result = await executeKw('product.product', 'search_read',
+        [[['default_code', 'in', cleaned]]],
+        { fields: ['id', 'default_code'] }
+      )
+      const map = {}
+      if (Array.isArray(result)) {
+        for (const r of result) {
+          if (r && r.default_code != null && r.id != null) {
+            map[String(r.default_code)] = Number(r.id)
+          }
+        }
+      }
+      return map
+    },
     async createManufacturingOrder(payload) {
       const result = await executeKw('mrp.production', 'create', [payload])
       return { id: String(result), ref: null, state: 'draft', raw: payload }

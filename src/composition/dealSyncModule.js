@@ -17,7 +17,6 @@ const { mustHaveLineItems, mustHaveOdooCustomerId, mustBeClosedWon } = require('
 
 function buildWriteBackPayload(mapping) {
   return {
-    id_cliente_odoo: mapping && mapping.targetId ? mapping.targetId : null,
     id_orden_odoo: mapping && mapping.targetId ? mapping.targetId : null
   }
 }

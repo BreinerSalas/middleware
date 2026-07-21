@@ -75,16 +75,18 @@ class ProcessSyncJobUseCase {
       await this.audit({
         jobId, sourceId, correlationId,
         event: 'target.upserted', success: true,
-        detail: { targetId: upsertResult.targetId, targetRef: upsertResult.targetRef }
+        detail: { targetId: upsertResult.targetId, targetRef: upsertResult.targetRef, salesOrderId: upsertResult.salesOrderId || null }
       })
 
       const payloadHash = (this.retryPolicy.hashPayload && this.retryPolicy.hashPayload(record)) || null
+      const mappingMetadata = { lastJobId: jobId }
+      if (upsertResult.salesOrderId) mappingMetadata.salesOrderId = upsertResult.salesOrderId
       const mapping = await this.mappingRepository.upsert({
         sourceId,
         targetId: upsertResult.targetId,
         targetRef: upsertResult.targetRef,
         payloadHash,
-        metadata: { lastJobId: jobId }
+        metadata: mappingMetadata
       })
       await this.audit({ jobId, sourceId, correlationId, event: 'mapping.upserted', success: true, detail: { targetId: mapping.targetId } })
 

@@ -159,6 +159,106 @@ describe('odooApiClient', () => {
     await expect(api.createManufacturingOrder({})).rejects.toThrow(/Validation error/)
   })
 
+  it('http mode createSalesOrder uses execute_kw on sale.order.create', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({ data: { result: 17 }, status: 200 })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k',
+      transport: { post }
+    })
+    const r = await api.createSalesOrder({ partner_id: 7, order_line: [] })
+    expect(r.id).toBe('17')
+    expect(post.mock.calls[1][1].params.args).toEqual([
+      'db', 2, 'k', 'sale.order', 'create', [{ partner_id: 7, order_line: [] }], {}
+    ])
+  })
+
+  it('http mode updateSalesOrder uses execute_kw on sale.order.write', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 3 }, status: 200 })
+      .mockResolvedValueOnce({ data: { result: true }, status: 200 })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k',
+      transport: { post }
+    })
+    await api.updateSalesOrder(17, { note: 'updated' })
+    expect(post.mock.calls[1][1].params.args).toEqual([
+      'db', 3, 'k', 'sale.order', 'write', [[17], { note: 'updated' }], {}
+    ])
+  })
+
+  it('http mode searchSalesOrderByOrigin uses execute_kw on sale.order.search', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 4 }, status: 200 })
+      .mockResolvedValueOnce({ data: { result: [17, 18] }, status: 200 })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k',
+      transport: { post }
+    })
+    const r = await api.searchSalesOrderByOrigin('hs:62939072525')
+    expect(r).toEqual([17, 18])
+    expect(post.mock.calls[1][1].params.args).toEqual([
+      'db', 4, 'k', 'sale.order', 'search',
+      [[['origin', '=', 'hs:62939072525']]], {}
+    ])
+  })
+
+  it('stub mode createSalesOrder returns deterministic ids', async () => {
+    const api = createOdooApiClient({ mode: 'stub' })
+    const a = await api.createSalesOrder({ partner_id: 1 })
+    const b = await api.createSalesOrder({ partner_id: 2 })
+    expect(a.id).toBe('stub-so-1')
+    expect(b.id).toBe('stub-so-2')
+  })
+
+  it('http mode searchProductIdsByDefaultCodes returns map of code->id', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({
+        data: {
+          result: [
+            { id: 17, default_code: '4001/2905U' },
+            { id: 18, default_code: 'SKU-2' }
+          ]
+        },
+        status: 200
+      })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k',
+      transport: { post }
+    })
+    const r = await api.searchProductIdsByDefaultCodes(['4001/2905U', 'SKU-2', 'UNKNOWN'])
+    expect(r).toEqual({ '4001/2905U': 17, 'SKU-2': 18 })
+    expect(post.mock.calls[1][1].params.args).toEqual([
+      'db', 2, 'k', 'product.product', 'search_read',
+      [[['default_code', 'in', ['4001/2905U', 'SKU-2', 'UNKNOWN']]]],
+      { fields: ['id', 'default_code'] }
+    ])
+  })
+
+  it('http mode searchProductIdsByDefaultCodes returns empty map for empty input', async () => {
+    const post = vi.fn()
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k',
+      transport: { post }
+    })
+    const r = await api.searchProductIdsByDefaultCodes([])
+    expect(r).toEqual({})
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it('stub mode searchProductIdsByDefaultCodes returns empty map', async () => {
+    const api = createOdooApiClient({ mode: 'stub' })
+    const r = await api.searchProductIdsByDefaultCodes(['ANY'])
+    expect(r).toEqual({})
+  })
+
   it('http mode default transport does not send Authorization header', async () => {
     const axios = require('axios')
     const captured = []

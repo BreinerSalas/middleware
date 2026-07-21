@@ -2,9 +2,8 @@
 
 const { SkipSyncError } = require('../core/domain/errors')
 
-function mustHaveLineItems({ record } = {}) {
-  const props = (record && record.properties) || {}
-  const items = Array.isArray(props.line_items) ? props.line_items : []
+function mustHaveLineItems({ references = {}, record } = {}) {
+  const items = Array.isArray(references.lineItems) ? references.lineItems : []
   if (items.length === 0) {
     throw new SkipSyncError('Deal has no line items', { detail: { sourceId: record && record.id } })
   }

@@ -39,8 +39,8 @@ describe('e2e: webhook -> job -> upsert -> writeback', () => {
   it('completes a full sync within the polling window', async () => {
     calls = { writeBack: [], upsert: [] }
     const sourceGateway = {
-      async fetchRecord(sourceId) { return { id: sourceId, properties: { id_cliente_odoo: '42', dealstage: 'closedwon', line_items: [{ id: 'L-1' }] } } },
-      async resolveReferences() { return { odooCustomerId: '42', lineItems: [] } },
+      async fetchRecord(sourceId) { return { id: sourceId, properties: { id_cliente_odoo: '42', dealstage: 'closedwon' } } },
+      async resolveReferences() { return { odooCustomerId: '42', lineItems: [{ id: 'L-1', hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'Item 1' }] } },
       async writeBack(sourceId, properties) { calls.writeBack.push({ sourceId, properties }) }
     }
     const targetGateway = {

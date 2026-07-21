@@ -3,8 +3,13 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const { HubspotSourceGateway } = require('../../../src/adapters/outbound/hubspot/HubspotSourceGateway.js')
 
-function makeApiClient({ get = async () => ({ id: 'D-1', properties: {} }), patch = async () => ({}) } = {}) {
-  return { getDeal: vi.fn(get), getDealAssociations: vi.fn(async () => ({ results: [{ toObjectId: 'C-1' }] })), updateDeal: vi.fn(patch) }
+function makeApiClient({ get = async () => ({ id: 'D-1', properties: {} }), patch = async () => ({}), getDealLineItems = async () => [] } = {}) {
+  return {
+    getDeal: vi.fn(get),
+    getDealAssociations: vi.fn(async () => ({ results: [{ toObjectId: 'C-1' }] })),
+    getDealLineItems: vi.fn(getDealLineItems),
+    updateDeal: vi.fn(patch)
+  }
 }
 
 describe('HubspotSourceGateway', () => {
@@ -22,6 +27,22 @@ describe('HubspotSourceGateway', () => {
     const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' })
     const refs = await gw.resolveReferences({ id: 'D-1', properties: {} })
     expect(refs.associations).toEqual([{ toObjectId: 'C-1' }])
+  })
+
+  it('resolveReferences populates lineItems from getDealLineItems', async () => {
+    const api = makeApiClient({ getDealLineItems: async () => [{ id: 'L-1', hs_sku: 'SKU-1', quantity: 2, price: 9.99, name: 'Item 1' }] })
+    const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' })
+    const refs = await gw.resolveReferences({ id: 'D-1', properties: {} })
+    expect(api.getDealLineItems).toHaveBeenCalledWith('D-1')
+    expect(refs.lineItems).toEqual([{ id: 'L-1', hs_sku: 'SKU-1', quantity: 2, price: 9.99, name: 'Item 1' }])
+  })
+
+  it('resolveReferences keeps associations populated when getDealLineItems fails', async () => {
+    const api = makeApiClient({ getDealLineItems: async () => { throw new Error('hubspot-500') } })
+    const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' })
+    const refs = await gw.resolveReferences({ id: 'D-1', properties: {} })
+    expect(refs.associations).toEqual([{ toObjectId: 'C-1' }])
+    expect(refs.lineItems).toEqual([])
   })
 
   it('writeBack maps properties to HS property names', async () => {

@@ -93,8 +93,8 @@ function makeInMemoryAuditTrail() {
 
 function fakeSourceGateway(overrides = {}) {
   return {
-    async fetchRecord(sourceId) { return { id: sourceId, properties: { id_cliente_odoo: '42', dealstage: 'closedwon', line_items: [{ id: 'L-1' }] }, ...(overrides.fetchRecord || {}) } },
-    async resolveReferences() { return { odooCustomerId: '42', lineItems: [] } },
+    async fetchRecord(sourceId) { return { id: sourceId, properties: { id_cliente_odoo: '42', dealstage: 'closedwon' }, ...(overrides.fetchRecord || {}) } },
+    async resolveReferences() { return { odooCustomerId: '42', lineItems: [{ id: 'L-1', hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'Item 1' }] } },
     async writeBack() {},
     ...overrides
   }
@@ -180,6 +180,20 @@ describe('ProcessSyncJobUseCase', () => {
         'source.writeback.done', 'job.completed'
       ])
     )
+  })
+
+  it('stores salesOrderId in mapping metadata when upsert returns it', async () => {
+    const gwWithSo = fakeTargetGateway({ upsert: async () => ({ targetId: 'MO-1', targetRef: null, syncToken: 'draft', salesOrderId: 'SO-1' }) })
+    const u = new ProcessSyncJobUseCase({
+      jobRepository: jobRepo, mappingRepository: mappingRepo,
+      sourceGateway: sourceGw, targetGateway: gwWithSo,
+      auditTrail: audit, validators: [], retryPolicy: { jitter: false }
+    })
+    const created = await jobRepo.create({ sourceId: 'D-9', payload: null, dedupeKey: null, status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8 })
+    await u.execute({ job: created })
+    const map = mappingRepo._all()[0]
+    expect(map.targetId).toBe('MO-1')
+    expect(map.metadata.salesOrderId).toBe('SO-1')
   })
 
   it('SkipSyncError -> SKIPPED with no retry', async () => {
