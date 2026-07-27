@@ -47,8 +47,24 @@ class HubspotProductGateway {
       const data = await this.apiClient.updateProduct(existing.id, properties)
       return { ...data, created: false }
     }
-    const data = await this.apiClient.createProduct(properties)
-    return { ...data, created: true }
+    try {
+      const data = await this.apiClient.createProduct(properties)
+      return { ...data, created: true }
+    } catch (err) {
+      if (this.isDuplicateError(err)) {
+        if (this.logger) this.logger.warn('hubspot.product.duplicate', { sku, sourceId: odooProduct.id, error: err.message })
+        return { skipped: true, reason: 'duplicate_in_hubspot', created: false }
+      }
+      throw err
+    }
+  }
+
+  isDuplicateError(err) {
+    if (!err) return false
+    const status = err.httpStatus ?? err.status ?? (err.response && err.response.status)
+    if (status !== 400 && status !== 409) return false
+    const msg = (err.message || '').toLowerCase()
+    return msg.includes('already has that value') || msg.includes('propertyvaluecoordinates')
   }
 }
 

@@ -131,6 +131,22 @@ describe('HubspotProductGateway', () => {
     expect(api.createProduct).not.toHaveBeenCalled()
   })
 
+  it('create 400 with "already has that value" is treated as skipped (duplicate)', async () => {
+    const api = makeApi()
+    api.searchProductByHsSku = vi.fn(async () => { throw new Error('429') })
+    api.createProduct = vi.fn(async () => {
+      const e = new Error('Cannot set PropertyValueCoordinates... 46609204878 already has that value.')
+      e.httpStatus = 400
+      throw e
+    })
+    const logger = { warn: vi.fn() }
+    const gw = new HubspotProductGateway({ apiClient: api, logger })
+    const r = await gw.upsertBySku({ id: 7, name: 'X', default_code: 'EC231035-0', list_price: 10 })
+    expect(r.skipped).toBe(true)
+    expect(r.reason).toMatch(/duplicate/)
+    expect(logger.warn).toHaveBeenCalled()
+  })
+
   it('swallows search errors and falls back to create (safe-but-noisy)', async () => {
     const api = makeApi({
       search: async () => { throw new Error('search-down') },
