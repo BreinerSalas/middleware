@@ -86,4 +86,63 @@ describe('hubspotApiClient', () => {
       await expect(api.getDealLineItems('D-1')).rejects.toThrow('batch-boom')
     })
   })
+
+  describe('Product APIs', () => {
+    it('searchProductByHsSku returns first matching product', async () => {
+      const post = vi.fn(async () => ({
+        data: { results: [{ id: 'P-1', properties: { hs_sku: '1170', name: 'X', price: '93.04' } }] }
+      }))
+      const http = makeHttpMock({ post })
+      const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
+      const r = await api.searchProductByHsSku('1170')
+      expect(r).toEqual({ id: 'P-1', properties: { hs_sku: '1170', name: 'X', price: '93.04' } })
+      expect(post).toHaveBeenCalledWith(
+        '/crm/v3/objects/products/search',
+        expect.objectContaining({
+          filterGroups: [{ filters: [{ propertyName: 'hs_sku', operator: 'EQ', value: '1170' }] }],
+          limit: 1
+        })
+      )
+    })
+
+    it('searchProductByHsSku returns null when no matches', async () => {
+      const post = vi.fn(async () => ({ data: { results: [] } }))
+      const http = makeHttpMock({ post })
+      const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
+      const r = await api.searchProductByHsSku('NOT-EXIST')
+      expect(r).toBeNull()
+    })
+
+    it('searchProductByHsSku returns null when sku is empty', async () => {
+      const http = makeHttpMock()
+      const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
+      const r = await api.searchProductByHsSku(null)
+      expect(r).toBeNull()
+      expect(http.post).not.toHaveBeenCalled()
+    })
+
+    it('searchProductByHsSku propagates errors', async () => {
+      const http = makeHttpMock({ post: vi.fn(async () => { throw new Error('search-down') }) })
+      const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
+      await expect(api.searchProductByHsSku('1170')).rejects.toThrow('search-down')
+    })
+
+    it('createProduct POSTs to /crm/v3/objects/products', async () => {
+      const post = vi.fn(async () => ({ data: { id: 'P-NEW', properties: { hs_sku: '1170', name: 'Y', price: '9.99' } } }))
+      const http = makeHttpMock({ post })
+      const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
+      const r = await api.createProduct({ hs_sku: '1170', name: 'Y', price: '9.99' })
+      expect(r.id).toBe('P-NEW')
+      expect(post).toHaveBeenCalledWith('/crm/v3/objects/products', { properties: { hs_sku: '1170', name: 'Y', price: '9.99' } })
+    })
+
+    it('updateProduct PATCHes /crm/v3/objects/products/:id', async () => {
+      const patch = vi.fn(async () => ({ data: { id: 'P-1', properties: { hs_sku: '1170', name: 'Y2', price: '8.99' } } }))
+      const http = makeHttpMock({ patch })
+      const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
+      const r = await api.updateProduct('P-1', { hs_sku: '1170', name: 'Y2', price: '8.99' })
+      expect(r.id).toBe('P-1')
+      expect(patch).toHaveBeenCalledWith('/crm/v3/objects/products/P-1', { properties: { hs_sku: '1170', name: 'Y2', price: '8.99' } })
+    })
+  })
 })

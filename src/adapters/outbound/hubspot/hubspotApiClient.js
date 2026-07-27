@@ -54,7 +54,32 @@ function createHubspotApiClient({ baseUrl, accessToken, timeoutMs = 10000, httpC
     return res.data
   }
 
-  return { getDeal, getDealAssociations, getDealLineItems, updateDeal, _http: http }
+  async function searchProductByHsSku(sku) {
+    if (!sku || String(sku).length === 0) return null
+    const res = await http.post('/crm/v3/objects/products/search', {
+      filterGroups: [{ filters: [{ propertyName: 'hs_sku', operator: 'EQ', value: String(sku) }] }],
+      properties: ['hs_sku', 'name', 'price'],
+      limit: 1
+    })
+    const items = (res.data && res.data.results) || []
+    return items[0] || null
+  }
+
+  async function createProduct(properties) {
+    const res = await http.post('/crm/v3/objects/products', { properties })
+    return res.data
+  }
+
+  async function updateProduct(productId, properties) {
+    const res = await http.patch(`/crm/v3/objects/products/${productId}`, { properties })
+    return res.data
+  }
+
+  return {
+    getDeal, getDealAssociations, getDealLineItems, updateDeal,
+    searchProductByHsSku, createProduct, updateProduct,
+    _http: http
+  }
 }
 
 module.exports = { createHubspotApiClient, createAxiosHttpClient, LINE_ITEM_PROPERTIES }

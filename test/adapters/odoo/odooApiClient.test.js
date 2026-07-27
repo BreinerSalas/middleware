@@ -215,14 +215,14 @@ describe('odooApiClient', () => {
     expect(b.id).toBe('stub-so-2')
   })
 
-  it('http mode searchProductIdsByDefaultCodes returns map of code->id', async () => {
+  it('http mode searchProductIdsByDefaultCodes returns map of code->{id,uomId}', async () => {
     const post = vi.fn()
       .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
       .mockResolvedValueOnce({
         data: {
           result: [
-            { id: 17, default_code: '4001/2905U' },
-            { id: 18, default_code: 'SKU-2' }
+            { id: 17, default_code: '4001/2905U', uom_id: [1, 'Units'] },
+            { id: 18, default_code: 'SKU-2', uom_id: [2, 'kg'] }
           ]
         },
         status: 200
@@ -233,11 +233,14 @@ describe('odooApiClient', () => {
       transport: { post }
     })
     const r = await api.searchProductIdsByDefaultCodes(['4001/2905U', 'SKU-2', 'UNKNOWN'])
-    expect(r).toEqual({ '4001/2905U': 17, 'SKU-2': 18 })
+    expect(r).toEqual({
+      '4001/2905U': { id: 17, uomId: 1 },
+      'SKU-2': { id: 18, uomId: 2 }
+    })
     expect(post.mock.calls[1][1].params.args).toEqual([
       'db', 2, 'k', 'product.product', 'search_read',
       [[['default_code', 'in', ['4001/2905U', 'SKU-2', 'UNKNOWN']]]],
-      { fields: ['id', 'default_code'] }
+      { fields: ['id', 'default_code', 'uom_id'] }
     ])
   })
 

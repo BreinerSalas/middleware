@@ -30,6 +30,12 @@ function createOdooApiClient({
       async searchProductIdsByDefaultCodes(_codes) {
         return {}
       },
+      async countProductsWithDefaultCode() {
+        return 0
+      },
+      async searchProductsWithDefaultCode({ offset = 0, limit = 100 } = {}) {
+        return []
+      },
       async createManufacturingOrder(payload) {
         moCounter += 1
         return { id: `stub-mrp-${moCounter}`, ref: `STUB/${moCounter}`, state: 'draft', raw: payload }
@@ -118,17 +124,29 @@ function createOdooApiClient({
       if (cleaned.length === 0) return {}
       const result = await executeKw('product.product', 'search_read',
         [[['default_code', 'in', cleaned]]],
-        { fields: ['id', 'default_code'] }
+        { fields: ['id', 'default_code', 'uom_id'] }
       )
       const map = {}
       if (Array.isArray(result)) {
         for (const r of result) {
           if (r && r.default_code != null && r.id != null) {
-            map[String(r.default_code)] = Number(r.id)
+            map[String(r.default_code)] = {
+              id: Number(r.id),
+              uomId: Array.isArray(r.uom_id) ? Number(r.uom_id[0]) : null
+            }
           }
         }
       }
       return map
+    },
+    async countProductsWithDefaultCode() {
+      return executeKw('product.product', 'search_count',
+        [[['default_code', '!=', false]]], {})
+    },
+    async searchProductsWithDefaultCode({ offset = 0, limit = 100 } = {}) {
+      return executeKw('product.product', 'search_read',
+        [[['default_code', '!=', false]]],
+        { fields: ['id', 'name', 'default_code', 'list_price'], offset, limit })
     },
     async createManufacturingOrder(payload) {
       const result = await executeKw('mrp.production', 'create', [payload])
