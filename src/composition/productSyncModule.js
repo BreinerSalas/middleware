@@ -15,10 +15,10 @@ function createProductSyncModule({ config = {}, odooSource, hubspotGateway, logg
     return hubspotGateway.upsertBySku(odooProduct)
   }
 
-  async function runOnce({ limit = null, dryRun = false } = {}) {
-    const total = await odooSource.count()
-    log('info', 'product-sync.start', { total, limit, dryRun })
-    const opts = {}
+  async function runOnce({ limit = null, dryRun = false, includeNoSku = false } = {}) {
+    const total = await odooSource.count({ includeNoSku })
+    log('info', 'product-sync.start', { total, limit, dryRun, includeNoSku })
+    const opts = { includeNoSku }
     if (limit != null) opts.limit = limit
     const products = await odooSource.listAll(opts)
 

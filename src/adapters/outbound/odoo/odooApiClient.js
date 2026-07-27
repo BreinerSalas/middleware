@@ -36,6 +36,12 @@ function createOdooApiClient({
       async searchProductsWithDefaultCode({ offset = 0, limit = 100 } = {}) {
         return []
       },
+      async countProductsAll() {
+        return 0
+      },
+      async searchProductsAll({ offset = 0, limit = 100 } = {}) {
+        return []
+      },
       async createManufacturingOrder(payload) {
         moCounter += 1
         return { id: `stub-mrp-${moCounter}`, ref: `STUB/${moCounter}`, state: 'draft', raw: payload }
@@ -146,6 +152,14 @@ function createOdooApiClient({
     async searchProductsWithDefaultCode({ offset = 0, limit = 100 } = {}) {
       return executeKw('product.product', 'search_read',
         [[['default_code', '!=', false]]],
+        { fields: ['id', 'name', 'default_code', 'list_price'], offset, limit })
+    },
+    async countProductsAll() {
+      return executeKw('product.product', 'search_count', [[]], {})
+    },
+    async searchProductsAll({ offset = 0, limit = 100 } = {}) {
+      return executeKw('product.product', 'search_read',
+        [[]],
         { fields: ['id', 'name', 'default_code', 'list_price'], offset, limit })
     },
     async createManufacturingOrder(payload) {

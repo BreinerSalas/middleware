@@ -5,11 +5,15 @@ const { OdooProductSource } = require('../../../src/adapters/outbound/odoo/OdooP
 
 function makeApi({
   count = async () => 0,
-  search = async () => []
+  search = async () => [],
+  countProductsAll = async () => 0,
+  searchProductsAll = async () => []
 } = {}) {
   return {
     countProductsWithDefaultCode: vi.fn(count),
-    searchProductsWithDefaultCode: vi.fn(search)
+    searchProductsWithDefaultCode: vi.fn(search),
+    countProductsAll: vi.fn(countProductsAll),
+    searchProductsAll: vi.fn(searchProductsAll)
   }
 }
 
@@ -68,5 +72,35 @@ describe('OdooProductSource', () => {
     const src = new OdooProductSource({ apiClient: api, pageSize: 10 })
     const all = await src.listAll({})
     expect(all).toHaveLength(2)
+  })
+
+  it('with includeNoSku=true uses searchProductsAll/countProductsAll and returns all products', async () => {
+    const api = makeApi({
+      countProductsAll: async () => 3,
+      searchProductsAll: async ({ offset }) => {
+        if (offset === 0) return [{ id: 1, default_code: false, name: 'A' }, { id: 2, default_code: 'B', name: 'B' }, { id: 3, default_code: false, name: 'C' }]
+        return []
+      }
+    })
+    const src = new OdooProductSource({ apiClient: api, pageSize: 10 })
+    expect(await src.count({ includeNoSku: true })).toBe(3)
+    const all = await src.listAll({ includeNoSku: true })
+    expect(all).toHaveLength(3)
+    expect(api.searchProductsAll).toHaveBeenCalled()
+    expect(api.searchProductsWithDefaultCode).not.toHaveBeenCalled()
+  })
+
+  it('includeNoSku=true paginates with searchProductsAll (no domain filter)', async () => {
+    const api = makeApi({
+      searchProductsAll: vi.fn(async ({ offset }) => {
+        if (offset === 0) return [{ id: 1 }, { id: 2 }, { id: 3 }]
+        return []
+      })
+    })
+    const src = new OdooProductSource({ apiClient: api, pageSize: 3 })
+    const all = await src.listAll({ includeNoSku: true })
+    expect(all).toHaveLength(3)
+    expect(api.searchProductsAll).toHaveBeenCalled()
+    expect(api.searchProductsWithDefaultCode).not.toHaveBeenCalled()
   })
 })

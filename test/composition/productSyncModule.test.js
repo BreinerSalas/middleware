@@ -40,7 +40,7 @@ describe('productSyncModule', () => {
     })
     const out = await m.runOnce({})
     expect(odooSource.count).toHaveBeenCalledTimes(1)
-    expect(odooSource.listAll).toHaveBeenCalledWith({})
+    expect(odooSource.listAll).toHaveBeenCalledWith({ includeNoSku: false })
     expect(hubspotGateway.upsertBySku).toHaveBeenCalledTimes(3)
     expect(out).toHaveLength(3)
     expect(logger.info).toHaveBeenCalledWith('product-sync.start', expect.objectContaining({ total: 3 }))
@@ -57,7 +57,7 @@ describe('productSyncModule', () => {
       config: {}, odooSource, hubspotGateway, logger: makeLogger(), concurrency: 10
     })
     await m.runOnce({ limit: 2 })
-    expect(odooSource.listAll).toHaveBeenCalledWith({ limit: 2 })
+    expect(odooSource.listAll).toHaveBeenCalledWith({ limit: 2, includeNoSku: false })
   })
 
   it('runOnce with dryRun=true makes 0 gateway calls', async () => {
@@ -129,5 +129,19 @@ describe('productSyncModule', () => {
 
   it('requires hubspotGateway', () => {
     expect(() => createProductSyncModule({ config: {}, odooSource: makeSource(), hubspotGateway: null })).toThrow(/hubspotGateway/)
+  })
+
+  it('runOnce({ includeNoSku: true }) forwards to source', async () => {
+    const odooSource = makeSource({ count: 11132, listAll: async () => [
+      { id: 1, name: 'A', default_code: 'A', list_price: 1 },
+      { id: 2, name: 'B', default_code: false, list_price: 2 }
+    ] })
+    const hubspotGateway = makeGateway()
+    const m = createProductSyncModule({
+      config: {}, odooSource, hubspotGateway, logger: makeLogger(), concurrency: 10
+    })
+    await m.runOnce({ includeNoSku: true })
+    expect(odooSource.count).toHaveBeenCalledWith({ includeNoSku: true })
+    expect(odooSource.listAll).toHaveBeenCalledWith(expect.objectContaining({ includeNoSku: true }))
   })
 })

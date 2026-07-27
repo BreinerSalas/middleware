@@ -35,30 +35,32 @@ async function main() {
   const cfg = load(envFile ? { envFile } : {})
   const logger = createLogger({ level: cfg.logging.level })
 
-  if (args.help === true || args.h === true) {
-    process.stdout.write([
-      'Usage: node scripts/sync-products.js [--interval=60000] [--limit=N] [--once] [--dry-run]',
-      '',
-      'Flags:',
-      '  --interval=MS   repeat runOnce every MS (default: $PRODUCT_SYNC_INTERVAL_MS or 60000)',
-      '  --once          run once and exit',
-      '  --limit=N       process only first N products from Odoo',
-      '  --dry-run       log planned changes, do not write to HubSpot',
-      '',
-      'Env:',
-      '  PRODUCT_SYNC_INTERVAL_MS   default interval when --interval omitted',
-      '  SMARTFLOW_ENV_FILE         alternate .env path (e.g. .env.staging)',
-      ''
-    ].join('\n'))
-    return
-  }
+    if (args.help === true || args.h === true) {
+      process.stdout.write([
+        'Usage: node scripts/sync-products.js [--interval=60000] [--limit=N] [--once] [--dry-run] [--include-no-sku]',
+        '',
+        'Flags:',
+        '  --interval=MS       repeat runOnce every MS (default: $PRODUCT_SYNC_INTERVAL_MS or 60000)',
+        '  --once              run once and exit',
+        '  --limit=N           process only first N products from Odoo',
+        '  --dry-run           log planned changes, do not write to HubSpot',
+        '  --include-no-sku    include products WITHOUT default_code (default: skip; 5848 with SKU vs ~11132 all)',
+        '',
+        'Env:',
+        '  PRODUCT_SYNC_INTERVAL_MS   default interval when --interval omitted',
+        '  SMARTFLOW_ENV_FILE         alternate .env path (e.g. .env.staging, .env.client)',
+        ''
+      ].join('\n'))
+      return
+    }
 
   const { source, gateway, mod } = buildClients(cfg, logger)
   const intervalMs = resolveIntervalMs(args, process.env)
   const limit = typeof args.limit === 'number' ? args.limit : null
   const dryRun = args['dry-run'] === true
+  const includeNoSku = args['include-no-sku'] === true || args.includeNoSku === true
 
-  const tick = () => mod.runOnce({ limit, dryRun })
+  const tick = () => mod.runOnce({ limit, dryRun, includeNoSku })
 
   if (shouldRunOnce(args) || intervalMs === 0) {
     await tick()

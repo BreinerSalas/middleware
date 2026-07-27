@@ -8,16 +8,20 @@ class OdooProductSource {
     this.pageSize = pageSize
   }
 
-  async count() {
+  async count({ includeNoSku = false } = {}) {
+    if (includeNoSku) return this.apiClient.countProductsAll()
     return this.apiClient.countProductsWithDefaultCode()
   }
 
-  async listAll({ limit = null } = {}) {
+  async listAll({ limit = null, includeNoSku = false } = {}) {
+    const fetcher = includeNoSku
+      ? (offset, pageSize) => this.apiClient.searchProductsAll({ offset, limit: pageSize })
+      : (offset, pageSize) => this.apiClient.searchProductsWithDefaultCode({ offset, limit: pageSize })
     const out = []
     let offset = 0
     let totalFetched = 0
     while (true) {
-      const page = await this.apiClient.searchProductsWithDefaultCode({ offset, limit: this.pageSize })
+      const page = await fetcher(offset, this.pageSize)
       const count = Array.isArray(page) ? page.length : 0
       if (count === 0) break
       out.push(...page)

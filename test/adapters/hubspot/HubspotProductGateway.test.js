@@ -26,6 +26,43 @@ describe('HubspotProductGateway', () => {
     expect(props.price).toBe('0')
   })
 
+  it('buildProperties omits hs_sku when default_code is false (Odoo no-SKU marker)', () => {
+    const api = makeApi()
+    const gw = new HubspotProductGateway({ apiClient: api })
+    const props = gw.buildProperties({ id: 7, name: 'X', default_code: false, list_price: 10 })
+    expect(props).not.toHaveProperty('hs_sku')
+    expect(props.name).toBe('X')
+    expect(props.price).toBe('10')
+  })
+
+  it('buildProperties omits hs_sku when default_code is empty string', () => {
+    const api = makeApi()
+    const gw = new HubspotProductGateway({ apiClient: api })
+    const props = gw.buildProperties({ id: 7, name: 'Y', default_code: '', list_price: 10 })
+    expect(props).not.toHaveProperty('hs_sku')
+  })
+
+  it('upsertBySku without default_code goes straight to create (no search)', async () => {
+    const api = makeApi()
+    const gw = new HubspotProductGateway({ apiClient: api })
+    const r = await gw.upsertBySku({ id: 7, name: 'NoSku', default_code: false, list_price: 10 })
+    expect(api.searchProductByHsSku).not.toHaveBeenCalled()
+    expect(api.createProduct).toHaveBeenCalledTimes(1)
+    const props = api.createProduct.mock.calls[0][0]
+    expect(props).not.toHaveProperty('hs_sku')
+    expect(props.name).toBe('NoSku')
+    expect(r.created).toBe(true)
+  })
+
+  it('upsertBySku skips both search and create when name is missing (no usable record)', async () => {
+    const api = makeApi()
+    const gw = new HubspotProductGateway({ apiClient: api })
+    const r = await gw.upsertBySku({ id: 7, name: '', default_code: false, list_price: 10 })
+    expect(r.skipped).toBe(true)
+    expect(api.searchProductByHsSku).not.toHaveBeenCalled()
+    expect(api.createProduct).not.toHaveBeenCalled()
+  })
+
   it('creates when search returns null', async () => {
     const api = makeApi({ search: async () => null })
     const gw = new HubspotProductGateway({ apiClient: api })
@@ -56,22 +93,42 @@ describe('HubspotProductGateway', () => {
     expect(props).toEqual({ hs_sku: 'AC-1170', name: 'Aceite', price: '12.5' })
   })
 
-  it('skips when sku is missing (no api calls)', async () => {
+  it('upsertBySku with empty-string sku goes straight to create (no search)', async () => {
     const api = makeApi()
     const gw = new HubspotProductGateway({ apiClient: api })
     const r = await gw.upsertBySku({ id: 7, name: 'X', default_code: '', list_price: 9.99 })
-    expect(r.created).toBe(false)
+    expect(api.searchProductByHsSku).not.toHaveBeenCalled()
+    expect(api.createProduct).toHaveBeenCalledTimes(1)
+    const props = api.createProduct.mock.calls[0][0]
+    expect(props).not.toHaveProperty('hs_sku')
+    expect(r.created).toBe(true)
+  })
+
+  it('upsertBySku with null sku (no field at all) goes straight to create', async () => {
+    const api = makeApi()
+    const gw = new HubspotProductGateway({ apiClient: api })
+    const r = await gw.upsertBySku({ id: 7, name: 'X', default_code: null, list_price: 9.99 })
+    expect(api.searchProductByHsSku).not.toHaveBeenCalled()
+    expect(api.createProduct).toHaveBeenCalledTimes(1)
+    expect(r.created).toBe(true)
+  })
+
+  it('upsertBySku skips when name is missing (no usable record)', async () => {
+    const api = makeApi()
+    const gw = new HubspotProductGateway({ apiClient: api })
+    const r = await gw.upsertBySku({ id: 7, name: '', default_code: 'X', list_price: 0 })
     expect(r.skipped).toBe(true)
     expect(api.searchProductByHsSku).not.toHaveBeenCalled()
     expect(api.createProduct).not.toHaveBeenCalled()
   })
 
-  it('throws when name is missing (HubSpot rejects)', async () => {
+  it('upsertBySku skips when name is missing and sku is false (both bad)', async () => {
     const api = makeApi()
     const gw = new HubspotProductGateway({ apiClient: api })
-    await expect(
-      gw.upsertBySku({ id: 7, name: '', default_code: 'X', list_price: 0 })
-    ).rejects.toThrow(/name/)
+    const r = await gw.upsertBySku({ id: 7, name: '', default_code: false, list_price: 0 })
+    expect(r.skipped).toBe(true)
+    expect(api.searchProductByHsSku).not.toHaveBeenCalled()
+    expect(api.createProduct).not.toHaveBeenCalled()
   })
 
   it('swallows search errors and falls back to create (safe-but-noisy)', async () => {
