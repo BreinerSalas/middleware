@@ -56,23 +56,50 @@ function createHubspotApiClient({ baseUrl, accessToken, timeoutMs = 10000, httpC
 
   async function searchProductByHsSku(sku) {
     if (!sku || String(sku).length === 0) return null
-    const res = await http.post('/crm/v3/objects/products/search', {
-      filterGroups: [{ filters: [{ propertyName: 'hs_sku', operator: 'EQ', value: String(sku) }] }],
-      properties: ['hs_sku', 'name', 'price'],
-      limit: 1
-    })
-    const items = (res.data && res.data.results) || []
-    return items[0] || null
+    try {
+      const res = await http.post('/crm/v3/objects/products/search', {
+        filterGroups: [{ filters: [{ propertyName: 'hs_sku', operator: 'EQ', value: String(sku) }] }],
+        properties: ['hs_sku', 'name', 'price'],
+        limit: 1
+      })
+      const items = (res.data && res.data.results) || []
+      return items[0] || null
+    } catch (err) {
+      throw normalizeHubspotError(err)
+    }
   }
 
   async function createProduct(properties) {
-    const res = await http.post('/crm/v3/objects/products', { properties })
-    return res.data
+    try {
+      const res = await http.post('/crm/v3/objects/products', { properties })
+      return res.data
+    } catch (err) {
+      throw normalizeHubspotError(err)
+    }
   }
 
   async function updateProduct(productId, properties) {
-    const res = await http.patch(`/crm/v3/objects/products/${productId}`, { properties })
-    return res.data
+    try {
+      const res = await http.patch(`/crm/v3/objects/products/${productId}`, { properties })
+      return res.data
+    } catch (err) {
+      throw normalizeHubspotError(err)
+    }
+  }
+
+  function normalizeHubspotError(err) {
+    if (!err) return err
+    const status = err.response && err.response.status
+    const body = err.response && err.response.data
+    const hubMsg = body && (body.message || body.error || body)
+    if (status && hubMsg) {
+      const msg = typeof hubMsg === 'string' ? hubMsg : JSON.stringify(hubMsg)
+      const newErr = new Error(msg)
+      newErr.httpStatus = status
+      newErr.original = err
+      return newErr
+    }
+    return err
   }
 
   return {

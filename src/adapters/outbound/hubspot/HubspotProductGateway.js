@@ -63,7 +63,12 @@ class HubspotProductGateway {
     if (!err) return false
     const status = err.httpStatus ?? err.status ?? (err.response && err.response.status)
     if (status !== 400 && status !== 409) return false
-    const msg = (err.message || '').toLowerCase()
+    const sources = [
+      err.message,
+      err.response && err.response.data && err.response.data.message,
+      err.original && err.original.response && err.original.response.data && err.original.response.data.message
+    ].filter(Boolean)
+    const msg = sources.join(' ').toLowerCase()
     return msg.includes('already has that value') || msg.includes('propertyvaluecoordinates')
   }
 }

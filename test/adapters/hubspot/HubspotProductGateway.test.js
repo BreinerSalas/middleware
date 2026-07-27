@@ -147,6 +147,30 @@ describe('HubspotProductGateway', () => {
     expect(logger.warn).toHaveBeenCalled()
   })
 
+  it('create 400 from real Axios-shape (message in response.data) is treated as skipped', async () => {
+    const api = makeApi()
+    api.searchProductByHsSku = vi.fn(async () => { throw new Error('429') })
+    // Real Axios shape: err.message is generic, real msg is in err.response.data.message
+    api.createProduct = vi.fn(async () => {
+      const e = new Error('Request failed with status code 400')
+      e.response = {
+        status: 400,
+        data: {
+          status: 'error',
+          message: 'Cannot set PropertyValueCoordinates{...hs_sku, value=FR250967-0} on X. Y already has that value.',
+          category: 'VALIDATION_ERROR'
+        }
+      }
+      throw e
+    })
+    const logger = { warn: vi.fn() }
+    const gw = new HubspotProductGateway({ apiClient: api, logger })
+    const r = await gw.upsertBySku({ id: 7, name: 'X', default_code: 'FR250967-0', list_price: 10 })
+    expect(r.skipped).toBe(true)
+    expect(r.reason).toMatch(/duplicate/)
+    expect(logger.warn).toHaveBeenCalled()
+  })
+
   it('swallows search errors and falls back to create (safe-but-noisy)', async () => {
     const api = makeApi({
       search: async () => { throw new Error('search-down') },
