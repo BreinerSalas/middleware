@@ -6,12 +6,53 @@ const { createLogger } = require('./lib/logger')
 const { createApp } = require('./app')
 const { connectMongo, disconnectMongo } = require('./adapters/outbound/mongo/connection')
 const { createDealSyncModule } = require('./composition/dealSyncModule')
+const { createHubspotApiClient } = require('./adapters/outbound/hubspot/hubspotApiClient')
+const { provisionDealProperties } = require('./composition/provisionDealProperties')
 
 async function start({ config = null } = {}) {
   const cfg = config || load()
   const logger = createLogger({ level: cfg.logging.level })
   await connectMongo({ uri: cfg.mongodbUri, logger })
   const dealSyncModule = createDealSyncModule({ config: cfg, logger })
+
+  const hubspotApi = createHubspotApiClient({
+    baseUrl: cfg.hubspot.apiBase,
+    accessToken: cfg.hubspot.accessToken
+  })
+  const dealPropertiesToProvision = [
+    {
+      name: cfg.hubspot.propertyOdooOrderId,
+      label: 'ID Orden Odoo',
+      type: 'string',
+      fieldType: 'text',
+      groupName: 'dealinformation',
+      description: 'ID de la orden de fabricacion (mrp.production) creada en Odoo al cerrar el negocio.'
+    },
+    {
+      name: cfg.hubspot.propertyOdooCustomerId,
+      label: 'ID Cliente Odoo',
+      type: 'string',
+      fieldType: 'text',
+      groupName: 'dealinformation',
+      description: 'ID del partner (res.partner) en Odoo. Override por deal del env default ODOO_DEFAULT_CUSTOMER_ID.'
+    }
+  ]
+  try {
+    const summary = await provisionDealProperties({
+      api: hubspotApi,
+      properties: dealPropertiesToProvision,
+      logger
+    })
+    logger.info('hubspot.provision.summary', {
+      total: summary.length,
+      created: summary.filter((s) => s.status === 'created').length,
+      existing: summary.filter((s) => s.status === 'existing').length,
+      failed: summary.filter((s) => s.status === 'failed').length
+    })
+  } catch (err) {
+    logger.warn('hubspot.provision.bootstrap.failed', { error: err.message })
+  }
+
   const staticRoot = path.resolve(__dirname, 'panel')
   const app = createApp({ config: cfg, logger, dealSyncModule, staticRoot })
 
