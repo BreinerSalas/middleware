@@ -34,7 +34,7 @@ function createHubspotApiClient({
   accessToken,
   timeoutMs = 10000,
   httpClient = null,
-  rateLimiter = null,
+  rateLimiter = undefined,
   maxRetries = 3,
   retryDefaultMs = 1000
 } = {}) {
