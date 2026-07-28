@@ -66,12 +66,12 @@ describe('productSyncModule - batch flow', () => {
     expect(singleArgs.map((x) => x.id)).toEqual([2, 4])
   })
 
-  it('with 250 products, makes 3 batch calls (chunkSize=100)', async () => {
+  it('passes ALL products in a single batchUpsertBySkus call (chunks happen inside the gateway)', async () => {
     const allProducts = Array.from({ length: 250 }, (_, i) => p(i + 1, `A-${i + 1}`))
     const odooSource = makeSource({ count: 250, listAll: async () => allProducts })
     const gateway = makeGateway({
-      batchUpsertBySkus: vi.fn(async (chunk) => ({
-        results: chunk.map((x) => ({ id: `B-${x.id}`, properties: {} })),
+      batchUpsertBySkus: vi.fn(async (products) => ({
+        results: products.map((x) => ({ id: `B-${x.id}`, properties: { hs_sku: `A-${x.id}` }, new: true })),
         errors: [],
         skipped: []
       }))
@@ -80,9 +80,34 @@ describe('productSyncModule - batch flow', () => {
       config: {}, odooSource, hubspotGateway: gateway, logger: makeLogger()
     })
     await m.runOnce({})
-    expect(gateway.batchUpsertBySkus).toHaveBeenCalledTimes(3)
-    const sizes = gateway.batchUpsertBySkus.mock.calls.map((c) => c[0].length)
-    expect(sizes).toEqual([100, 100, 50])
+    expect(gateway.batchUpsertBySkus).toHaveBeenCalledTimes(1)
+    expect(gateway.batchUpsertBySkus.mock.calls[0][0]).toHaveLength(250)
+    expect(gateway.batchUpsertBySkus.mock.calls[0][1]).toMatchObject({ chunkSize: 100 })
+  })
+
+  it('marks Odoo duplicates of the same SKU as skipped (keeps first)', async () => {
+    const odooSource = makeSource({ count: 3, listAll: async () => [
+      { id: 1, name: 'P-1', default_code: 'DUP-SKU', list_price: 5 },
+      { id: 2, name: 'P-2-dup', default_code: 'DUP-SKU', list_price: 6 },
+      { id: 3, name: 'P-3', default_code: 'OTHER', list_price: 7 }
+    ] })
+    const gateway = makeGateway({
+      batchUpsertBySkus: vi.fn(async (products) => {
+        return {
+          results: products.map((x) => ({ id: `B-${x.id}`, properties: { hs_sku: String(x.default_code).trim() }, new: true })),
+          errors: [],
+          skipped: []
+        }
+      })
+    })
+    const m = createProductSyncModule({
+      config: {}, odooSource, hubspotGateway: gateway, logger: makeLogger()
+    })
+    const out = await m.runOnce({})
+    const succeeded = out.filter((r) => !r.failed && !r.dryRun && !r.skipped)
+    const skippedDup = out.filter((r) => r.skipped && r.reason === 'duplicate_sku_in_odoo')
+    expect(succeeded.length).toBeGreaterThanOrEqual(2)
+    expect(skippedDup.some((r) => r.sourceId === 2)).toBe(true)
   })
 
   it('dryRun=true makes 0 gateway calls but still counts total', async () => {
@@ -123,11 +148,33 @@ describe('productSyncModule - batch flow', () => {
     })
     const out = await m.runOnce({})
     const failed = out.filter((r) => r.failed)
-    expect(failed).toHaveLength(3)
+    expect(failed).toHaveLength(2)
     expect(failed.map((f) => f.error)).toContain('network-boom')
     expect(failed.map((f) => f.error)).toContain('invalid')
-    expect(failed.map((f) => f.error)).toContain('not_in_batch_response')
     expect(logger.error).toHaveBeenCalled()
+    const assumedUpdated = out.filter((r) => r.assumed === 'updated')
+    expect(assumedUpdated.map((r) => r.sku)).toContain('A-3')
+  })
+
+  it('items in batch input but missing from response are tagged assumed=updated (silent upsert)', async () => {
+    const odooSource = makeSource({ count: 3, listAll: async () => [
+      p(1, 'A-1'),
+      p(2, 'A-2'),
+      p(3, 'A-3')
+    ] })
+    const gateway = makeGateway({
+      batchUpsertBySkus: vi.fn(async () => ({
+        results: [{ id: 'B-1', properties: { hs_sku: 'A-1' }, new: true }],
+        errors: [],
+        skipped: []
+      }))
+    })
+    const m = createProductSyncModule({
+      config: {}, odooSource, hubspotGateway: gateway, logger: makeLogger()
+    })
+    const out = await m.runOnce({})
+    expect(out.filter((r) => r.assumed === 'updated').map((r) => r.sku)).toEqual(['A-2', 'A-3'])
+    expect(out.filter((r) => r.failed).length).toBe(0)
   })
 
   it('chunkError from batch upsert is marked for the whole chunk', async () => {

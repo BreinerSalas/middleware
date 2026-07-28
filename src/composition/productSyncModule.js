@@ -43,41 +43,61 @@ function createProductSyncModule({
 
   async function runBatchForOdooItems(odooProducts, { dryRun }) {
     const results = []
-    const chunks = chunk(odooProducts, chunkSize)
-    log('info', 'product-sync.batch.started', { chunkSize, chunks: chunks.length, items: odooProducts.length, dryRun })
-
-    for (let i = 0; i < chunks.length; i += 1) {
-      const c = chunks[i]
-      try {
-        if (dryRun) {
-          for (const p of c) results.push({ sourceId: p.id, sku: p.default_code, ...dryRunItem(p) })
-          continue
-        }
-        const r = await hubspotGateway.batchUpsertBySkus(c, { chunkSize: c.length })
-        const bySku = new Map()
-        for (const item of r.results || []) {
-          const sku = item.properties && item.properties.hs_sku
-          if (sku) bySku.set(sku, item)
-        }
-        for (const errItem of r.errors || []) {
-          log('error', 'product-sync.item.failed', { sku: errItem.id, error: errItem.message, category: errItem.category })
-          results.push({ sourceId: null, sku: errItem.id, failed: true, error: errItem.message })
-        }
-        for (const p of c) {
-          const sku = String(p.default_code).trim()
-          const hub = bySku.get(sku)
-          if (hub) {
-            results.push({ sourceId: p.id, sku, id: hub.id, created: Boolean(hub.createdAt && hub.createdAt === hub.updatedAt), hubspotId: hub.id })
-          } else if (!(r.errors || []).some((e) => e.id === sku)) {
-            results.push({ sourceId: p.id, sku, failed: true, error: 'not_in_batch_response' })
-          }
-        }
-        log('info', 'product-sync.batch.chunk.completed', { chunkIndex: i + 1, items: c.length, results: r.results.length, errors: r.errors.length })
-      } catch (err) {
-        for (const p of c) results.push({ sourceId: p.id, sku: p.default_code, failed: true, error: err.message })
-        log('error', 'product-sync.chunk.failed', { chunkIndex: i + 1, items: c.length, error: err.message })
+    log('info', 'product-sync.batch.started', { chunkSize, items: odooProducts.length, dryRun })
+    if (dryRun) {
+      for (const p of odooProducts) results.push({ sourceId: p.id, sku: p.default_code, ...dryRunItem(p) })
+      return results
+    }
+    let batchSummary
+    try {
+      batchSummary = await hubspotGateway.batchUpsertBySkus(odooProducts, { chunkSize })
+    } catch (err) {
+      for (const p of odooProducts) results.push({ sourceId: p.id, sku: p.default_code, failed: true, error: err.message })
+      log('error', 'product-sync.chunk.failed', { items: odooProducts.length, error: err.message })
+      return results
+    }
+    const sentMap = new Map()
+    for (const p of odooProducts) sentMap.set(this ? null : null, p)
+    const skuToOdooIds = new Map()
+    for (const p of odooProducts) {
+      const sku = String(p.default_code || '').trim()
+      if (!sku) continue
+      if (!skuToOdooIds.has(sku)) skuToOdooIds.set(sku, [])
+      skuToOdooIds.get(sku).push(p.id)
+    }
+    const seenInBatch = new Set()
+    for (const item of batchSummary.results || []) {
+      const sku = item.properties && item.properties.hs_sku
+      if (sku) seenInBatch.add(sku)
+      const isNew = item.new === true || (item.createdAt && item.createdAt === item.updatedAt)
+      const odooIds = (sku && skuToOdooIds.get(sku)) || []
+      if (odooIds.length > 0) {
+        results.push({ sourceId: odooIds[0], sku, id: item.id, created: Boolean(isNew), hubspotId: item.id })
+      }
+      for (let i = 1; i < odooIds.length; i += 1) {
+        results.push({ sourceId: odooIds[i], sku, skipped: true, reason: 'duplicate_sku_in_odoo' })
       }
     }
+    for (const errItem of batchSummary.errors || []) {
+      log('error', 'product-sync.item.failed', { sku: errItem.id, error: errItem.message, category: errItem.category })
+      const odooIds = skuToOdooIds.get(errItem.id) || []
+      for (const oid of odooIds) results.push({ sourceId: oid, sku: errItem.id, failed: true, error: errItem.message })
+    }
+    for (const [sku, odooIds] of skuToOdooIds.entries()) {
+      if (seenInBatch.has(sku)) continue
+      if ((batchSummary.errors || []).some((e) => e.id === sku)) continue
+      const skipped = odooIds.length > 1 ? odooIds.slice(1) : []
+      results.push({ sourceId: odooIds[0], sku, assumed: 'updated' })
+      for (const oid of skipped) results.push({ sourceId: oid, sku, skipped: true, reason: 'duplicate_sku_in_odoo' })
+    }
+    log('info', 'product-sync.batch.summary', {
+      chunks: Math.ceil(odooProducts.length / chunkSize),
+      items: odooProducts.length,
+      uniqueSkus: skuToOdooIds.size,
+      results: (batchSummary.results || []).length,
+      errors: (batchSummary.errors || []).length,
+      duplicatesSkipped: (batchSummary.skipped || []).length
+    })
     return results
   }
 
