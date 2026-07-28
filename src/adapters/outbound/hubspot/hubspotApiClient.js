@@ -151,9 +151,38 @@ function createHubspotApiClient({
     } catch (err) { throw normalizeHubspotError(err) }
   }
 
+  async function batchUpsertProducts({ inputs = [], idProperty = 'hs_sku' } = {}) {
+    let data
+    try {
+      data = await requestWithRateLimit('post', '/crm/v3/objects/products/batch/upsert', {
+        idProperty,
+        inputs
+      })
+    } catch (err) { throw normalizeHubspotError(err) }
+    const rawResults = (data && data.results) || []
+    const results = []
+    const errors = []
+    for (const item of rawResults) {
+      if (item && item.status === 'error') {
+        const ctx = item.context || {}
+        const idFromCtx = (ctx.id && Array.isArray(ctx.id) && ctx.id[0]) || ctx.input || null
+        errors.push({
+          id: idFromCtx,
+          message: item.message || (item.errors && item.errors[0] && item.errors[0].message) || 'unknown',
+          category: item.category || null,
+          raw: item
+        })
+      } else if (item && item.id) {
+        results.push(item)
+      }
+    }
+    return { results, errors, numErrors: typeof data.numErrors === 'number' ? data.numErrors : errors.length }
+  }
+
   return {
     getDeal, getDealAssociations, getDealLineItems, updateDeal,
     searchProductByHsSku, createProduct, updateProduct,
+    batchUpsertProducts,
     _http: http,
     _rateLimiter: rl
   }
