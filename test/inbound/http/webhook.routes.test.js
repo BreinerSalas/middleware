@@ -26,8 +26,8 @@ function baseConfig(overrides = {}) {
   }
 }
 
-function signWebhook({ method, url, rawBody, timestamp, secret }) {
-  const base = method + url + rawBody + String(timestamp)
+function signWebhook({ method, fullUrl, rawBody, timestamp, secret }) {
+  const base = method + fullUrl + rawBody + String(timestamp)
   return crypto.createHmac('sha256', secret).update(base).digest('base64')
 }
 
@@ -45,7 +45,10 @@ function makeFakeDealSyncModule() {
 async function postSigned(app, { body, secret = 'hmac-test-secret', url = '/webhooks/hubspot', method = 'POST' }) {
   const rawBody = typeof body === 'string' ? body : JSON.stringify(body)
   const ts = Date.now()
-  const sig = signWebhook({ method, url, rawBody, timestamp: ts, secret })
+  const addr = app.server.address()
+  const host = `127.0.0.1:${addr.port}`
+  const fullUrl = `https://${host}${url}`
+  const sig = signWebhook({ method, fullUrl, rawBody, timestamp: ts, secret })
   return request(app.server)
     .post(url)
     .set('x-hubspot-signature-v3', sig)
@@ -207,7 +210,8 @@ describe('HTTP /webhooks/hubspot (Private App HMAC + array body)', () => {
     }]
     const rawBody = JSON.stringify(body)
     const ts = Date.now()
-    const sig = signWebhook({ method: 'POST', url: '/webhooks/hubspot', rawBody, timestamp: ts, secret: 'hmac-test-secret' })
+    const addr = app.server.address()
+    const sig = signWebhook({ method: 'POST', fullUrl: `https://127.0.0.1:${addr.port}/webhooks/hubspot`, rawBody, timestamp: ts, secret: 'hmac-test-secret' })
     const res = await request(app.server)
       .post('/webhooks/hubspot')
       .set('x-hubspot-signature-v3', sig)

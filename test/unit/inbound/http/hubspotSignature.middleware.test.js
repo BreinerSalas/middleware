@@ -18,22 +18,29 @@ function fakeReply() {
   return api
 }
 
-function fakeReq({ method = 'POST', url = '/webhooks/hubspot', rawBody, headers = {} } = {}) {
-  return { method, url, rawBody, headers }
+function fakeReq({ method = 'POST', url = '/webhooks/hubspot', host = 'plow-paying-wand.ngrok-free.dev', rawBody, headers = {} } = {}) {
+  return {
+    method,
+    url,
+    rawBody,
+    headers: { host, ...headers }
+  }
 }
 
-function signBase({ method, url, rawBody, timestamp, secret }) {
-  const base = method + url + rawBody + String(timestamp)
+function signBase({ method, fullUrl, rawBody, timestamp, secret }) {
+  const base = method + fullUrl + rawBody + String(timestamp)
   return crypto.createHmac('sha256', secret).update(base).digest('base64')
 }
 
 describe('hubspotSignature.middleware (HMAC v3)', () => {
   const secret = 'unit-test-secret'
+  const host = 'plow-paying-wand.ngrok-free.dev'
+  const fullUrl = `https://${host}/webhooks/hubspot`
 
-  it('accepts when X-HubSpot-Signature-v3 matches the HMAC-SHA256 of method+url+body+timestamp', async () => {
+  it('accepts when X-HubSpot-Signature-v3 matches HMAC of method+fullURL+body+timestamp (HubSpot v3 spec)', async () => {
     const ts = Date.now()
     const body = '[{"objectId":"12345","subscriptionType":"deal.propertyChange","propertyName":"dealstage","propertyValue":"closedwon"}]'
-    const sig = signBase({ method: 'POST', url: '/webhooks/hubspot', rawBody: body, timestamp: ts, secret })
+    const sig = signBase({ method: 'POST', fullUrl, rawBody: body, timestamp: ts, secret })
     const mw = createHubspotSignatureMiddleware({ clientSecret: secret })
     const req = fakeReq({
       rawBody: body,
@@ -47,10 +54,69 @@ describe('hubspotSignature.middleware (HMAC v3)', () => {
     expect(reply.sent).toBe(false)
   })
 
+  it('rejects when signature was computed with path-only (regression: middleware MUST use full URI)', async () => {
+    const ts = Date.now()
+    const body = '[]'
+    const sig = signBase({ method: 'POST', fullUrl: '/webhooks/hubspot', rawBody: body, timestamp: ts, secret })
+    const mw = createHubspotSignatureMiddleware({ clientSecret: secret })
+    const req = fakeReq({
+      rawBody: body,
+      headers: {
+        'x-hubspot-signature-v3': sig,
+        'x-hubspot-request-timestamp': String(ts)
+      }
+    })
+    const reply = fakeReply()
+    await mw(req, reply)
+    expect(reply.sent).toBe(true)
+    expect(reply.codeValue).toBe(401)
+    expect(reply.body.error).toBe('invalid_signature')
+  })
+
+  it('rejects when Host header was spoofed (signature valid for one host, request comes from another)', async () => {
+    const ts = Date.now()
+    const body = '[]'
+    const sig = signBase({ method: 'POST', fullUrl: `https://attacker.example.com/webhooks/hubspot`, rawBody: body, timestamp: ts, secret })
+    const mw = createHubspotSignatureMiddleware({ clientSecret: secret })
+    const req = fakeReq({
+      host: 'plow-paying-wand.ngrok-free.dev',
+      rawBody: body,
+      headers: {
+        'x-hubspot-signature-v3': sig,
+        'x-hubspot-request-timestamp': String(ts)
+      }
+    })
+    const reply = fakeReply()
+    await mw(req, reply)
+    expect(reply.sent).toBe(true)
+    expect(reply.codeValue).toBe(401)
+  })
+
+  it('rejects (invalid_signature) when Host header is missing entirely', async () => {
+    const ts = Date.now()
+    const body = '[]'
+    const sig = signBase({ method: 'POST', fullUrl, rawBody: body, timestamp: ts, secret })
+    const mw = createHubspotSignatureMiddleware({ clientSecret: secret })
+    const req = {
+      method: 'POST',
+      url: '/webhooks/hubspot',
+      rawBody: body,
+      headers: {
+        'x-hubspot-signature-v3': sig,
+        'x-hubspot-request-timestamp': String(ts)
+      }
+    }
+    const reply = fakeReply()
+    await mw(req, reply)
+    expect(reply.sent).toBe(true)
+    expect(reply.codeValue).toBe(401)
+    expect(reply.body.error).toBe('invalid_signature')
+  })
+
   it('accepts with custom header names (case-insensitive lookup)', async () => {
     const ts = Date.now()
     const body = '[]'
-    const sig = signBase({ method: 'POST', url: '/webhooks/hubspot', rawBody: body, timestamp: ts, secret })
+    const sig = signBase({ method: 'POST', fullUrl, rawBody: body, timestamp: ts, secret })
     const mw = createHubspotSignatureMiddleware({
       clientSecret: secret,
       signatureHeader: 'X-HubSpot-Custom-Sig',
@@ -95,10 +161,10 @@ describe('hubspotSignature.middleware (HMAC v3)', () => {
     expect(reply.body.error).toBe('missing_timestamp')
   })
 
-  it('rejects when signature does not match (invalid_secret)', async () => {
+  it('rejects when signature does not match (invalid_signature)', async () => {
     const ts = Date.now()
     const body = '[]'
-    const sig = signBase({ method: 'POST', url: '/webhooks/hubspot', rawBody: body, timestamp: ts, secret: 'WRONG' })
+    const sig = signBase({ method: 'POST', fullUrl, rawBody: body, timestamp: ts, secret: 'WRONG' })
     const mw = createHubspotSignatureMiddleware({ clientSecret: secret })
     const req = fakeReq({
       rawBody: body,
@@ -134,7 +200,7 @@ describe('hubspotSignature.middleware (HMAC v3)', () => {
   it('rejects when timestamp is older than toleranceMs (replay protection)', async () => {
     const ts = Date.now() - (10 * 60 * 1000)
     const body = '[]'
-    const sig = signBase({ method: 'POST', url: '/webhooks/hubspot', rawBody: body, timestamp: ts, secret })
+    const sig = signBase({ method: 'POST', fullUrl, rawBody: body, timestamp: ts, secret })
     const mw = createHubspotSignatureMiddleware({ clientSecret: secret, toleranceMs: 5 * 60 * 1000, now: () => Date.now() })
     const req = fakeReq({
       rawBody: body,
@@ -153,7 +219,7 @@ describe('hubspotSignature.middleware (HMAC v3)', () => {
   it('rejects when timestamp is in the future beyond tolerance (clock skew attack)', async () => {
     const ts = Date.now() + (10 * 60 * 1000)
     const body = '[]'
-    const sig = signBase({ method: 'POST', url: '/webhooks/hubspot', rawBody: body, timestamp: ts, secret })
+    const sig = signBase({ method: 'POST', fullUrl, rawBody: body, timestamp: ts, secret })
     const mw = createHubspotSignatureMiddleware({ clientSecret: secret, toleranceMs: 5 * 60 * 1000, now: () => Date.now() })
     const req = fakeReq({
       rawBody: body,
@@ -173,7 +239,7 @@ describe('hubspotSignature.middleware (HMAC v3)', () => {
     const now = 1_700_000_000_000
     const ts = now - (5 * 60 * 1000 - 1000)
     const body = '[]'
-    const sig = signBase({ method: 'POST', url: '/webhooks/hubspot', rawBody: body, timestamp: ts, secret })
+    const sig = signBase({ method: 'POST', fullUrl, rawBody: body, timestamp: ts, secret })
     const mw = createHubspotSignatureMiddleware({ clientSecret: secret, toleranceMs: 5 * 60 * 1000, now: () => now })
     const req = fakeReq({
       rawBody: body,
@@ -236,22 +302,5 @@ describe('hubspotSignature.middleware (HMAC v3)', () => {
     expect(reply.sent).toBe(true)
     expect(reply.codeValue).toBe(400)
     expect(reply.body.error).toBe('missing_body')
-  })
-
-  it('uses the rawBody exactly as-is for HMAC base (verifies bytes-in/bytes-out contract)', async () => {
-    const ts = Date.now()
-    const body = '[{"objectId":"1"}]'
-    const sig = signBase({ method: 'POST', url: '/webhooks/hubspot', rawBody: body, timestamp: ts, secret })
-    const mw = createHubspotSignatureMiddleware({ clientSecret: secret })
-    const req = fakeReq({
-      rawBody: body,
-      headers: {
-        'x-hubspot-signature-v3': sig,
-        'x-hubspot-request-timestamp': String(ts)
-      }
-    })
-    const reply = fakeReply()
-    await mw(req, reply)
-    expect(reply.sent).toBe(false)
   })
 })

@@ -70,9 +70,11 @@ describe('e2e: webhook -> job -> upsert -> writeback (Private App HMAC)', () => 
     }]
     const rawBody = JSON.stringify(body)
     const ts = Date.now()
+    const addr = app.server.address()
+    const fullUrl = `https://127.0.0.1:${addr.port}/webhooks/hubspot`
     const sig = crypto
       .createHmac('sha256', 'e2e-test-secret')
-      .update('POST' + '/webhooks/hubspot' + rawBody + String(ts))
+      .update('POST' + fullUrl + rawBody + String(ts))
       .digest('base64')
 
     const res = await request(app.server)

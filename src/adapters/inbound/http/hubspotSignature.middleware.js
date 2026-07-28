@@ -6,8 +6,15 @@ const DEFAULT_SIGNATURE_HEADER = 'x-hubspot-signature-v3'
 const DEFAULT_TIMESTAMP_HEADER = 'x-hubspot-request-timestamp'
 const DEFAULT_TOLERANCE_MS = 5 * 60 * 1000
 
-function buildSignatureBase({ method, url, rawBody, timestamp }) {
-  return String(method || '') + String(url || '') + String(rawBody == null ? '' : rawBody) + String(timestamp)
+function buildSignatureBase({ method, fullUrl, rawBody, timestamp }) {
+  return String(method || '') + String(fullUrl || '') + String(rawBody == null ? '' : rawBody) + String(timestamp)
+}
+
+function resolveFullUrl(req) {
+  const host = (req.headers && (req.headers.host || req.headers.Host)) || ''
+  if (!host) return null
+  const proto = (req.headers && (req.headers['x-forwarded-proto'] || req.headers['X-Forwarded-Proto'])) || 'https'
+  return `${proto}://${host}${req.url || ''}`
 }
 
 function createHubspotSignatureMiddleware({
@@ -56,9 +63,14 @@ function createHubspotSignatureMiddleware({
       return reply
     }
 
+    const fullUrl = resolveFullUrl(req)
+    if (!fullUrl) {
+      reply.code(401).send({ ok: false, error: 'invalid_signature' })
+      return reply
+    }
     const base = buildSignatureBase({
       method: req.method,
-      url: req.url,
+      fullUrl,
       rawBody: req.rawBody,
       timestamp: providedTs
     })
@@ -83,6 +95,8 @@ function createHubspotSignatureMiddleware({
 
 module.exports = {
   createHubspotSignatureMiddleware,
+  buildSignatureBase,
+  resolveFullUrl,
   DEFAULT_SIGNATURE_HEADER,
   DEFAULT_TIMESTAMP_HEADER,
   DEFAULT_TOLERANCE_MS
