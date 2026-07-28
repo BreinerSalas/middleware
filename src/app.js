@@ -6,6 +6,7 @@ const Fastify = require('fastify')
 const mongoose = require('mongoose')
 const { createLogger } = require('./lib/logger')
 const { createAuthMiddleware } = require('./adapters/inbound/http/auth.middleware')
+const { createHubspotSignatureMiddleware } = require('./adapters/inbound/http/hubspotSignature.middleware')
 const { createCorrelationMiddleware } = require('./adapters/inbound/http/correlation.middleware')
 const { createHealthRoutes } = require('./adapters/inbound/http/health.routes')
 const { createPanelRoutes } = require('./adapters/inbound/http/panel.routes')
@@ -38,6 +39,12 @@ function createApp({ config, logger = null, dealSyncModule = null, panelReposito
     isDev: config.server.nodeEnv !== 'production'
   })
 
+  const signatureAuth = createHubspotSignatureMiddleware({
+    clientSecret: config.hubspot.clientSecret,
+    toleranceMs: config.hubspot.signatureTimestampToleranceMs,
+    isDev: config.server.nodeEnv !== 'production'
+  })
+
   const mongoForHealth = dealSyncModule && dealSyncModule._internals && dealSyncModule._internals.jobRepository && dealSyncModule._internals.jobRepository.model
     ? dealSyncModule._internals.jobRepository.model.db
     : mongoose.connection
@@ -45,19 +52,47 @@ function createApp({ config, logger = null, dealSyncModule = null, panelReposito
   // health
   app.register(createHealthRoutes({ mongo: mongoForHealth }), { prefix: '' })
 
-  // webhook
-  app.post('/webhooks/hubspot', { preHandler: auth }, async (req, reply) => {
+  // webhook — HubSpot Private App: HMAC + array of events, strict filter
+  app.post('/webhooks/hubspot', { preHandler: signatureAuth }, async (req, reply) => {
     if (!dealSyncModule) return reply.code(503).send({ ok: false, error: 'sync_module_not_ready' })
-    const payload = req.body || {}
-    const objectId = payload.objectId || (payload.dealId) || null
-    if (!objectId) return reply.code(400).send({ ok: false, error: 'objectId required' })
-    try {
-      const result = await dealSyncModule.enqueueWebhook({ rawBody: payload, objectId: String(objectId), eventType: payload.subscriptionType || null })
-      return reply.code(202).send({ ok: true, deduped: result.deduped, correlationId: result.correlationId, jobId: result.job ? result.job._id : null })
-    } catch (err) {
-      log.error('enqueue failed', { error: err.message, stack: err.stack })
-      return reply.code(500).send({ ok: false, error: 'enqueue_failed' })
+
+    const body = req.body
+    if (!Array.isArray(body)) {
+      log.warn('webhook.non_array_body', { type: typeof body })
+      return reply.code(200).send({ ok: true, enqueued: 0 })
     }
+
+    let enqueued = 0
+    let lastResult = null
+    for (const event of body) {
+      if (!event || typeof event !== 'object') continue
+      if (event.subscriptionType !== 'deal.propertyChange') continue
+      if (event.propertyName !== 'dealstage' || event.propertyValue !== 'closedwon') continue
+      const objId = event.objectId || event.dealId
+      if (!objId) continue
+      try {
+        const result = await dealSyncModule.enqueueWebhook({
+          rawBody: event,
+          objectId: String(objId),
+          eventType: event.subscriptionType
+        })
+        enqueued++
+        lastResult = result
+      } catch (err) {
+        log.error('enqueue failed', { error: err.message, objectId: objId })
+      }
+    }
+
+    if (enqueued === 0) {
+      return reply.code(200).send({ ok: true, enqueued: 0 })
+    }
+    return reply.code(202).send({
+      ok: true,
+      enqueued,
+      deduped: lastResult.deduped,
+      correlationId: lastResult.correlationId,
+      jobId: lastResult.job ? lastResult.job._id : null
+    })
   })
 
   // panel: API + static assets

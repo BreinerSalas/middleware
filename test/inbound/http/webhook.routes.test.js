@@ -1,14 +1,22 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
+import crypto from 'node:crypto'
 const request = require('supertest')
 const { createApp } = require('../../../src/app.js')
 
 function baseConfig(overrides = {}) {
   return {
     mongodbUri: 'mongodb://x',
-    hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com', propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' },
-    webhook: { sharedSecret: 'topsecret', headerName: 'x-smartflow-secret' },
+    hubspot: {
+      accessToken: 't',
+      apiBase: 'https://api.hubapi.com',
+      clientSecret: 'hmac-test-secret',
+      signatureTimestampToleranceMs: 5 * 60 * 1000,
+      propertyOdooCustomerId: 'a',
+      propertyOdooOrderId: 'b'
+    },
+    webhook: { sharedSecret: '', headerName: 'x-smartflow-secret' },
     odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
     server: { port: 0, nodeEnv: 'test' },
     logging: { level: 'error' },
@@ -18,18 +26,38 @@ function baseConfig(overrides = {}) {
   }
 }
 
+function signWebhook({ method, url, rawBody, timestamp, secret }) {
+  const base = method + url + rawBody + String(timestamp)
+  return crypto.createHmac('sha256', secret).update(base).digest('base64')
+}
+
 function makeFakeDealSyncModule() {
   const calls = { enqueue: [] }
   return {
-    enqueueWebhook: async (args) => { calls.enqueue.push(args); return { job: { _id: 'J-1' }, deduped: false, correlationId: 'C-1' } },
+    enqueueWebhook: async (args) => {
+      calls.enqueue.push(args)
+      return { job: { _id: `J-${calls.enqueue.length}` }, deduped: false, correlationId: `C-${calls.enqueue.length}` }
+    },
     _calls: calls
   }
 }
 
-describe('HTTP /webhooks/hubspot', () => {
+async function postSigned(app, { body, secret = 'hmac-test-secret', url = '/webhooks/hubspot', method = 'POST' }) {
+  const rawBody = typeof body === 'string' ? body : JSON.stringify(body)
+  const ts = Date.now()
+  const sig = signWebhook({ method, url, rawBody, timestamp: ts, secret })
+  return request(app.server)
+    .post(url)
+    .set('x-hubspot-signature-v3', sig)
+    .set('x-hubspot-request-timestamp', String(ts))
+    .set('Content-Type', 'application/json')
+    .send(body)
+}
+
+describe('HTTP /webhooks/hubspot (Private App HMAC + array body)', () => {
   const apps = []
-  async function buildApp(mod) {
-    const app = createApp({ config: baseConfig(), dealSyncModule: mod })
+  async function buildApp(mod, cfg = baseConfig()) {
+    const app = createApp({ config: cfg, dealSyncModule: mod })
     await app.listen({ port: 0, host: '127.0.0.1' })
     apps.push(app)
     return app
@@ -38,46 +66,178 @@ describe('HTTP /webhooks/hubspot', () => {
     while (apps.length) { try { await apps.pop().close() } catch (_) {} }
   })
 
-  it('rejects without secret', async () => {
+  it('401 when signature header is missing', async () => {
     const mod = makeFakeDealSyncModule()
     const app = await buildApp(mod)
-    const res = await request(app.server).post('/webhooks/hubspot').send({ objectId: 'D-1' })
+    const res = await request(app.server).post('/webhooks/hubspot').send([{ objectId: '1' }])
     expect(res.status).toBe(401)
     expect(mod._calls.enqueue).toHaveLength(0)
   })
 
-  it('rejects with wrong secret', async () => {
+  it('401 when signature is invalid', async () => {
     const mod = makeFakeDealSyncModule()
     const app = await buildApp(mod)
-    const res = await request(app.server).post('/webhooks/hubspot').set('x-smartflow-secret', 'wrong').send({ objectId: 'D-1' })
+    const body = JSON.stringify([{ objectId: '1' }])
+    const ts = Date.now()
+    const res = await request(app.server)
+      .post('/webhooks/hubspot')
+      .set('x-hubspot-signature-v3', 'wrong')
+      .set('x-hubspot-request-timestamp', String(ts))
+      .set('Content-Type', 'application/json')
+      .send(body)
     expect(res.status).toBe(401)
     expect(mod._calls.enqueue).toHaveLength(0)
   })
 
-  it('accepts and enqueues with correct secret', async () => {
+  it('202 when array contains deal.propertyChange(dealstage=closedwon) — enqueues 1 job', async () => {
     const mod = makeFakeDealSyncModule()
     const app = await buildApp(mod)
-    const res = await request(app.server).post('/webhooks/hubspot').set('x-smartflow-secret', 'topsecret').send({ objectId: 'D-1', subscriptionType: 'deal.creation' })
+    const body = [{
+      subscriptionType: 'deal.propertyChange',
+      objectId: '12345',
+      propertyName: 'dealstage',
+      propertyValue: 'closedwon'
+    }]
+    const res = await postSigned(app, { body })
     expect(res.status).toBe(202)
     expect(res.body.ok).toBe(true)
-    expect(res.body.jobId).toBe('J-1')
     expect(mod._calls.enqueue).toHaveLength(1)
-    expect(mod._calls.enqueue[0].objectId).toBe('D-1')
-    expect(mod._calls.enqueue[0].eventType).toBe('deal.creation')
-    expect(res.headers['x-correlation-id']).toBeTruthy()
+    expect(mod._calls.enqueue[0].objectId).toBe('12345')
+    expect(mod._calls.enqueue[0].eventType).toBe('deal.propertyChange')
   })
 
-  it('400 when objectId missing', async () => {
+  it('200 (ack) and 0 enqueues when deal.propertyChange has a different property', async () => {
     const mod = makeFakeDealSyncModule()
     const app = await buildApp(mod)
-    const res = await request(app.server).post('/webhooks/hubspot').set('x-smartflow-secret', 'topsecret').send({})
-    expect(res.status).toBe(400)
+    const body = [{
+      subscriptionType: 'deal.propertyChange',
+      objectId: '12345',
+      propertyName: 'amount',
+      propertyValue: '999'
+    }]
+    const res = await postSigned(app, { body })
+    expect(res.status).toBe(200)
+    expect(res.body.ok).toBe(true)
+    expect(res.body.enqueued).toBe(0)
+    expect(mod._calls.enqueue).toHaveLength(0)
   })
 
-  it('echoes provided x-correlation-id', async () => {
+  it('200 and 0 enqueues when deal.propertyChange has dealstage=anything-other-than-closedwon', async () => {
     const mod = makeFakeDealSyncModule()
     const app = await buildApp(mod)
-    const res = await request(app.server).post('/webhooks/hubspot').set('x-smartflow-secret', 'topsecret').set('x-correlation-id', 'CUSTOM-1').send({ objectId: 'D-2' })
+    const body = [{
+      subscriptionType: 'deal.propertyChange',
+      objectId: '12345',
+      propertyName: 'dealstage',
+      propertyValue: 'qualifiedtobuy'
+    }]
+    const res = await postSigned(app, { body })
+    expect(res.status).toBe(200)
+    expect(res.body.enqueued).toBe(0)
+    expect(mod._calls.enqueue).toHaveLength(0)
+  })
+
+  it('200 and 0 enqueues for deal.creation (strict mode)', async () => {
+    const mod = makeFakeDealSyncModule()
+    const app = await buildApp(mod)
+    const body = [{ subscriptionType: 'deal.creation', objectId: '12345' }]
+    const res = await postSigned(app, { body })
+    expect(res.status).toBe(200)
+    expect(res.body.enqueued).toBe(0)
+    expect(mod._calls.enqueue).toHaveLength(0)
+  })
+
+  it('200 and 0 enqueues for deal.deletion', async () => {
+    const mod = makeFakeDealSyncModule()
+    const app = await buildApp(mod)
+    const body = [{ subscriptionType: 'deal.deletion', objectId: '12345' }]
+    const res = await postSigned(app, { body })
+    expect(res.status).toBe(200)
+    expect(res.body.enqueued).toBe(0)
+    expect(mod._calls.enqueue).toHaveLength(0)
+  })
+
+  it('200 and 0 enqueues for empty array', async () => {
+    const mod = makeFakeDealSyncModule()
+    const app = await buildApp(mod)
+    const res = await postSigned(app, { body: [] })
+    expect(res.status).toBe(200)
+    expect(res.body.enqueued).toBe(0)
+    expect(mod._calls.enqueue).toHaveLength(0)
+  })
+
+  it('202 and enqueues only the relevant event when batch mixes relevant + ignored', async () => {
+    const mod = makeFakeDealSyncModule()
+    const app = await buildApp(mod)
+    const body = [
+      { subscriptionType: 'deal.creation', objectId: 'IGNORE-1' },
+      { subscriptionType: 'deal.propertyChange', objectId: 'KEEP-1', propertyName: 'amount', propertyValue: '10' },
+      { subscriptionType: 'deal.propertyChange', objectId: 'KEEP-2', propertyName: 'dealstage', propertyValue: 'closedwon' },
+      { subscriptionType: 'deal.deletion', objectId: 'IGNORE-2' }
+    ]
+    const res = await postSigned(app, { body })
+    expect(res.status).toBe(202)
+    expect(mod._calls.enqueue).toHaveLength(1)
+    expect(mod._calls.enqueue[0].objectId).toBe('KEEP-2')
+    expect(res.body.enqueued).toBe(1)
+  })
+
+  it('200 and 0 enqueues for events missing objectId', async () => {
+    const mod = makeFakeDealSyncModule()
+    const app = await buildApp(mod)
+    const body = [{
+      subscriptionType: 'deal.propertyChange',
+      propertyName: 'dealstage',
+      propertyValue: 'closedwon'
+    }]
+    const res = await postSigned(app, { body })
+    expect(res.status).toBe(200)
+    expect(res.body.enqueued).toBe(0)
+    expect(mod._calls.enqueue).toHaveLength(0)
+  })
+
+  it('echoes x-correlation-id when provided', async () => {
+    const mod = makeFakeDealSyncModule()
+    const app = await buildApp(mod)
+    const body = [{
+      subscriptionType: 'deal.propertyChange',
+      objectId: '12345',
+      propertyName: 'dealstage',
+      propertyValue: 'closedwon'
+    }]
+    const rawBody = JSON.stringify(body)
+    const ts = Date.now()
+    const sig = signWebhook({ method: 'POST', url: '/webhooks/hubspot', rawBody, timestamp: ts, secret: 'hmac-test-secret' })
+    const res = await request(app.server)
+      .post('/webhooks/hubspot')
+      .set('x-hubspot-signature-v3', sig)
+      .set('x-hubspot-request-timestamp', String(ts))
+      .set('x-correlation-id', 'CUSTOM-1')
+      .set('Content-Type', 'application/json')
+      .send(body)
     expect(res.headers['x-correlation-id']).toBe('CUSTOM-1')
+  })
+
+  it('500 when clientSecret is missing and NODE_ENV is production (fail-closed)', async () => {
+    const mod = makeFakeDealSyncModule()
+    const cfg = baseConfig({
+      hubspot: {
+        accessToken: 't',
+        apiBase: 'https://api.hubapi.com',
+        clientSecret: '',
+        signatureTimestampToleranceMs: 300000,
+        propertyOdooCustomerId: 'a',
+        propertyOdooOrderId: 'b'
+      },
+      server: { port: 0, nodeEnv: 'production' }
+    })
+    const app = await buildApp(mod, cfg)
+    const res = await request(app.server)
+      .post('/webhooks/hubspot')
+      .set('x-hubspot-signature-v3', 'x')
+      .set('x-hubspot-request-timestamp', String(Date.now()))
+      .send([])
+    expect(res.status).toBe(500)
+    expect(mod._calls.enqueue).toHaveLength(0)
   })
 })

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const request = require('supertest')
+import crypto from 'node:crypto'
 const { MongoMemoryServer } = require('mongodb-memory-server')
 const mongoose = require('mongoose')
 
@@ -26,8 +27,15 @@ afterAll(async () => {
 
 const config = {
   mongodbUri: 'mongodb://x',
-  hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com', propertyOdooCustomerId: 'id_cliente_odoo', propertyOdooOrderId: 'id_orden_odoo' },
-  webhook: { sharedSecret: 's', headerName: 'x-smartflow-secret' },
+  hubspot: {
+    accessToken: 't',
+    apiBase: 'https://api.hubapi.com',
+    clientSecret: 'e2e-test-secret',
+    signatureTimestampToleranceMs: 5 * 60 * 1000,
+    propertyOdooCustomerId: 'id_cliente_odoo',
+    propertyOdooOrderId: 'id_orden_odoo'
+  },
+  webhook: { sharedSecret: '', headerName: 'x-smartflow-secret' },
   odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
   server: { port: 0, nodeEnv: 'test' },
   logging: { level: 'error' },
@@ -35,7 +43,7 @@ const config = {
   retry: { maxAttempts: 8, maxDelayMs: 60_000 }
 }
 
-describe('e2e: webhook -> job -> upsert -> writeback', () => {
+describe('e2e: webhook -> job -> upsert -> writeback (Private App HMAC)', () => {
   it('completes a full sync within the polling window', async () => {
     calls = { writeBack: [], upsert: [] }
     const sourceGateway = {
@@ -54,10 +62,24 @@ describe('e2e: webhook -> job -> upsert -> writeback', () => {
     await app.listen({ port: 0, host: '127.0.0.1' })
     await mod.startWorker()
 
+    const body = [{
+      subscriptionType: 'deal.propertyChange',
+      objectId: 'D-1',
+      propertyName: 'dealstage',
+      propertyValue: 'closedwon'
+    }]
+    const rawBody = JSON.stringify(body)
+    const ts = Date.now()
+    const sig = crypto
+      .createHmac('sha256', 'e2e-test-secret')
+      .update('POST' + '/webhooks/hubspot' + rawBody + String(ts))
+      .digest('base64')
+
     const res = await request(app.server)
       .post('/webhooks/hubspot')
-      .set('x-smartflow-secret', 's')
-      .send({ objectId: 'D-1', subscriptionType: 'deal.creation' })
+      .set('x-hubspot-signature-v3', sig)
+      .set('x-hubspot-request-timestamp', String(ts))
+      .send(body)
     expect(res.status).toBe(202)
 
     // wait until the job completes

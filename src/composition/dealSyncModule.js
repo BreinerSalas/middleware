@@ -114,30 +114,11 @@ function createDealSyncModule({
     return { ...result, correlationId }
   }
 
-  function registerRoutes(app) {
-    if (!app || typeof app.post !== 'function') throw new Error('registerRoutes requires a Fastify-like app')
-    app.post('/webhooks/hubspot', async (req, reply) => {
-      const payload = req.body || {}
-      const objectId = payload.objectId || (payload.properties && payload.properties.objectId) || (payload.dealId) || null
-      if (!objectId) {
-        return reply.code(400).send({ ok: false, error: 'objectId required' })
-      }
-      try {
-        const result = await enqueueWebhook({ rawBody: payload, objectId: String(objectId), eventType: payload.subscriptionType || null })
-        return reply.code(202).send({ ok: true, deduped: result.deduped, correlationId: result.correlationId, jobId: result.job ? result.job._id : null })
-      } catch (err) {
-        req.log && req.log.error && req.log.error('enqueue failed', { error: err.message })
-        return reply.code(500).send({ ok: false, error: 'enqueue_failed' })
-      }
-    })
-  }
-
   return {
     enqueueWebhook,
     processSyncJob: _processSyncJobUseCase.execute.bind(_processSyncJobUseCase),
     startWorker: () => _jobPoller.start(),
     stopWorker: () => _jobPoller.stop(),
-    registerRoutes,
     _internals: {
       jobRepository: _jobRepository,
       mappingRepository: _mappingRepository,
