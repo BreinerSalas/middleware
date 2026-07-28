@@ -21,6 +21,7 @@ const OPTIONAL_KEYS = [
   'ODOO_DB',
   'ODOO_LOGIN',
   'ODOO_API_KEY',
+  'ODOO_DEFAULT_CUSTOMER_ID',
   'PORT',
   'NODE_ENV',
   'LOG_LEVEL',
@@ -69,7 +70,8 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       baseUrl: (env.ODOO_BASE_URL || '').replace(/\/+$/, ''),
       db: env.ODOO_DB || '',
       login: env.ODOO_LOGIN || '',
-      apiKey: env.ODOO_API_KEY || ''
+      apiKey: env.ODOO_API_KEY || '',
+      defaultCustomerId: env.ODOO_DEFAULT_CUSTOMER_ID || ''
     },
     server: {
       port: Number(env.PORT || 3007),

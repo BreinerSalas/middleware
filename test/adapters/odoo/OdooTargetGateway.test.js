@@ -129,4 +129,38 @@ describe('OdooTargetGateway', () => {
       references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
     })).rejects.toThrow(/boom/)
   })
+
+  it('uses defaultCustomerId from constructor as final fallback when deal property and references are missing', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': 17 } })
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, defaultCustomerId: '99' })
+    await gw.upsert({
+      existingTargetId: null,
+      record: { id: 'D-1', properties: {} },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    const soPayload = api.createSalesOrder.mock.calls[0][0]
+    expect(soPayload.partner_id).toBe(99)
+  })
+
+  it('prefers deal property over defaultCustomerId', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': 17 } })
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, defaultCustomerId: '99' })
+    await gw.upsert({
+      existingTargetId: null,
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    const soPayload = api.createSalesOrder.mock.calls[0][0]
+    expect(soPayload.partner_id).toBe(42)
+  })
+
+  it('ignores defaultCustomerId when not configured (empty string)', async () => {
+    const api = makeApi()
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload })
+    await expect(gw.upsert({
+      existingTargetId: null,
+      record: { id: 'D-1', properties: {} },
+      references: { lineItems: [] }
+    })).rejects.toMatchObject({ transient: true, code: 'MISSING_ODOO_CUSTOMER_ID' })
+  })
 })

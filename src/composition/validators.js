@@ -9,15 +9,18 @@ function mustHaveLineItems({ references = {}, record } = {}) {
   }
 }
 
-function mustHaveOdooCustomerId({ record, references = {} } = {}) {
-  const props = (record && record.properties) || {}
-  const direct = props.id_cliente_odoo
-  const ref = references.odooCustomerId
-  if (!direct && !ref) {
-    const err = new Error('Missing Odoo customer reference for deal')
-    err.transient = true
-    err.code = 'MISSING_ODOO_CUSTOMER_ID'
-    throw err
+function createMustHaveOdooCustomerId({ defaultCustomerId = '' } = {}) {
+  const fallback = defaultCustomerId ? String(defaultCustomerId) : ''
+  return function mustHaveOdooCustomerId({ record, references = {} } = {}) {
+    const props = (record && record.properties) || {}
+    const direct = props.id_cliente_odoo
+    const ref = references.odooCustomerId
+    if (!direct && !ref && !fallback) {
+      const err = new Error('Missing Odoo customer reference for deal')
+      err.transient = true
+      err.code = 'MISSING_ODOO_CUSTOMER_ID'
+      throw err
+    }
   }
 }
 
@@ -29,4 +32,4 @@ function mustBeClosedWon({ record } = {}) {
   }
 }
 
-module.exports = { mustHaveLineItems, mustHaveOdooCustomerId, mustBeClosedWon }
+module.exports = { mustHaveLineItems, mustBeClosedWon, createMustHaveOdooCustomerId }

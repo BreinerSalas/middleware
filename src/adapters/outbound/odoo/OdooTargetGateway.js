@@ -3,17 +3,22 @@
 const { mapDealToManufacturingOrder } = require('./dealToManufacturingOrderMapper')
 
 class OdooTargetGateway {
-  constructor({ apiClient, hashPayload, logger = null } = {}) {
+  constructor({ apiClient, hashPayload, logger = null, defaultCustomerId = '' } = {}) {
     if (!apiClient) throw new Error('OdooTargetGateway requires apiClient')
     if (typeof hashPayload !== 'function') throw new Error('OdooTargetGateway requires hashPayload')
     this.apiClient = apiClient
     this.hashPayload = hashPayload
     this.logger = logger
+    this.defaultCustomerId = defaultCustomerId ? String(defaultCustomerId) : ''
   }
 
   async upsert({ existingTargetId = null, record, references = {}, correlationId = null } = {}) {
     if (!record) throw new Error('OdooTargetGateway.upsert requires record')
-    const odooCustomerId = (references && references.odooCustomerId) || (record.properties && record.properties.id_cliente_odoo) || null
+    const odooCustomerId =
+      (references && references.odooCustomerId) ||
+      (record.properties && record.properties.id_cliente_odoo) ||
+      this.defaultCustomerId ||
+      null
     const hsLineItems = (references && references.lineItems) || []
 
     const enrichedLineItems = await this.resolveProductIds(hsLineItems, correlationId)

@@ -13,7 +13,7 @@ const { MongoDedupeGuard } = require('../adapters/outbound/mongo/MongoDedupeGuar
 const { MongoAuditTrail } = require('../adapters/outbound/mongo/MongoAuditTrail')
 const { HubspotSourceGateway } = require('../adapters/outbound/hubspot/HubspotSourceGateway')
 const { OdooTargetGateway } = require('../adapters/outbound/odoo/OdooTargetGateway')
-const { mustHaveLineItems, mustHaveOdooCustomerId, mustBeClosedWon } = require('./validators')
+const { mustHaveLineItems, mustBeClosedWon, createMustHaveOdooCustomerId } = require('./validators')
 
 function buildWriteBackPayload(mapping) {
   return {
@@ -63,10 +63,11 @@ function createDealSyncModule({
       apiKey: config.odoo.apiKey
     }),
     hashPayload,
+    defaultCustomerId: config.odoo.defaultCustomerId,
     logger
   })
 
-  const _validators = Array.isArray(validators) ? validators : [mustBeClosedWon, mustHaveLineItems, mustHaveOdooCustomerId]
+  const _validators = Array.isArray(validators) ? validators : [mustBeClosedWon, mustHaveLineItems, createMustHaveOdooCustomerId({ defaultCustomerId: config.odoo.defaultCustomerId })]
 
   const _processSyncJobUseCase = processSyncJobUseCase || new ProcessSyncJobUseCase({
     jobRepository: _jobRepository,

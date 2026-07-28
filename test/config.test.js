@@ -116,6 +116,27 @@ describe('config', () => {
     expect(cfg.odoo.login).toBe('')
   })
 
+  it('exposes cfg.odoo.defaultCustomerId as parsed string when provided', () => {
+    const env = {
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret',
+      ODOO_DEFAULT_CUSTOMER_ID: '42'
+    }
+    const cfg = load({ env })
+    expect(cfg.odoo.defaultCustomerId).toBe('42')
+  })
+
+  it('defaults cfg.odoo.defaultCustomerId to empty string when missing', () => {
+    const env = {
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret'
+    }
+    const cfg = load({ env })
+    expect(cfg.odoo.defaultCustomerId).toBe('')
+  })
+
   it('normalizes trailing slashes in ODOO_BASE_URL', () => {
     const env = {
       MONGODB_URI: 'mongodb://localhost:27017/x',
