@@ -139,6 +139,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3007/
 | `HS_PROPERTY_ODOO_ORDER_ID`          | `id_orden_odoo`                      | Propiedad custom del Deal que guarda el ID de orden Odoo (writeback).      |
 | `ODOO_CLIENT_MODE`                    | `stub`                               | `stub` (en memoria, para tests/dev) o `http` (real JSON-RPC).              |
 | `ODOO_BASE_URL`                       | _(vacío)_                            | Requerida si `ODOO_CLIENT_MODE=http` (ej. `https://odoo.example.com`).     |
+| `ODOO_DEFAULT_CUSTOMER_ID`            | _(vacío)_                            | `res.partner.id` usado como fallback cuando el deal no tiene `id_cliente_odoo`. Ver sección Odoo. |
 | `PORT`                                | `3007`                               | Puerto HTTP del servicio.                                                  |
 | `NODE_ENV`                            | `development`                        | `production` activa fail-closed del webhook si `HUBSPOT_CLIENT_SECRET` no está set. |
 | `LOG_LEVEL`                           | `info`                               | Nivel pino: `fatal`, `error`, `warn`, `info`, `debug`, `trace`.            |
@@ -261,12 +262,14 @@ Content-Type: application/json
 
 Settings → Properties → **Deal properties** → Create property:
 
-- `id_cliente_odoo` (texto)
-- `id_orden_odoo` (texto)
+- `id_cliente_odoo` (texto) — **opcional si usás `ODOO_DEFAULT_CUSTOMER_ID`**
+- `id_orden_odoo` (texto) — writeback automático
 
 Si tu portal usa nombres distintos, sobreescribir con `HS_PROPERTY_ODOO_CUSTOMER_ID` y `HS_PROPERTY_ODOO_ORDER_ID`.
 
 > **Detección de estado `closed won`**: el middleware compara literal `propertyValue === "closedwon"` (sin guion bajo). Si tu portal usa otro internal value, ajustar en el validador `mustBeClosedWon` (`src/composition/validators.js`).
+
+> **Single-tenant shortcut**: si todos tus deals van al mismo partner en Odoo, podés saltearte la creación de `id_cliente_odoo` y setear `ODOO_DEFAULT_CUSTOMER_ID=<partner_id>` en `.env`. Ver sección "Configuración de Odoo" abajo.
 
 > **Nota EU**: si tu portal HubSpot es europeo, setear `HUBSPOT_API_BASE=https://api.hubapi.eu`. La detección automática de región **no** está implementada — hay que configurarla explícitamente.
 
@@ -288,6 +291,19 @@ El adapter usa JSON-RPC contra `/jsonrpc` (`common.version` para healthcheck, `e
 
 > **Aún no integrado contra un Odoo real** — el sandbox está pendiente. La interfaz `OdooApiClient` está diseñada para que cambiar `stub` → `http` no toque el dominio.
 
+### Partner de Odoo: deal property vs env default
+
+Por cada deal que se sincroniza, el middleware necesita el `partner_id` (cliente en `res.partner`) que se setea en el `sale.order` creado en Odoo. Hay dos formas de proveerlo:
+
+| Modo | Configuración | Cuándo usar |
+|---|---|---|
+| **Por deal** | Crear la propiedad custom `id_cliente_odoo` en HubSpot y setearla por deal con el ID numérico del partner. | Multi-cliente: distintos deals van a distintos partners. |
+| **Por entorno** | Setear `ODOO_DEFAULT_CUSTOMER_ID=42` en `.env` (un único partner global). | Single-tenant: todos los deals van al mismo partner (útil para demos y setups simples). |
+
+El orden de resolución es: `references.odooCustomerId` (programático) → `record.properties.id_cliente_odoo` (deal property) → `cfg.odoo.defaultCustomerId` (env). El deal property siempre gana sobre el env default si ambos están seteados.
+
+Si ninguno está configurado, el job falla con `MISSING_ODOO_CUSTOMER_ID` y termina en dead-letter tras los reintentos.
+
 ---
 
 ## Tests & TDD
@@ -297,15 +313,15 @@ npm test                  # corre toda la suite
 npm run test:coverage     # con reporte de coverage
 ```
 
-- **194 tests** distribuidos en 37 archivos.
+- **381 tests** distribuidos en 53 archivos.
 - **Coverage** (thresholds enforced en `vitest.config.js`):
 
   | Métrica      | Umbral | Actual |
   |--------------|--------|--------|
-  | Lines        | ≥ 80%  | 91.1%  |
-  | Statements   | ≥ 80%  | 91.1%  |
-  | Branches     | ≥ 70%  | 90.2%  |
-  | Functions    | ≥ 70%  | 70.0%  |
+  | Lines        | ≥ 80%  | 92.91% |
+  | Statements   | ≥ 80%  | 92.91% |
+  | Branches     | ≥ 70%  | 73.23% |
+  | Functions    | ≥ 70%  | 86.15% |
 
 - Excluidos del coverage: `src/server.js` (entrypoint), `src/config/**` (env-driven), `src/core/application/ports/**` (contratos JSDoc), `src/panel/static/**` y `src/panel/index.html` (assets servidos tal cual).
 
@@ -315,6 +331,8 @@ Cada checkpoint del plan deja un reporte en `docs/testing/`:
 
 - `2026-07-20-plan-hubspot-odoo.tdd.md` — Fase 1 (sync completo HubSpot↔Odoo, 9 commits, 136 tests).
 - `2026-07-20-plan-panel.tdd.md` — H8 panel admin (5 commits, 58 tests).
+- `2026-07-28-plan-hubspot-private-app.tdd.md` — Adaptación a HubSpot Private App (HMAC v3 + array body, 5 commits, 27 tests).
+- `2026-07-28-plan-odoo-default-customer.tdd.md` — Default customer por env (1 commit, 9 tests).
 
 Cada reporte documenta ciclos RED → GREEN con archivos tocados, tests añadidos y resultados.
 
