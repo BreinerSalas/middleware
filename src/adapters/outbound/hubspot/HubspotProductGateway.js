@@ -17,9 +17,12 @@ class HubspotProductGateway {
   }
 
   buildProperties(odooProduct) {
+    const rawPrice = odooProduct.list_price
+    const numPrice = Number(rawPrice)
+    const safePrice = (Number.isFinite(numPrice) && numPrice < 0) ? 0 : (rawPrice ?? 0)
     const props = {
       name: String(odooProduct.name),
-      price: String(odooProduct.list_price ?? 0)
+      price: String(safePrice)
     }
     if (this.hasValidSku(odooProduct)) {
       props.hs_sku = String(odooProduct.default_code).trim()

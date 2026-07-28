@@ -42,6 +42,20 @@ describe('HubspotProductGateway', () => {
     expect(props).not.toHaveProperty('hs_sku')
   })
 
+  it('buildProperties coerces negative list_price to "0" (HubSpot rejects negatives)', () => {
+    const api = makeApi()
+    const gw = new HubspotProductGateway({ apiClient: api })
+    const props = gw.buildProperties({ id: 7, name: 'Neg', default_code: 'NEG-1', list_price: -0.43 })
+    expect(props.price).toBe('0')
+  })
+
+  it('buildProperties does not coerce list_price = 0 to anything else', () => {
+    const api = makeApi()
+    const gw = new HubspotProductGateway({ apiClient: api })
+    const props = gw.buildProperties({ id: 7, name: 'Z', default_code: 'Z', list_price: 0 })
+    expect(props.price).toBe('0')
+  })
+
   it('upsertBySku without default_code goes straight to create (no search)', async () => {
     const api = makeApi()
     const gw = new HubspotProductGateway({ apiClient: api })
