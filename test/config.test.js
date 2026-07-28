@@ -13,11 +13,15 @@ describe('config', () => {
     expect(err.missing).toEqual(expect.arrayContaining(REQUIRED_KEYS))
   })
 
+  it('lists HUBSPOT_CLIENT_SECRET in required keys (Private App mode)', () => {
+    expect(REQUIRED_KEYS).toContain('HUBSPOT_CLIENT_SECRET')
+  })
+
   it('returns parsed config when env is valid', () => {
     const env = {
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
-      WEBHOOK_SHARED_SECRET: 's',
+      HUBSPOT_CLIENT_SECRET: 'client-secret-hex',
       ODOO_CLIENT_MODE: 'stub',
       PORT: '4321',
       WORKER_CONCURRENCY: '5',
@@ -32,14 +36,46 @@ describe('config', () => {
     expect(cfg.retry.maxAttempts).toBe(4)
     expect(cfg.retry.maxDelayMs).toBe(60000)
     expect(cfg.odoo.mode).toBe('stub')
-    expect(cfg.webhook.headerName).toBe('x-smartflow-secret')
+    expect(cfg.hubspot.clientSecret).toBe('client-secret-hex')
+    expect(cfg.hubspot.signatureTimestampToleranceMs).toBe(5 * 60 * 1000)
+  })
+
+  it('exposes cfg.hubspot.clientSecret as parsed string', () => {
+    const env = {
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret'
+    }
+    const cfg = load({ env })
+    expect(cfg.hubspot.clientSecret).toBe('my-secret')
+  })
+
+  it('parses HUBSPOT_WEBHOOK_TS_TOLERANCE_MS when provided', () => {
+    const env = {
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret',
+      HUBSPOT_WEBHOOK_TS_TOLERANCE_MS: '120000'
+    }
+    const cfg = load({ env })
+    expect(cfg.hubspot.signatureTimestampToleranceMs).toBe(120000)
+  })
+
+  it('defaults signatureTimestampToleranceMs to 5 minutes when missing', () => {
+    const env = {
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret'
+    }
+    const cfg = load({ env })
+    expect(cfg.hubspot.signatureTimestampToleranceMs).toBe(300000)
   })
 
   it('accepts custom header name and HubSpot property names', () => {
     const env = {
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
-      WEBHOOK_SHARED_SECRET: 's',
+      HUBSPOT_CLIENT_SECRET: 'my-secret',
       WEBHOOK_SHARED_SECRET_HEADER_NAME: 'X-Custom-Secret',
       HS_PROPERTY_ODOO_CUSTOMER_ID: 'cust',
       HS_PROPERTY_ODOO_ORDER_ID: 'order'
@@ -54,7 +90,7 @@ describe('config', () => {
     const env = {
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
-      WEBHOOK_SHARED_SECRET: 's',
+      HUBSPOT_CLIENT_SECRET: 'my-secret',
       ODOO_CLIENT_MODE: 'http',
       ODOO_BASE_URL: 'https://bsalas.odoo.com/',
       ODOO_DB: 'bsalas',
@@ -72,7 +108,7 @@ describe('config', () => {
     const env = {
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
-      WEBHOOK_SHARED_SECRET: 's',
+      HUBSPOT_CLIENT_SECRET: 'my-secret',
       ODOO_CLIENT_MODE: 'stub'
     }
     const cfg = load({ env })
@@ -84,21 +120,32 @@ describe('config', () => {
     const env = {
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
-      WEBHOOK_SHARED_SECRET: 's',
+      HUBSPOT_CLIENT_SECRET: 'my-secret',
       ODOO_BASE_URL: 'https://bsalas.odoo.com/'
     }
     const cfg = load({ env })
     expect(cfg.odoo.baseUrl).toBe('https://bsalas.odoo.com')
   })
 
+  it('does not require WEBHOOK_SHARED_SECRET (legacy/optional)', () => {
+    const env = {
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret'
+    }
+    expect(() => load({ env })).not.toThrow()
+    const cfg = load({ env })
+    expect(cfg.webhook.sharedSecret).toBe('')
+  })
+
   it('auto-loads .env from cwd when called without envFile', () => {
     const saved = {
       MONGODB_URI: process.env.MONGODB_URI,
       HUBSPOT_ACCESS_TOKEN: process.env.HUBSPOT_ACCESS_TOKEN,
-      WEBHOOK_SHARED_SECRET: process.env.WEBHOOK_SHARED_SECRET
+      HUBSPOT_CLIENT_SECRET: process.env.HUBSPOT_CLIENT_SECRET
     }
     process.env.HUBSPOT_ACCESS_TOKEN = 'dummy-hubspot'
-    process.env.WEBHOOK_SHARED_SECRET = 'dummy-secret'
+    process.env.HUBSPOT_CLIENT_SECRET = 'dummy-client-secret'
     delete process.env.MONGODB_URI
     try {
       const cfg = load()

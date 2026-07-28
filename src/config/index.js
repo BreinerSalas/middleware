@@ -6,11 +6,13 @@ const dotenv = require('dotenv')
 const REQUIRED_KEYS = [
   'MONGODB_URI',
   'HUBSPOT_ACCESS_TOKEN',
-  'WEBHOOK_SHARED_SECRET'
+  'HUBSPOT_CLIENT_SECRET'
 ]
 
 const OPTIONAL_KEYS = [
   'HUBSPOT_API_BASE',
+  'HUBSPOT_WEBHOOK_TS_TOLERANCE_MS',
+  'WEBHOOK_SHARED_SECRET',
   'WEBHOOK_SHARED_SECRET_HEADER_NAME',
   'HS_PROPERTY_ODOO_CUSTOMER_ID',
   'HS_PROPERTY_ODOO_ORDER_ID',
@@ -53,11 +55,13 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
     hubspot: {
       accessToken: env.HUBSPOT_ACCESS_TOKEN,
       apiBase: env.HUBSPOT_API_BASE || 'https://api.hubapi.com',
+      clientSecret: env.HUBSPOT_CLIENT_SECRET,
+      signatureTimestampToleranceMs: Number(env.HUBSPOT_WEBHOOK_TS_TOLERANCE_MS || 300000),
       propertyOdooCustomerId: env.HS_PROPERTY_ODOO_CUSTOMER_ID || 'id_cliente_odoo',
       propertyOdooOrderId: env.HS_PROPERTY_ODOO_ORDER_ID || 'id_orden_odoo'
     },
     webhook: {
-      sharedSecret: env.WEBHOOK_SHARED_SECRET,
+      sharedSecret: env.WEBHOOK_SHARED_SECRET || '',
       headerName: (env.WEBHOOK_SHARED_SECRET_HEADER_NAME || 'x-smartflow-secret').toLowerCase()
     },
     odoo: {
