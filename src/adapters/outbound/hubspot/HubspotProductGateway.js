@@ -71,6 +71,37 @@ class HubspotProductGateway {
     const msg = sources.join(' ').toLowerCase()
     return msg.includes('already has that value') || msg.includes('propertyvaluecoordinates')
   }
+
+  async batchUpsertBySkus(odooProducts, { chunkSize = 100, idProperty = 'hs_sku' } = {}) {
+    if (!Array.isArray(odooProducts) || odooProducts.length === 0) {
+      return { results: [], errors: [], skipped: [] }
+    }
+    const valid = []
+    const skipped = []
+    for (const p of odooProducts) {
+      if (!p || this.hasValidSku(p)) {
+        valid.push(p)
+      } else {
+        skipped.push(p && p.id)
+      }
+    }
+    if (valid.length === 0) {
+      return { results: [], errors: [], skipped }
+    }
+    const allResults = []
+    const allErrors = []
+    for (let i = 0; i < valid.length; i += chunkSize) {
+      const chunk = valid.slice(i, i + chunkSize)
+      const inputs = chunk.map((p) => ({
+        id: this.extractSku(p),
+        properties: this.buildProperties(p)
+      }))
+      const response = await this.apiClient.batchUpsertProducts({ inputs, idProperty })
+      allResults.push(...(response.results || []))
+      allErrors.push(...(response.errors || []))
+    }
+    return { results: allResults, errors: allErrors, skipped }
+  }
 }
 
 module.exports = { HubspotProductGateway }

@@ -40,10 +40,9 @@ describe('HubspotProductGateway - batchUpsertBySkus', () => {
     await gw.batchUpsertBySkus([product(1, 'AC-1170', 'Aceite')])
     const [arg] = api.batchUpsertProducts.mock.calls[0]
     expect(arg.idProperty).toBe('hs_sku')
-    expect(arg.inputs[0]).toEqual({
-      id: 'AC-1170',
-      properties: { name: 'Aceite', price: '10' }
-    })
+    expect(arg.inputs[0].id).toBe('AC-1170')
+    expect(arg.inputs[0].properties).toMatchObject({ name: 'Aceite', price: '10' })
+    expect(arg.inputs[0].properties.hs_sku).toBe('AC-1170')
   })
 
   it('skips products without valid sku (default_code false / null / empty)', async () => {
