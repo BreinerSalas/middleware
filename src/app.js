@@ -5,7 +5,6 @@ const path = require('node:path')
 const Fastify = require('fastify')
 const mongoose = require('mongoose')
 const { createLogger } = require('./lib/logger')
-const { createAuthMiddleware } = require('./adapters/inbound/http/auth.middleware')
 const { createHubspotSignatureMiddleware } = require('./adapters/inbound/http/hubspotSignature.middleware')
 const { createCorrelationMiddleware } = require('./adapters/inbound/http/correlation.middleware')
 const { createHealthRoutes } = require('./adapters/inbound/http/health.routes')
@@ -33,13 +32,7 @@ function createApp({ config, logger = null, dealSyncModule = null, panelReposito
 
   app.addHook('onRequest', createCorrelationMiddleware())
 
-  const auth = createAuthMiddleware({
-    secret: config.webhook.sharedSecret,
-    headerName: config.webhook.headerName,
-    isDev: config.server.nodeEnv !== 'production'
-  })
-
-  const signatureAuth = createHubspotSignatureMiddleware({
+  const auth = createHubspotSignatureMiddleware({
     clientSecret: config.hubspot.clientSecret,
     toleranceMs: config.hubspot.signatureTimestampToleranceMs,
     isDev: config.server.nodeEnv !== 'production'
@@ -53,7 +46,7 @@ function createApp({ config, logger = null, dealSyncModule = null, panelReposito
   app.register(createHealthRoutes({ mongo: mongoForHealth }), { prefix: '' })
 
   // webhook — HubSpot Private App: HMAC + array of events, strict filter
-  app.post('/webhooks/hubspot', { preHandler: signatureAuth }, async (req, reply) => {
+  app.post('/webhooks/hubspot', { preHandler: auth }, async (req, reply) => {
     if (!dealSyncModule) return reply.code(503).send({ ok: false, error: 'sync_module_not_ready' })
 
     const body = req.body
