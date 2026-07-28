@@ -6,7 +6,7 @@ const { createPanelAuthMiddleware } = require('./panel.auth.middleware.js')
 const CLEAR_COOLDOWN_MS = 30_000
 
 async function panelRoutesImpl(fastify, opts) {
-  const { panelRepository, healthCheck, config } = opts || {}
+  const { panelRepository, healthCheck, config, productRepository = null } = opts || {}
   if (!panelRepository) throw new Error('createPanelRoutes requires panelRepository')
   if (!healthCheck) throw new Error('createPanelRoutes requires healthCheck')
   if (!config || !config.panel) throw new Error('createPanelRoutes requires config.panel')
@@ -32,6 +32,20 @@ async function panelRoutesImpl(fastify, opts) {
     const { page = 1, pageSize = 25, q = null } = req.query || {}
     const result = await panelRepository.listMappings({ page: Number(page) || 1, pageSize: Number(pageSize) || 25, q })
     return reply.send({ ok: true, ...result })
+  })
+
+  fastify.get('/api/panel/product-mappings', requireAuth, async (req, reply) => {
+    if (!productRepository) return reply.code(503).send({ ok: false, error: 'product_repository_not_ready' })
+    const { page = 1, pageSize = 25, q = null } = req.query || {}
+    const result = await productRepository.listProductMappings({ page: Number(page) || 1, pageSize: Number(pageSize) || 25, q })
+    return reply.send({ ok: true, ...result })
+  })
+
+  fastify.get('/api/panel/product-runs', requireAuth, async (req, reply) => {
+    if (!productRepository) return reply.code(503).send({ ok: false, error: 'product_repository_not_ready' })
+    const { limit = 10 } = req.query || {}
+    const items = await productRepository.listRecentRuns({ limit: Number(limit) || 10 })
+    return reply.send({ ok: true, items })
   })
 
   fastify.get('/api/panel/logs', requireAuth, async (req, reply) => {

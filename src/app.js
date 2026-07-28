@@ -10,6 +10,7 @@ const { createCorrelationMiddleware } = require('./adapters/inbound/http/correla
 const { createHealthRoutes } = require('./adapters/inbound/http/health.routes')
 const { createPanelRoutes } = require('./adapters/inbound/http/panel.routes')
 const { MongoPanelRepository } = require('./adapters/outbound/mongo/MongoPanelRepository')
+const { MongoProductPanelRepository } = require('./adapters/outbound/mongo/MongoProductPanelRepository')
 const { hubspotHealthCheck } = require('./adapters/outbound/hubspot/hubspotHealthCheck')
 const { odooHealthCheck } = require('./adapters/outbound/odoo/odooHealthCheck')
 
@@ -62,11 +63,12 @@ function createApp({ config, logger = null, dealSyncModule = null, panelReposito
   // panel: API + static assets
   if (config.panel) {
     const repo = panelRepository || new MongoPanelRepository()
+    const productRepo = new MongoProductPanelRepository()
     const healthCheck = {
       hubspot: () => hubspotHealthCheck({ baseUrl: config.hubspot.apiBase, accessToken: config.hubspot.accessToken, timeoutMs: 5000 }),
       odoo: () => odooHealthCheck({ mode: config.odoo.mode, baseUrl: config.odoo.baseUrl, timeoutMs: 5000 })
     }
-    app.register(createPanelRoutes, { panelRepository: repo, healthCheck, config })
+    app.register(createPanelRoutes, { panelRepository: repo, productRepository: productRepo, healthCheck, config })
   }
 
   if (staticRoot) {
