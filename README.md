@@ -12,11 +12,13 @@ Incluye un panel de administración/depuración (HTML + JS plano, sin paso de bu
 
 ```
                          ┌─────────────────────────────────┐
-   HubSpot Workflow ───► │ POST /webhooks/hubspot          │
-   (acción closedwon)    │  secreto compartido estático    │
-                         │  (comparación timing-safe)      │
+   HubSpot Private App ─► │ POST /webhooks/hubspot          │
+   (deal.propertyChange)  │  HMAC v3 (X-HubSpot-Signature- │
+                         │   v3) sobre METHOD+URL+BODY+TS  │
+                         │  body = array JSON de eventos   │
                          └────────────────┬────────────────┘
-                                          │
+                                          │ (filtra: solo
+                                          │  dealstage=closedwon)
                                           ▼
    ┌──────────────────────────────────────────────────────────────────┐
    │                     core/   (sin imports de frameworks)         │
@@ -27,15 +29,16 @@ Incluye un panel de administración/depuración (HTML + JS plano, sin paso de bu
    │   application/ SyncDealUseCase (orquesta enqueue→process→       │
    │               writeback). ports/ = contratos JSDoc (sin runtime) │
    └──────────────────────────┬───────────────────────────────────────┘
-                              │ usa puertos (JobRepository, MappingRepository,
-                              │   AuditTrail, DealFetcher, OrderWriter,
-                              │   DealWriter, Logger, Clock, HealthCheck,
-                              │   PanelRepository, DedupeGuard, Mutex)
-                              ▼
+                               │ usa puertos (JobRepository, MappingRepository,
+                               │   AuditTrail, DealFetcher, OrderWriter,
+                               │   DealWriter, Logger, Clock, HealthCheck,
+                               │   PanelRepository, DedupeGuard, Mutex)
+                               ▼
    ┌──────────────────────────────────────────────────────────────────┐
    │          adapters/   (implementaciones enchufables)              │
    │                                                                  │
    │   inbound/http/   health.routes · webhook.routes · panel.routes │
+   │                    hubspotSignature.middleware (HMAC v3)        │
    │   outbound/mongo/ MongoJobRepository · MongoMappingRepository · │
    │                    MongoAuditTrail · MongoDedupeGuard ·         │
    │                    MongoPanelRepository                         │
@@ -43,8 +46,8 @@ Incluye un panel de administración/depuración (HTML + JS plano, sin paso de bu
    │   outbound/odoo/     OdooApiClient stub+http + odooHealthCheck  │
    │   inbound/http/panel.auth.middleware (timing-safe, NODE_ENV)    │
    └──────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
+                               │
+                               ▼
                   ┌───────────────────────┐
                   │  MongoDB (persistencia)│
                   │  HubSpot API (REST)    │
@@ -121,7 +124,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3007/
 |---------------------------|---------------------------------------------------------------------------|
 | `MONGODB_URI`             | Cadena de conexión Mongo (con DB incluida)                                |
 | `HUBSPOT_ACCESS_TOKEN`    | Token de Private App de HubSpot (formato `pat-…`)                          |
-| `WEBHOOK_SHARED_SECRET`   | Secreto estático compartido con HubSpot Workflow para validar webhooks   |
+| `HUBSPOT_CLIENT_SECRET`   | Client Secret de la Private App (pestaña "Auth"). Se usa para verificar la firma HMAC v3 de los webhooks entrantes. |
 | `ODOO_API_KEY`            | Solo si `ODOO_CLIENT_MODE=http` — API key de Odoo                         |
 
 ### Opcionales (con defaults razonables)
@@ -129,13 +132,15 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3007/
 | Variable                              | Default                              | Propósito                                                                  |
 |---------------------------------------|--------------------------------------|----------------------------------------------------------------------------|
 | `HUBSPOT_API_BASE`                    | `https://api.hubapi.com`             | Base de la API. Cambiar a `https://api.hubapi.eu` para portal europeo.     |
-| `WEBHOOK_SHARED_SECRET_HEADER_NAME`   | `x-smartflow-secret`                 | Nombre del header donde HubSpot Workflow envía el secreto.                 |
+| `HUBSPOT_WEBHOOK_TS_TOLERANCE_MS`     | `300000`                             | Ventana de tolerancia del timestamp del webhook (replay protection).       |
+| `WEBHOOK_SHARED_SECRET`               | _(vacío)_                            | Legacy — ya no se usa. Mantener en `.env` para compat con configs viejas.  |
+| `WEBHOOK_SHARED_SECRET_HEADER_NAME`   | `x-smartflow-secret`                 | Legacy — header histórico del Workflow de HubSpot.                          |
 | `HS_PROPERTY_ODOO_CUSTOMER_ID`       | `id_cliente_odoo`                    | Propiedad custom del Deal que guarda el ID de cliente Odoo.                |
 | `HS_PROPERTY_ODOO_ORDER_ID`          | `id_orden_odoo`                      | Propiedad custom del Deal que guarda el ID de orden Odoo (writeback).      |
 | `ODOO_CLIENT_MODE`                    | `stub`                               | `stub` (en memoria, para tests/dev) o `http` (real JSON-RPC).              |
 | `ODOO_BASE_URL`                       | _(vacío)_                            | Requerida si `ODOO_CLIENT_MODE=http` (ej. `https://odoo.example.com`).     |
 | `PORT`                                | `3007`                               | Puerto HTTP del servicio.                                                  |
-| `NODE_ENV`                            | `development`                        | `production` activa fail-closed del panel si `PANEL_TOKEN` no está set.    |
+| `NODE_ENV`                            | `development`                        | `production` activa fail-closed del webhook si `HUBSPOT_CLIENT_SECRET` no está set. |
 | `LOG_LEVEL`                           | `info`                               | Nivel pino: `fatal`, `error`, `warn`, `info`, `debug`, `trace`.            |
 | `WORKER_CONCURRENCY`                  | `3`                                  | Trabajos concurrentes del worker loop.                                     |
 | `WORKER_POLL_INTERVAL_MS`             | `5000`                               | Cada cuánto el worker busca jobs pendientes.                              |
@@ -164,20 +169,34 @@ Sirve también como readiness/liveness probe para Kubernetes.
 ```bash
 POST /webhooks/hubspot
 Headers:
-  x-smartflow-secret: <WEBHOOK_SHARED_SECRET>
+  X-HubSpot-Signature-v3: <base64(HMAC-SHA256(clientSecret, METHOD + URL + BODY + TIMESTAMP))>
+  X-HubSpot-Request-Timestamp: <unix_ms>
 Body (ejemplo):
-  {
-    "subscriptionType": "deal.creation",
-    "objectId": "12345"
-  }
+  [
+    {
+      "subscriptionType": "deal.propertyChange",
+      "objectId": "12345",
+      "propertyName": "dealstage",
+      "propertyValue": "closedwon"
+    }
+  ]
 ```
 
-- **200** si el job se encoló correctamente (el procesamiento es asíncrono).
-- **401** si falta o no coincide el secreto (chequeo timing-safe, sin leak de longitud).
-- **400** si el payload no es válido.
-- **422** si el deal existe pero está en estado no elegible (se loguea como `SKIPPED`).
+El middleware verifica la firma HMAC v3 (timing-safe, sin leak de longitud), aplica una ventana de tolerancia de timestamp de 5 minutos (replay protection), e itera el array de eventos. **Solo encola** cuando un evento cumple:
 
-El endpoint **siempre** responde 200 al job bien formado — la lógica de reintento vive en la cola persistente, no en el webhook.
+- `subscriptionType === "deal.propertyChange"`
+- `propertyName === "dealstage"`
+- `propertyValue === "closedwon"`
+- `objectId` presente
+
+Cualquier otro evento (`deal.creation`, `deal.deletion`, otros cambios de propiedad, otros stages) se descarta con `200 enqueued:0` para que HubSpot no entre en loop de retries.
+
+Respuestas:
+
+- **202** si encoló ≥1 job → `{ ok: true, enqueued: N, deduped, correlationId, jobId }`.
+- **200** si la firma es válida pero el batch no tiene eventos elegibles → `{ ok: true, enqueued: 0 }`.
+- **401** con `missing_signature` / `missing_timestamp` / `invalid_timestamp` / `timestamp_out_of_range` / `invalid_signature` si la auth falla.
+- **500** con `webhook signature secret not configured` si `HUBSPOT_CLIENT_SECRET` está ausente y `NODE_ENV=production`.
 
 ### Panel de administración
 
@@ -219,7 +238,26 @@ Settings → Integrations → **Private Apps** → **Create**. Dar los scopes:
 
 Copiar el token generado (empieza con `pat-…`) a `HUBSPOT_ACCESS_TOKEN`.
 
-### 2) Crear las propiedades custom del Deal
+En la pestaña **Auth** de la misma Private App, copiar el **Client Secret** a `HUBSPOT_CLIENT_SECRET`. El Client Secret es distinto del access token y se usa **exclusivamente** para verificar la firma HMAC de los webhooks entrantes.
+
+### 2) Suscribir webhooks de la Private App
+
+En la misma Private App, sección **Webhooks subscriptions** → **Create subscription**:
+
+- Event type: `deal.propertyChange` (necesario — `deal.creation` se ignora por diseño, ver sección API).
+- Target URL: `https://<tu-host>/webhooks/hubspot`.
+
+HubSpot enviará un `POST` a esa URL con:
+
+```
+X-HubSpot-Signature-v3: base64(HMAC-SHA256(clientSecret, "POST" + "/webhooks/hubspot" + body + timestamp))
+X-HubSpot-Request-Timestamp: 1700000000000
+Content-Type: application/json
+
+[{ "subscriptionType": "deal.propertyChange", "objectId": "...", "propertyName": "dealstage", "propertyValue": "closedwon", ... }]
+```
+
+### 3) Crear las propiedades custom del Deal
 
 Settings → Properties → **Deal properties** → Create property:
 
@@ -228,15 +266,7 @@ Settings → Properties → **Deal properties** → Create property:
 
 Si tu portal usa nombres distintos, sobreescribir con `HS_PROPERTY_ODOO_CUSTOMER_ID` y `HS_PROPERTY_ODOO_ORDER_ID`.
 
-### 3) Crear el Workflow
-
-Trigger: **Deal property changed** = `dealstage is any of "Closed won"`.
-
-Action: **Webhook** → POST a `https://<tu-host>/webhooks/hubspot` con el secreto estático en el header configurado (`x-smartflow-secret` por defecto). Body:
-
-```json
-{ "subscriptionType": "deal.creation", "objectId": "{{ deal.id }}" }
-```
+> **Detección de estado `closed won`**: el middleware compara literal `propertyValue === "closedwon"` (sin guion bajo). Si tu portal usa otro internal value, ajustar en el validador `mustBeClosedWon` (`src/composition/validators.js`).
 
 > **Nota EU**: si tu portal HubSpot es europeo, setear `HUBSPOT_API_BASE=https://api.hubapi.eu`. La detección automática de región **no** está implementada — hay que configurarla explícitamente.
 
@@ -303,7 +333,7 @@ smartflow-middleware/
 │   │       └── ports/          # *.js con solo JSDoc (no runtime)
 │   ├── adapters/
 │   │   ├── inbound/http/       # health.routes, webhook.routes, panel.routes,
-│   │   │                       #   panel.auth.middleware
+│   │   │                       #   panel.auth.middleware, hubspotSignature.middleware
 │   │   ├── outbound/mongo/     # MongoJobRepository, MongoMappingRepository,
 │   │   │                       #   MongoAuditTrail, MongoDedupeGuard,
 │   │   │                       #   MongoPanelRepository, connection.js
@@ -322,9 +352,11 @@ smartflow-middleware/
 │   └── e2e/                    # HTTP + Mongo contra Fastify app real
 ├── docs/
 │   ├── plan-hubspot-odoo.md
+│   ├── plan-hubspot-private-app.md
 │   └── testing/
 │       ├── 2026-07-20-plan-hubspot-odoo.tdd.md
-│       └── 2026-07-20-plan-panel.tdd.md
+│       ├── 2026-07-20-plan-panel.tdd.md
+│       └── 2026-07-28-plan-hubspot-private-app.tdd.md
 ├── docker-compose.yml
 ├── Dockerfile
 ├── .env.example
