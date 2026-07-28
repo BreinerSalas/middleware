@@ -14,8 +14,8 @@ class MongoProductMappingRepository {
       { odooId: Number(odooId) },
       {
         $set: {
-          hsSku: String(hsSku),
-          hubspotId: String(hubspotId),
+          hsSku: hsSku == null ? null : String(hsSku),
+          hubspotId: hubspotId == null ? null : String(hubspotId),
           lastAction: action,
           lastSyncedAt: at,
           updatedAt: at
@@ -39,8 +39,8 @@ class MongoProductMappingRepository {
         filter: { odooId: Number(it.odooId) },
         update: {
           $set: {
-            hsSku: String(it.hsSku),
-            hubspotId: String(it.hubspotId),
+            hsSku: it.hsSku == null ? null : String(it.hsSku),
+            hubspotId: it.hubspotId == null ? null : String(it.hubspotId),
             lastAction: it.action,
             lastSyncedAt: at,
             updatedAt: at

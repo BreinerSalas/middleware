@@ -179,10 +179,46 @@ function createHubspotApiClient({
     return { results, errors, numErrors: typeof data.numErrors === 'number' ? data.numErrors : errors.length }
   }
 
+  async function getCustomProperty(objectType, name) {
+    try {
+      const res = await requestWithRateLimit('get', `/crm/v3/properties/${objectType}/${name}`)
+      return res
+    } catch (err) { throw normalizeHubspotError(err) }
+  }
+
+  async function createCustomProperty(objectType, body) {
+    try {
+      return await requestWithRateLimit('post', `/crm/v3/properties/${objectType}`, body)
+    } catch (err) { throw normalizeHubspotError(err) }
+  }
+
+  async function searchProducts({ filterGroups = [], properties = [], limit = 100, after = null } = {}) {
+    const body = { filterGroups, properties, limit }
+    if (after) body.after = after
+    try {
+      return await requestWithRateLimit('post', '/crm/v3/objects/products/search', body)
+    } catch (err) { throw normalizeHubspotError(err) }
+  }
+
+  async function ensureCustomProperty(objectType, name, body) {
+    try {
+      await getCustomProperty(objectType, name)
+      return { created: false }
+    } catch (err) {
+      if (err.httpStatus === 404) {
+        await createCustomProperty(objectType, body)
+        return { created: true }
+      }
+      throw err
+    }
+  }
+
   return {
     getDeal, getDealAssociations, getDealLineItems, updateDeal,
     searchProductByHsSku, createProduct, updateProduct,
     batchUpsertProducts,
+    searchProducts,
+    getCustomProperty, createCustomProperty, ensureCustomProperty,
     _http: http,
     _rateLimiter: rl
   }
