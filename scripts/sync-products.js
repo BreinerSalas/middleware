@@ -9,9 +9,12 @@ const { createHubspotApiClient } = require('../src/adapters/outbound/hubspot/hub
 const { OdooProductSource } = require('../src/adapters/outbound/odoo/OdooProductSource')
 const { HubspotProductGateway } = require('../src/adapters/outbound/hubspot/HubspotProductGateway')
 const { createProductSyncModule } = require('../src/composition/productSyncModule')
+const { MongoProductMappingRepository } = require('../src/adapters/outbound/mongo/MongoProductMappingRepository')
+const { MongoProductSyncRunRepository } = require('../src/adapters/outbound/mongo/MongoProductSyncRunRepository')
+const { connectMongo, disconnectMongo } = require('../src/adapters/outbound/mongo/connection')
 const { parseArgs, resolveIntervalMs, shouldRunOnce } = require('./sync-products.lib')
 
-function buildClients(cfg, logger) {
+async function buildClients(cfg, logger) {
   const odooApi = createOdooApiClient({
     mode: cfg.odoo.mode,
     baseUrl: cfg.odoo.baseUrl,
@@ -25,7 +28,23 @@ function buildClients(cfg, logger) {
   })
   const source = new OdooProductSource({ apiClient: odooApi, logger })
   const gateway = new HubspotProductGateway({ apiClient: hubspotApi, logger })
-  return { source, gateway, mod: createProductSyncModule({ config: cfg, odooSource: source, hubspotGateway: gateway, logger, concurrency: 10 }) }
+  const mappingRepo = new MongoProductMappingRepository({ logger })
+  const runRepo = new MongoProductSyncRunRepository({ logger })
+  return {
+    source,
+    gateway,
+    mappingRepo,
+    runRepo,
+    mod: createProductSyncModule({
+      config: cfg,
+      odooSource: source,
+      hubspotGateway: gateway,
+      mappingRepo,
+      runRepo,
+      logger,
+      concurrency: 10
+    })
+  }
 }
 
 async function main() {
@@ -34,6 +53,7 @@ async function main() {
   const envFile = envFileRaw ? path.resolve(envFileRaw) : null
   const cfg = load(envFile ? { envFile } : {})
   const logger = createLogger({ level: cfg.logging.level })
+  await connectMongo({ uri: cfg.mongodbUri, logger })
 
     if (args.help === true || args.h === true) {
       process.stdout.write([
@@ -54,7 +74,7 @@ async function main() {
       return
     }
 
-  const { source, gateway, mod } = buildClients(cfg, logger)
+  const { mod } = await buildClients(cfg, logger)
   const intervalMs = resolveIntervalMs(args, process.env)
   const limit = typeof args.limit === 'number' ? args.limit : null
   const dryRun = args['dry-run'] === true
@@ -64,6 +84,7 @@ async function main() {
 
   if (shouldRunOnce(args) || intervalMs === 0) {
     await tick()
+    await disconnectMongo({ logger })
     return
   }
 
@@ -74,7 +95,7 @@ async function main() {
       if (logger && typeof logger.error === 'function') logger.error('product-sync.tick.failed', { error: err.message })
     })
   }, intervalMs)
-  const stop = () => { clearInterval(timer); process.exit(0) }
+  const stop = () => { clearInterval(timer); disconnectMongo({ logger }).catch(() => undefined); process.exit(0) }
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
 }

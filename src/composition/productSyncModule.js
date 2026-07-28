@@ -8,10 +8,18 @@ function createProductSyncModule({
   hubspotGateway,
   logger = null,
   concurrency = 10,
-  chunkSize = 100
+  chunkSize = 100,
+  mappingRepo = null,
+  runRepo = null
 } = {}) {
   if (!odooSource) throw new Error('createProductSyncModule requires odooSource')
   if (!hubspotGateway) throw new Error('createProductSyncModule requires hubspotGateway')
+
+  function clampConcurrency(n) {
+    const v = Math.max(1, Number(n) || 10)
+    return Math.min(v, 3)
+  }
+  const singleConcurrency = clampConcurrency(concurrency)
 
   const log = (level, msg, extra) => { if (logger && typeof logger[level] === 'function') logger[level](msg, extra) }
 
@@ -72,7 +80,14 @@ function createProductSyncModule({
       const isNew = item.new === true || (item.createdAt && item.createdAt === item.updatedAt)
       const odooIds = (sku && skuToOdooIds.get(sku)) || []
       if (odooIds.length > 0) {
-        results.push({ sourceId: odooIds[0], sku, id: item.id, created: Boolean(isNew), hubspotId: item.id })
+        results.push({
+          sourceId: odooIds[0],
+          sku,
+          id: item.id,
+          created: Boolean(isNew),
+          action: isNew ? 'created' : 'updated',
+          hubspotId: item.id
+        })
       }
       for (let i = 1; i < odooIds.length; i += 1) {
         results.push({ sourceId: odooIds[i], sku, skipped: true, reason: 'duplicate_sku_in_odoo' })
@@ -110,12 +125,36 @@ function createProductSyncModule({
 
     const { withSku, withoutSku } = partition(products)
 
-    const batchResults = await runBatchForOdooItems(withSku, { dryRun })
+    let run = null
+    if (runRepo && !dryRun) {
+      try {
+        run = await runRepo.start({ total, includeNoSku, dryRun })
+      } catch (err) {
+        log('error', 'product-sync.runRepo.start failed', { error: err.message })
+      }
+    }
 
-    const singleResults = await async.mapLimit(withoutSku, Math.max(1, Math.min(3, concurrency)), async (p) => {
+    let batchFailed = false
+    let batchResults = []
+    try {
+      batchResults = await runBatchForOdooItems(withSku, { dryRun })
+      if (withSku.length > 0 && batchResults.length === withSku.length && batchResults.every((r) => r.failed)) {
+        batchFailed = true
+      }
+    } catch (err) {
+      batchFailed = true
+      batchResults = withSku.map((p) => ({ sourceId: p.id, sku: p.default_code, failed: true, error: err.message }))
+    }
+
+    const singleResults = await async.mapLimit(withoutSku, Math.max(1, Math.min(3, singleConcurrency)), async (p) => {
       try {
         const r = await syncOneItem(p, { dryRun })
-        return { sourceId: p.id, sku: p.default_code, ...r }
+        const out = { sourceId: p.id, sku: p.default_code, ...r }
+        if (r && r.id && !r.skipped && !r.failed && !dryRun) {
+          out.action = r.created === true ? 'created' : 'updated'
+          out.hubspotId = r.id
+        }
+        return out
       } catch (err) {
         if (logger && typeof logger.error === 'function') {
           logger.error('product-sync.item.failed', { sourceId: p.id, sku: p.default_code, error: err.message })
@@ -132,9 +171,45 @@ function createProductSyncModule({
     const failed = results.filter((r) => r.failed).length
     const skipped = results.filter((r) => r.skipped).length
 
+    if (mappingRepo && !dryRun && !batchFailed) {
+      const toPersist = results
+        .filter((r) => r.hubspotId && r.sourceId && !r.failed && !r.dryRun && !r.skipped)
+        .map((r) => ({
+          odooId: r.sourceId,
+          hsSku: r.sku == null ? null : String(r.sku),
+          hubspotId: r.hubspotId,
+          action: r.action || (r.created ? 'created' : 'updated')
+        }))
+        .filter((m) => m.hsSku && m.hsSku !== 'null' && m.hsSku !== 'false')
+      if (toPersist.length > 0) {
+        try {
+          await mappingRepo.bulkUpsertMany({ items: toPersist })
+        } catch (err) {
+          log('error', 'product-sync.mappingRepo.bulkUpsertMany failed', { error: err.message, count: toPersist.length })
+        }
+      }
+    }
+
     log('info', 'product-sync.done', {
       total, count: results.length, succeeded: succeeded.length, created, updated, failed, skipped, dryRun
     })
+
+    if (runRepo && run && !dryRun) {
+      try {
+        await runRepo.complete({
+          runId: run._id || run.id,
+          created,
+          updated,
+          skipped,
+          failed,
+          uniqueSkus: withSku.length - results.filter((r) => r.skipped && r.reason === 'duplicate_sku_in_odoo').length,
+          duplicatesInInput: results.filter((r) => r.skipped && r.reason === 'duplicate_sku_in_odoo').length,
+          status: batchFailed ? 'failed' : 'completed'
+        })
+      } catch (err) {
+        log('error', 'product-sync.runRepo.complete failed', { error: err.message })
+      }
+    }
 
     return results
   }
