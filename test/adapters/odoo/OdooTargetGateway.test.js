@@ -163,4 +163,30 @@ describe('OdooTargetGateway', () => {
       references: { lineItems: [] }
     })).rejects.toMatchObject({ transient: true, code: 'MISSING_ODOO_CUSTOMER_ID' })
   })
+
+  it('extracts numeric id from object form in productMap (regression: real Odoo returns {id, uomId})', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': { id: 17, uomId: 1 } } })
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload })
+    await gw.upsert({
+      existingTargetId: null,
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    const moPayload = api.createManufacturingOrder.mock.calls[0][0]
+    expect(moPayload.product_id).toBe(17)
+    const soPayload = api.createSalesOrder.mock.calls[0][0]
+    expect(soPayload.order_line[0][2].product_id).toBe(17)
+  })
+
+  it('accepts numeric productMap value (backward compat: stubs/tests use plain numbers)', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': 17 } })
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload })
+    await gw.upsert({
+      existingTargetId: null,
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    const moPayload = api.createManufacturingOrder.mock.calls[0][0]
+    expect(moPayload.product_id).toBe(17)
+  })
 })

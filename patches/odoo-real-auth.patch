@@ -1,0 +1,161 @@
+*** Begin Patch
+*** Update File: .env
+@@ .env:ODOO_CLIENT_MODE @@
+ # --- Odoo ---
+-ODOO_CLIENT_MODE=stub
+-ODOO_BASE_URL=
+-ODOO_API_KEY=
++ODOO_CLIENT_MODE=http
++ODOO_BASE_URL=https://TU-EMPRESA.odoo.com
++ODOO_DB=TU-EMPRESA
++ODOO_LOGIN=tu-email@ejemplo.com
++ODOO_API_KEY=PEGÁ-TU-API-KEY-40-HEX-CHARS-ACÁ
+*** End Patch
+
+*** Begin Patch
+*** Update File: .env.example
+@@ .env.example:ODOO_CLIENT_MODE @@
+ # --- Odoo ---
+-ODOO_CLIENT_MODE=stub
+-ODOO_BASE_URL=
+-ODOO_API_KEY=
++ODOO_CLIENT_MODE=stub
++ODOO_BASE_URL=
++ODOO_DB=
++ODOO_LOGIN=
++ODOO_API_KEY=
+*** End Patch
+
+*** Begin Patch
+*** Update File: src/config/index.js
+@@ src/config/index.js:OPTIONAL_KEYS @@
+   'ODOO_CLIENT_MODE',
+   'ODOO_BASE_URL',
++  'ODOO_DB',
++  'ODOO_LOGIN',
+   'ODOO_API_KEY',
+@@ src/config/index.js:odoo @@
+     odoo: {
+       mode: (env.ODOO_CLIENT_MODE || 'stub').toLowerCase(),
+       baseUrl: env.ODOO_BASE_URL || '',
++      db: env.ODOO_DB || '',
++      login: env.ODOO_LOGIN || '',
+       apiKey: *** || ''
+     },
+*** End Patch
+
+*** Begin Patch
+*** Update File: src/adapters/outbound/odoo/odooApiClient.js
+@@ src/adapters/outbound/odoo/odooApiClient.js @@
+ 'use strict'
+
+ const axios = require('axios')
+
++/**
++ * Real Odoo client (JSON-RPC over HTTPS).
++ *
++ * Auth flow:
++ *   1. POST /jsonrpc  { service: 'common', method: 'authenticate',
++ *                        args: [db, login, apiKey, {}] }
++ *      → returns uid (or false on failure)
++ *   2. All subsequent calls go to /jsonrpc with
++ *      { service: 'object', method: 'execute_kw',
++ *        args: [db, uid, apiKey, model, method, args, kwargs] }
++ *
++ * NOTE: Odoo does NOT use Authorization: Bearer. The API key is passed
++ * as the 3rd element of the args tuple inside the JSON-RPC body.
++ */
+ function createOdooApiClient({ mode = 'stub', baseUrl = '', db = '', login = '', apiKey = '', timeoutMs = 10000, transport = null } = {}) {
+   const normalizedMode = String(mode || 'stub').toLowerCase()
+   if (normalizedMode === 'stub') {
+     let counter = 0
+     return {
+       mode: 'stub',
+       async createManufacturingOrder(payload) {
+         counter += 1
+         return { id: `stub-mrp-${counter}`, ref: `STUB/${counter}`, state: 'draft', raw: payload }
+       },
+       async updateManufacturingOrder(targetId, payload) {
+         return { id: targetId, ref: targetId, state: 'confirmed', raw: payload }
+       }
+     }
+   }
+   if (normalizedMode !== 'http') {
+     throw new Error(`Unsupported ODOO_CLIENT_MODE: ${mode}`)
+   }
+   if (!baseUrl) throw new Error('Odoo http mode requires ODOO_BASE_URL')
+   if (!db) throw new Error('Odoo http mode requires ODOO_DB')
+   if (!login) throw new Error('Odoo http mode requires ODOO_LOGIN')
+   if (!apiKey) throw new Error('Odoo http mode requires ODOO_API_KEY')
+
+   const defaultTransport = {
+     async post(url, body) {
+       const res = await axios.post(url, body, {
+         baseURL: baseUrl,
+         timeout: timeoutMs,
+         headers: { 'Content-Type': 'application/json' }
+       })
+       return { data: res.data, status: res.status }
+     }
+   }
+   const t = transport || defaultTransport
+
+   /**
+    * Low-level JSON-RPC call. Returns `result` or throws an Error with
+    * .httpStatus, .code, .cause populated when Odoo returns `error`.
+    */
+   async function rpcCall(service, method, args) {
+     const body = { jsonrpc: '2.0', method: 'call', params: { service, method, args }, id: Date.now() }
+     const res = await t.post('/jsonrpc', body)
+     if (res.data && res.data.error) {
+       const msg = (res.data.error.data && res.data.error.data.message) || res.data.error.message || 'Odoo RPC error'
+       const e = new Error(msg)
+       e.httpStatus = res.status
+       e.code = res.data.error.code
+       e.cause = res.data.error
+       throw e
+     }
+     return res.data && res.data.result
+   }
+
+   /**
+    * Authenticate once at construction time. Odoo returns `false` on
+    * bad credentials (not an error object), so handle that explicitly.
+    */
+   let uid = null
+   const ready = (async () => {
+     const result = await rpcCall('common', 'authenticate', [db, login, apiKey, {}])
+     if (!result) {
+       const e = new Error(`Odoo authenticate failed for db=${db} login=${login}`)
+       e.code = 'ODOO_AUTH_FAILED'
+       throw e
+     }
+     uid = result
+     return uid
+   })()
+
+   /**
+    * Wrapper that ensures auth is done before any execute_kw call.
+    */
+   async function executeKw(model, method, args, kwargs = {}) {
+     await ready
+     return rpcCall('object', 'execute_kw', [db, uid, apiKey, model, method, args, kwargs])
+   }
+
+   return {
+     mode: 'http',
+     _transport: t,
+     _ready: ready,
+     async createManufacturingOrder(payload) {
+       const result = await executeKw('mrp.production', 'create', [payload])
+       return { id: String(result), ref: null, state: 'draft', raw: payload }
+     },
+     async updateManufacturingOrder(targetId, payload) {
+       const result = await executeKw('mrp.production', 'write', [[Number(targetId)], payload])
+       return { id: targetId, ref: null, state: 'confirmed', raw: payload, rpcResult: result }
+     }
+   }
+ }
+
+ module.exports = { createOdooApiClient }
+*** End Patch
