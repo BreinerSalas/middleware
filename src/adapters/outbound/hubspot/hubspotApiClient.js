@@ -1,6 +1,7 @@
 'use strict'
 
 const axios = require('axios')
+const { createRateLimiter } = require('../../../core/shared/rateLimiter')
 
 const LINE_ITEM_PROPERTIES = ['hs_sku', 'quantity', 'price', 'name']
 
@@ -12,79 +13,55 @@ function createAxiosHttpClient({ baseUrl, accessToken, timeoutMs = 10000 } = {})
   })
 }
 
-function createHubspotApiClient({ baseUrl, accessToken, timeoutMs = 10000, httpClient = null } = {}) {
+function parseRetryAfterMs(headers, errFallback = 1000) {
+  if (!headers) return errFallback
+  const raw = headers['retry-after'] || headers['Retry-After'] || headers['x-hubspot-ratelimit-reset-milliseconds']
+  if (raw == null) return errFallback
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n < 0) return errFallback
+  if (n > 1e12) return Math.max(0, n - Date.now())
+  return Math.floor(n * 1000)
+}
+
+function shouldRetryOn429(err) {
+  if (!err) return false
+  const status = err.response && err.response.status
+  return status === 429
+}
+
+function createHubspotApiClient({
+  baseUrl,
+  accessToken,
+  timeoutMs = 10000,
+  httpClient = null,
+  rateLimiter = null,
+  maxRetries = 3,
+  retryDefaultMs = 1000
+} = {}) {
   if (!accessToken) throw new Error('createHubspotApiClient requires accessToken')
   const http = httpClient || createAxiosHttpClient({ baseUrl, accessToken, timeoutMs })
+  const rl = rateLimiter === undefined ? createRateLimiter({ rps: 9, burst: 15 }) : rateLimiter
 
-  async function getDeal(dealId, properties = []) {
-    const res = await http.get(`/crm/v3/objects/deals/${dealId}`, {
-      params: properties.length > 0 ? { properties: properties.join(',') } : undefined
-    })
-    return res.data
-  }
-
-  async function getDealAssociations(dealId, toObjectType = ['contact', 'company']) {
-    const res = await http.get(`/crm/v4/objects/deals/${dealId}/associations/${toObjectType.join(',')}`)
-    return res.data
-  }
-
-  async function getDealLineItems(dealId) {
-    if (!dealId) return []
-    const assoc = await http.get(`/crm/v3/objects/deals/${dealId}/associations/line_items`)
-    const ids = (assoc.data && assoc.data.results ? assoc.data.results : [])
-      .map((r) => r.id || r.toObjectId || r['to-object-id'])
-      .filter(Boolean)
-    if (ids.length === 0) return []
-    const batch = await http.post('/crm/v3/objects/line_items/batch/read', {
-      properties: LINE_ITEM_PROPERTIES,
-      inputs: ids.map((id) => ({ id: String(id) }))
-    })
-    const results = (batch.data && batch.data.results ? batch.data.results : [])
-    return results.map((li) => ({
-      id: li.id,
-      hs_sku: (li.properties && li.properties.hs_sku) || null,
-      quantity: Number(li.properties && li.properties.quantity) || 1,
-      price: Number(li.properties && li.properties.price) || 0,
-      name: (li.properties && li.properties.name) || null
-    }))
-  }
-
-  async function updateDeal(dealId, properties) {
-    const res = await http.patch(`/crm/v3/objects/deals/${dealId}`, { properties })
-    return res.data
-  }
-
-  async function searchProductByHsSku(sku) {
-    if (!sku || String(sku).length === 0) return null
-    try {
-      const res = await http.post('/crm/v3/objects/products/search', {
-        filterGroups: [{ filters: [{ propertyName: 'hs_sku', operator: 'EQ', value: String(sku) }] }],
-        properties: ['hs_sku', 'name', 'price'],
-        limit: 1
-      })
-      const items = (res.data && res.data.results) || []
-      return items[0] || null
-    } catch (err) {
-      throw normalizeHubspotError(err)
+  async function requestWithRateLimit(verb, url, opts = {}) {
+    let attempt = 0
+    let lastErr = null
+    while (attempt <= maxRetries) {
+      if (rl) await rl.take()
+      try {
+        const res = await http[verb](url, opts)
+        return res.data
+      } catch (err) {
+        lastErr = err
+        if (!shouldRetryOn429(err) || attempt === maxRetries) {
+          throw err
+        }
+        const waitMs = parseRetryAfterMs(err.response && err.response.headers, retryDefaultMs)
+        if (rl && typeof rl.pause === 'function') rl.pause(waitMs)
+        else await new Promise((r) => setTimeout(r, waitMs))
+        attempt += 1
+      }
     }
-  }
-
-  async function createProduct(properties) {
-    try {
-      const res = await http.post('/crm/v3/objects/products', { properties })
-      return res.data
-    } catch (err) {
-      throw normalizeHubspotError(err)
-    }
-  }
-
-  async function updateProduct(productId, properties) {
-    try {
-      const res = await http.patch(`/crm/v3/objects/products/${productId}`, { properties })
-      return res.data
-    } catch (err) {
-      throw normalizeHubspotError(err)
-    }
+    throw lastErr
   }
 
   function normalizeHubspotError(err) {
@@ -102,11 +79,90 @@ function createHubspotApiClient({ baseUrl, accessToken, timeoutMs = 10000, httpC
     return err
   }
 
+  async function getDeal(dealId, properties = []) {
+    try {
+      return await requestWithRateLimit('get', `/crm/v3/objects/deals/${dealId}`, {
+        params: properties.length > 0 ? { properties: properties.join(',') } : undefined
+      })
+    } catch (err) { throw normalizeHubspotError(err) }
+  }
+
+  async function getDealAssociations(dealId, toObjectType = ['contact', 'company']) {
+    try {
+      return await requestWithRateLimit('get', `/crm/v4/objects/deals/${dealId}/associations/${toObjectType.join(',')}`)
+    } catch (err) { throw normalizeHubspotError(err) }
+  }
+
+  async function getDealLineItems(dealId) {
+    if (!dealId) return []
+    let assoc
+    try {
+      assoc = await requestWithRateLimit('get', `/crm/v3/objects/deals/${dealId}/associations/line_items`)
+    } catch (err) { throw normalizeHubspotError(err) }
+    const ids = (assoc.results ? assoc.results : [])
+      .map((r) => r.id || r.toObjectId || r['to-object-id'])
+      .filter(Boolean)
+    if (ids.length === 0) return []
+    let batch
+    try {
+      batch = await requestWithRateLimit('post', '/crm/v3/objects/line_items/batch/read', {
+        properties: LINE_ITEM_PROPERTIES,
+        inputs: ids.map((id) => ({ id: String(id) }))
+      })
+    } catch (err) { throw normalizeHubspotError(err) }
+    const results = (batch.results ? batch.results : [])
+    return results.map((li) => ({
+      id: li.id,
+      hs_sku: (li.properties && li.properties.hs_sku) || null,
+      quantity: Number(li.properties && li.properties.quantity) || 1,
+      price: Number(li.properties && li.properties.price) || 0,
+      name: (li.properties && li.properties.name) || null
+    }))
+  }
+
+  async function updateDeal(dealId, properties) {
+    try {
+      return await requestWithRateLimit('patch', `/crm/v3/objects/deals/${dealId}`, { properties })
+    } catch (err) { throw normalizeHubspotError(err) }
+  }
+
+  async function searchProductByHsSku(sku) {
+    if (!sku || String(sku).length === 0) return null
+    try {
+      const data = await requestWithRateLimit('post', '/crm/v3/objects/products/search', {
+        filterGroups: [{ filters: [{ propertyName: 'hs_sku', operator: 'EQ', value: String(sku) }] }],
+        properties: ['hs_sku', 'name', 'price'],
+        limit: 1
+      })
+      const items = (data && data.results) || []
+      return items[0] || null
+    } catch (err) { throw normalizeHubspotError(err) }
+  }
+
+  async function createProduct(properties) {
+    try {
+      return await requestWithRateLimit('post', '/crm/v3/objects/products', { properties })
+    } catch (err) { throw normalizeHubspotError(err) }
+  }
+
+  async function updateProduct(productId, properties) {
+    try {
+      return await requestWithRateLimit('patch', `/crm/v3/objects/products/${productId}`, { properties })
+    } catch (err) { throw normalizeHubspotError(err) }
+  }
+
   return {
     getDeal, getDealAssociations, getDealLineItems, updateDeal,
     searchProductByHsSku, createProduct, updateProduct,
-    _http: http
+    _http: http,
+    _rateLimiter: rl
   }
 }
 
-module.exports = { createHubspotApiClient, createAxiosHttpClient, LINE_ITEM_PROPERTIES }
+module.exports = {
+  createHubspotApiClient,
+  createAxiosHttpClient,
+  LINE_ITEM_PROPERTIES,
+  parseRetryAfterMs,
+  shouldRetryOn429
+}
