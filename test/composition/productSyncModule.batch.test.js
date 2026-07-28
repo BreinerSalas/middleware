@@ -101,7 +101,12 @@ describe('productSyncModule - batch flow', () => {
   })
 
   it('aggregates per-item errors from batch and continues', async () => {
-    const odooSource = makeSource({ count: 3, listAll: async () => [p(1, 'A-1'), p(2, 'A-2'), p(3, 'A-3')] })
+    const odooSource = makeSource({ count: 4, listAll: async () => [
+      p(1, 'A-1'),
+      p(2, 'A-2'),
+      p(3, 'A-3'),
+      p(4, false, 'NoSku')
+    ] })
     const gateway = makeGateway({
       batchUpsertBySkus: vi.fn(async () => ({
         results: [{ id: 'B-1', properties: { hs_sku: 'A-1' } }],
@@ -118,9 +123,10 @@ describe('productSyncModule - batch flow', () => {
     })
     const out = await m.runOnce({})
     const failed = out.filter((r) => r.failed)
-    expect(failed).toHaveLength(2)
+    expect(failed).toHaveLength(3)
     expect(failed.map((f) => f.error)).toContain('network-boom')
     expect(failed.map((f) => f.error)).toContain('invalid')
+    expect(failed.map((f) => f.error)).toContain('not_in_batch_response')
     expect(logger.error).toHaveBeenCalled()
   })
 
