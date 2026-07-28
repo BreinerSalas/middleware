@@ -152,11 +152,11 @@ function createHubspotApiClient({
   }
 
   async function batchUpsertProducts({ inputs = [], idProperty = 'hs_sku' } = {}) {
+    const taggedInputs = inputs.map((it) => ({ ...it, idProperty: it.idProperty || idProperty }))
     let data
     try {
       data = await requestWithRateLimit('post', '/crm/v3/objects/products/batch/upsert', {
-        idProperty,
-        inputs
+        inputs: taggedInputs
       })
     } catch (err) { throw normalizeHubspotError(err) }
     const rawResults = (data && data.results) || []

@@ -8,7 +8,7 @@ function makeHttpMock({ post = async () => ({ data: {} }) } = {}) {
 }
 
 describe('hubspotApiClient - batchUpsertProducts', () => {
-  it('POSTs to /crm/v3/objects/products/batch/upsert with inputs and idProperty', async () => {
+  it('POSTs to /crm/v3/objects/products/batch/upsert with inputs tagged by idProperty', async () => {
     const post = vi.fn(async () => ({ data: { results: [], numErrors: 0 } }))
     const http = makeHttpMock({ post })
     const rl = { take: vi.fn().mockResolvedValue(undefined), pause: vi.fn() }
@@ -26,16 +26,13 @@ describe('hubspotApiClient - batchUpsertProducts', () => {
     })
     const [url, body] = post.mock.calls[0]
     expect(url).toBe('/crm/v3/objects/products/batch/upsert')
-    expect(body).toEqual({
-      idProperty: 'hs_sku',
-      inputs: [
-        { id: 'AC-1170', properties: { name: 'Aceite', price: '12.5' } },
-        { id: 'AC-1171', properties: { name: 'Filtro', price: '3.0' } }
-      ]
-    })
+    expect(body.inputs).toEqual([
+      { id: 'AC-1170', idProperty: 'hs_sku', properties: { name: 'Aceite', price: '12.5' } },
+      { id: 'AC-1171', idProperty: 'hs_sku', properties: { name: 'Filtro', price: '3.0' } }
+    ])
   })
 
-  it('accepts a custom idProperty override', async () => {
+  it('accepts a custom idProperty override propagated to each input', async () => {
     const post = vi.fn(async () => ({ data: { results: [] } }))
     const http = makeHttpMock({ post })
     const rl = { take: vi.fn().mockResolvedValue(undefined), pause: vi.fn() }
@@ -50,7 +47,7 @@ describe('hubspotApiClient - batchUpsertProducts', () => {
       idProperty: 'external_id'
     })
     const [, body] = post.mock.calls[0]
-    expect(body.idProperty).toBe('external_id')
+    expect(body.inputs[0].idProperty).toBe('external_id')
   })
 
   it('returns the results array on success', async () => {

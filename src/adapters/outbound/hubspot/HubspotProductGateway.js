@@ -77,21 +77,36 @@ class HubspotProductGateway {
       return { results: [], errors: [], skipped: [] }
     }
     const valid = []
-    const skipped = []
+    const skippedNoSku = []
     for (const p of odooProducts) {
       if (!p || this.hasValidSku(p)) {
         valid.push(p)
       } else {
-        skipped.push(p && p.id)
+        skippedNoSku.push(p && p.id)
       }
     }
-    if (valid.length === 0) {
-      return { results: [], errors: [], skipped }
+    const seen = new Map()
+    const dupIds = []
+    const dedup = []
+    for (const p of valid) {
+      const sku = this.extractSku(p)
+      if (seen.has(sku)) {
+        dupIds.push(p.id)
+      } else {
+        seen.set(sku, p)
+        dedup.push(p)
+      }
+    }
+    if (dupIds.length > 0 && this.logger && typeof this.logger.warn === 'function') {
+      this.logger.warn('hubspot.products.duplicate_sku_in_input', { count: dupIds.length, sourceIds: dupIds.slice(0, 5) })
+    }
+    if (dedup.length === 0) {
+      return { results: [], errors: [], skipped: [...skippedNoSku, ...dupIds] }
     }
     const allResults = []
     const allErrors = []
-    for (let i = 0; i < valid.length; i += chunkSize) {
-      const chunk = valid.slice(i, i + chunkSize)
+    for (let i = 0; i < dedup.length; i += chunkSize) {
+      const chunk = dedup.slice(i, i + chunkSize)
       const inputs = chunk.map((p) => ({
         id: this.extractSku(p),
         properties: this.buildProperties(p)
@@ -100,7 +115,7 @@ class HubspotProductGateway {
       allResults.push(...(response.results || []))
       allErrors.push(...(response.errors || []))
     }
-    return { results: allResults, errors: allErrors, skipped }
+    return { results: allResults, errors: allErrors, skipped: [...skippedNoSku, ...dupIds] }
   }
 }
 

@@ -32,7 +32,7 @@ describe('HubspotProductGateway - batchUpsertBySkus', () => {
     expect(r.results).toHaveLength(250)
   })
 
-  it('uses hs_sku as the idProperty by default', async () => {
+  it('uses hs_sku as the default idProperty (passed down to apiClient)', async () => {
     const api = makeApi({
       batchUpsertProducts: vi.fn(async () => ({ results: [], errors: [], numErrors: 0 }))
     })
