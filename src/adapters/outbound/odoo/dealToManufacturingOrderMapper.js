@@ -37,14 +37,17 @@ function mapDealToManufacturingOrder({ hsDeal, odooCustomerId, hsLineItems = [],
     note
   }
 
-  const firstLine = items[0] || {}
-  const odooNow = now.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '')
-  const manufacturingOrder = {
+const firstLine = items[0] || {}
+const odooNow = now.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '')
+const manufacturingOrder = {
     origin,
     product_id: resolveProductId(firstLine),
     product_qty: firstLine.quantity || 1,
     date_deadline: odooNow,
     company_id: 1
+  }
+  if (firstLine.productUomId != null) {
+    manufacturingOrder.product_uom_id = Number(firstLine.productUomId)
   }
 
   return { saleOrder, manufacturingOrder }

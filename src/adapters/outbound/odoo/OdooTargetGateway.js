@@ -88,12 +88,15 @@ class OdooTargetGateway {
     return lineItems.map((li) => {
       const sku = li && li.hs_sku != null ? String(li.hs_sku) : null
       const resolved = sku && map[sku] != null ? map[sku] : null
-      let productId = null
-      if (resolved != null) {
-        productId = typeof resolved === 'object' && resolved !== null ? resolved.id : resolved
-        if (productId != null) productId = Number(productId)
+      if (resolved == null) return li
+      const enriched = { ...li }
+      if (typeof resolved === 'object' && resolved !== null) {
+        if (resolved.id != null) enriched.productId = Number(resolved.id)
+        if (resolved.uomId != null) enriched.productUomId = Number(resolved.uomId)
+      } else {
+        enriched.productId = Number(resolved)
       }
-      return productId != null ? { ...li, productId } : li
+      return enriched
     })
   }
 

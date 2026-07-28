@@ -83,6 +83,24 @@ describe('mapDealToManufacturingOrder', () => {
     expect(payload.manufacturingOrder.product_id).toBeNull()
   })
 
+  it('sets product_uom_id on manufacturingOrder from line item productUomId', () => {
+    const payload = mapDealToManufacturingOrder({
+      hsDeal: { id: 'D-7' },
+      odooCustomerId: '5',
+      hsLineItems: [{ hs_sku: 'SKU-1', productId: 17, productUomId: 5, quantity: 1, price: 0, name: 'X' }]
+    })
+    expect(payload.manufacturingOrder.product_uom_id).toBe(5)
+  })
+
+  it('does not set product_uom_id when line item has no productUomId (legacy / numeric sku path)', () => {
+    const payload = mapDealToManufacturingOrder({
+      hsDeal: { id: 'D-8' },
+      odooCustomerId: '5',
+      hsLineItems: [{ hs_sku: '42', quantity: 1, price: 0, name: 'X' }]
+    })
+    expect(payload.manufacturingOrder.product_uom_id).toBeUndefined()
+  })
+
   it('throws transient error when odooCustomerId missing', () => {
     expect(() => mapDealToManufacturingOrder({ hsDeal: { id: 'D-1', properties: {} }, odooCustomerId: null })).toThrow(/odooCustomerId/)
   })
