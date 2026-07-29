@@ -101,7 +101,7 @@ describe('composition/validators', () => {
         throw new Error('should have thrown')
       } catch (err) {
         expect(err).toBeInstanceOf(SkipSyncError)
-        expect(err.reason).toMatch(/dealstage/)
+        expect(err.reason).toMatch(/dealstage/i)
       }
     })
 

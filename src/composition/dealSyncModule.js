@@ -13,7 +13,13 @@ const { MongoDedupeGuard } = require('../adapters/outbound/mongo/MongoDedupeGuar
 const { MongoAuditTrail } = require('../adapters/outbound/mongo/MongoAuditTrail')
 const { HubspotSourceGateway } = require('../adapters/outbound/hubspot/HubspotSourceGateway')
 const { OdooTargetGateway } = require('../adapters/outbound/odoo/OdooTargetGateway')
-const { mustHaveLineItems, mustBeClosedWon, createMustHaveOdooCustomerId } = require('./validators')
+const {
+  mustHaveLineItems,
+  mustBeClosedWon,
+  createMustHaveOdooCustomerId,
+  createMustHaveDealStage,
+  createMustBeInPipeline
+} = require('./validators')
 
 function buildWriteBackPayload(mapping) {
   return {
@@ -67,7 +73,17 @@ function createDealSyncModule({
     logger
   })
 
-  const _validators = Array.isArray(validators) ? validators : [mustBeClosedWon, mustHaveLineItems, createMustHaveOdooCustomerId({ defaultCustomerId: config.odoo.defaultCustomerId })]
+  const _defaultDealsConfig = (config && config.deals && typeof config.deals === 'object') ? config.deals : {}
+  const defaultValidators = [
+    createMustHaveDealStage({ allowed: _defaultDealsConfig.allowedStageIds || [] }),
+    createMustBeInPipeline({
+      allowed: _defaultDealsConfig.allowedPipelineIds || [],
+      rejectWhenMissing: _defaultDealsConfig.rejectUnknownPipeline !== false
+    }),
+    mustHaveLineItems,
+    createMustHaveOdooCustomerId({ defaultCustomerId: config.odoo.defaultCustomerId })
+  ]
+  const _validators = Array.isArray(validators) ? validators : defaultValidators
 
   const _processSyncJobUseCase = processSyncJobUseCase || new ProcessSyncJobUseCase({
     jobRepository: _jobRepository,

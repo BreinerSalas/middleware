@@ -55,12 +55,26 @@ function createApp({ config, logger = null, dealSyncModule = null, panelReposito
       return reply.code(200).send({ ok: true, enqueued: 0 })
     }
 
+    const allowedStageIds = Array.isArray(config.deals && config.deals.allowedStageIds)
+      ? config.deals.allowedStageIds.map((s) => String(s))
+      : []
+    const allowedStageSet = new Set(allowedStageIds)
+
     let enqueued = 0
     let lastResult = null
     for (const event of body) {
       if (!event || typeof event !== 'object') continue
       if (event.subscriptionType !== 'deal.propertyChange') continue
-      if (event.propertyName !== 'dealstage' || event.propertyValue !== 'closedwon') continue
+      if (event.propertyName !== 'dealstage') continue
+      const stageId = event.propertyValue == null ? null : String(event.propertyValue)
+      if (!stageId || !allowedStageSet.has(stageId)) {
+        log.warn('webhook.stage_not_allowed', {
+          objectId: event.objectId || event.dealId || null,
+          stageId,
+          allowedStageIds
+        })
+        continue
+      }
       const objId = event.objectId || event.dealId
       if (!objId) continue
       try {

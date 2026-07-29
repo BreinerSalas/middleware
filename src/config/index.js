@@ -22,6 +22,9 @@ const OPTIONAL_KEYS = [
   'ODOO_LOGIN',
   'ODOO_API_KEY',
   'ODOO_DEFAULT_CUSTOMER_ID',
+  'HS_ALLOWED_STAGE_IDS',
+  'HS_ALLOWED_PIPELINE_IDS',
+  'HS_REJECT_UNKNOWN_PIPELINE',
   'PORT',
   'NODE_ENV',
   'LOG_LEVEL',
@@ -32,6 +35,19 @@ const OPTIONAL_KEYS = [
   'PANEL_TOKEN',
   'PANEL_TOKEN_HEADER_NAME'
 ]
+
+const {
+  DEAL_STAGE_CLOSED_WON_ID,
+  DEAL_PIPELINE_COMMERCIAL_VISUAL_BRANDING
+} = require('./constants')
+
+function parseCsvList(raw) {
+  if (raw == null) return []
+  return String(raw)
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+}
 
 function loadEnvFile({ envFile = null, override = false } = {}) {
   if (envFile) {
@@ -51,6 +67,8 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
     err.missing = missing
     throw err
   }
+  const stageIds = parseCsvList(env.HS_ALLOWED_STAGE_IDS)
+  const pipelineIds = parseCsvList(env.HS_ALLOWED_PIPELINE_IDS)
   return {
     mongodbUri: env.MONGODB_URI,
     hubspot: {
@@ -72,6 +90,11 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       login: env.ODOO_LOGIN || '',
       apiKey: env.ODOO_API_KEY || '',
       defaultCustomerId: env.ODOO_DEFAULT_CUSTOMER_ID || ''
+    },
+    deals: {
+      allowedStageIds: stageIds.length > 0 ? stageIds : [DEAL_STAGE_CLOSED_WON_ID],
+      allowedPipelineIds: pipelineIds.length > 0 ? pipelineIds : [DEAL_PIPELINE_COMMERCIAL_VISUAL_BRANDING],
+      rejectUnknownPipeline: String(env.HS_REJECT_UNKNOWN_PIPELINE || 'true').toLowerCase() !== 'false'
     },
     server: {
       port: Number(env.PORT || 3007),
