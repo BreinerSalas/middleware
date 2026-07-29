@@ -178,4 +178,64 @@ describe('config', () => {
       }
     }
   })
+
+  describe('deals allowlist (Pipeline Comercial Visual Branding)', () => {
+    const baseEnv = {
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret'
+    }
+
+    it('defaults cfg.deals.allowedStageIds to ["1409249445"] (Cierre Ganado)', () => {
+      const cfg = load({ env: baseEnv })
+      expect(cfg.deals.allowedStageIds).toEqual(['1409249445'])
+    })
+
+    it('defaults cfg.deals.allowedPipelineIds to Comercial Visual Branding pipeline id', () => {
+      const cfg = load({ env: baseEnv })
+      expect(cfg.deals.allowedPipelineIds).toEqual([
+        't_5728252902aef7e9938dfcbb6cdc2af8'
+      ])
+    })
+
+    it('defaults cfg.deals.rejectUnknownPipeline to true', () => {
+      const cfg = load({ env: baseEnv })
+      expect(cfg.deals.rejectUnknownPipeline).toBe(true)
+    })
+
+    it('parses HS_ALLOWED_STAGE_IDS as CSV', () => {
+      const cfg = load({
+        env: { ...baseEnv, HS_ALLOWED_STAGE_IDS: '1409249445,999999' }
+      })
+      expect(cfg.deals.allowedStageIds).toEqual(['1409249445', '999999'])
+    })
+
+    it('parses HS_ALLOWED_PIPELINE_IDS as CSV', () => {
+      const cfg = load({
+        env: {
+          ...baseEnv,
+          HS_ALLOWED_PIPELINE_IDS: 't_5728252902aef7e9938dfcbb6cdc2af8,other'
+        }
+      })
+      expect(cfg.deals.allowedPipelineIds).toEqual([
+        't_5728252902aef7e9938dfcbb6cdc2af8',
+        'other'
+      ])
+    })
+
+    it('parses HS_REJECT_UNKNOWN_PIPELINE=false to disable strict rejection', () => {
+      const cfg = load({ env: { ...baseEnv, HS_REJECT_UNKNOWN_PIPELINE: 'false' } })
+      expect(cfg.deals.rejectUnknownPipeline).toBe(false)
+    })
+
+    it('ignores whitespace tokens in CSV env vars', () => {
+      const cfg = load({
+        env: {
+          ...baseEnv,
+          HS_ALLOWED_STAGE_IDS: '1409249445 , 999999 '
+        }
+      })
+      expect(cfg.deals.allowedStageIds).toEqual(['1409249445', '999999'])
+    })
+  })
 })

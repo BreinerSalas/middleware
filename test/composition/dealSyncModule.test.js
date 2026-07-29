@@ -7,6 +7,14 @@ const mongoose = require('mongoose')
 const { createDealSyncModule } = require('../../src/composition/dealSyncModule.js')
 const { MongoJobRepository } = require('../../src/adapters/outbound/mongo/MongoJobRepository.js')
 const { JOB_STATUS } = require('../../src/core/domain/SyncJob.js')
+const { SkipSyncError } = require('../../src/core/domain/errors.js')
+const {
+  createMustHaveDealStage,
+  createMustBeInPipeline
+} = require('../../src/composition/validators.js')
+
+const CVB = 't_5728252902aef7e9938dfcbb6cdc2af8'
+const CIERRE_GANADO = '1409249445'
 
 let mongoServer
 let moduleUnderTest
@@ -45,10 +53,17 @@ beforeEach(async () => {
   })
 })
 
-function makeSourceGateway() {
+function makeSourceGateway(overrides = {}) {
+  const defaultProps = Object.assign(
+    { id_cliente_odoo: '42', dealstage: 'closedwon' },
+    overrides.properties || {}
+  )
   return {
     async fetchRecord(sourceId) {
-      return { id: sourceId, properties: { id_cliente_odoo: '42', dealstage: 'closedwon' } }
+      if (typeof overrides.fetchRecord === 'function') {
+        return overrides.fetchRecord(sourceId, { id: sourceId, properties: defaultProps })
+      }
+      return { id: sourceId, properties: defaultProps }
     },
     async resolveReferences() { return { odooCustomerId: '42', lineItems: [{ id: 'L-1' }] } },
     async writeBack(sourceId, properties) { calls.writeBack.push({ sourceId, properties }) }
@@ -225,6 +240,78 @@ describe('composition/dealSyncModule end-to-end', () => {
       if (job && job.status === 'COMPLETED') break
     }
     expect(job.status).toBe('COMPLETED')
+    expect(calls.writeBack).toHaveLength(1)
+  }, 30_000)
+
+  it('Pipeline selector: SKIPPED when deal pipeline is not in allowed list (sales pipeline)', async () => {
+    moduleUnderTest = createDealSyncModule({
+      config: {
+        mongodbUri: 'mongodb://x',
+        hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com', propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' },
+        webhook: { sharedSecret: 's', headerName: 'x' },
+        odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
+        deals: { allowedStageIds: [CIERRE_GANADO], allowedPipelineIds: [CVB], rejectUnknownPipeline: true },
+        server: { port: 0, nodeEnv: 'test' },
+        logging: { level: 'error' },
+        worker: { concurrency: 1, pollIntervalMs: 50 },
+        retry: { maxAttempts: 8, maxDelayMs: 60_000 }
+      },
+      sourceGateway: makeSourceGateway({
+        properties: { id_cliente_odoo: '42', dealstage: CIERRE_GANADO, pipeline: 'sales-pipeline-id-xxx' }
+      }),
+      targetGateway: makeTargetGateway(calls),
+      logger: null,
+      recoverOrphansOnStart: false
+    })
+    await moduleUnderTest.enqueueWebhook({ rawBody: {}, objectId: 'D-PIPELINE-SALES', eventType: 'x' })
+    const { JobModel: JM } = require('../../src/adapters/outbound/mongo/schemas/job.schema.js')
+    let job = null
+    for (let i = 0; i < 30; i += 1) {
+      await moduleUnderTest._internals.jobPoller.tick()
+      await new Promise((r) => setTimeout(r, 20))
+      job = await JM.findOne().lean()
+      if (job && job.status === 'SKIPPED') break
+    }
+    expect(calls.upsert).toHaveLength(0)
+    expect(calls.writeBack).toHaveLength(0)
+    expect(job.status).toBe('SKIPPED')
+    const { AuditModel: AM } = require('../../src/adapters/outbound/mongo/schemas/audit.schema.js')
+    const audit = await AM.findOne({ jobId: String(job._id), event: 'job.skipped' }).lean()
+    expect(audit).toBeTruthy()
+    expect(audit.detail.reason).toMatch(/pipeline/)
+  }, 30_000)
+
+  it('Pipeline selector: COMPLETED when deal pipeline is Comercial Visual Branding', async () => {
+    moduleUnderTest = createDealSyncModule({
+      config: {
+        mongodbUri: 'mongodb://x',
+        hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com', propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' },
+        webhook: { sharedSecret: 's', headerName: 'x' },
+        odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
+        deals: { allowedStageIds: [CIERRE_GANADO], allowedPipelineIds: [CVB], rejectUnknownPipeline: true },
+        server: { port: 0, nodeEnv: 'test' },
+        logging: { level: 'error' },
+        worker: { concurrency: 1, pollIntervalMs: 50 },
+        retry: { maxAttempts: 8, maxDelayMs: 60_000 }
+      },
+      sourceGateway: makeSourceGateway({
+        properties: { id_cliente_odoo: '42', dealstage: CIERRE_GANADO, pipeline: CVB }
+      }),
+      targetGateway: makeTargetGateway(calls),
+      logger: null,
+      recoverOrphansOnStart: false
+    })
+    await moduleUnderTest.enqueueWebhook({ rawBody: {}, objectId: 'D-CVB', eventType: 'x' })
+    const { JobModel: JM } = require('../../src/adapters/outbound/mongo/schemas/job.schema.js')
+    let job = null
+    for (let i = 0; i < 30; i += 1) {
+      await moduleUnderTest._internals.jobPoller.tick()
+      await new Promise((r) => setTimeout(r, 20))
+      job = await JM.findOne().lean()
+      if (job && job.status === 'COMPLETED') break
+    }
+    expect(job.status).toBe('COMPLETED')
+    expect(calls.upsert).toHaveLength(1)
     expect(calls.writeBack).toHaveLength(1)
   }, 30_000)
 })

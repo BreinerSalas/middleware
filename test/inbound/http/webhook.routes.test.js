@@ -18,6 +18,11 @@ function baseConfig(overrides = {}) {
     },
     webhook: { sharedSecret: '', headerName: 'x-smartflow-secret' },
     odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
+    deals: {
+      allowedStageIds: ['1409249445'],
+      allowedPipelineIds: ['t_5728252902aef7e9938dfcbb6cdc2af8'],
+      rejectUnknownPipeline: true
+    },
     server: { port: 0, nodeEnv: 'test' },
     logging: { level: 'error' },
     worker: { concurrency: 1, pollIntervalMs: 50 },
@@ -92,14 +97,14 @@ describe('HTTP /webhooks/hubspot (Private App HMAC + array body)', () => {
     expect(mod._calls.enqueue).toHaveLength(0)
   })
 
-  it('202 when array contains deal.propertyChange(dealstage=closedwon) — enqueues 1 job', async () => {
+  it('202 when array contains deal.propertyChange(dealstage=Cierre Ganado stageId) — enqueues 1 job', async () => {
     const mod = makeFakeDealSyncModule()
     const app = await buildApp(mod)
     const body = [{
       subscriptionType: 'deal.propertyChange',
       objectId: '12345',
       propertyName: 'dealstage',
-      propertyValue: 'closedwon'
+      propertyValue: '1409249445'
     }]
     const res = await postSigned(app, { body })
     expect(res.status).toBe(202)
@@ -125,7 +130,7 @@ describe('HTTP /webhooks/hubspot (Private App HMAC + array body)', () => {
     expect(mod._calls.enqueue).toHaveLength(0)
   })
 
-  it('200 and 0 enqueues when deal.propertyChange has dealstage=anything-other-than-closedwon', async () => {
+  it('200 and 0 enqueues when deal.propertyChange has dealstage=stage-not-in-allowlist (sales pipeline Cierre Ganado)', async () => {
     const mod = makeFakeDealSyncModule()
     const app = await buildApp(mod)
     const body = [{
@@ -133,6 +138,21 @@ describe('HTTP /webhooks/hubspot (Private App HMAC + array body)', () => {
       objectId: '12345',
       propertyName: 'dealstage',
       propertyValue: 'qualifiedtobuy'
+    }]
+    const res = await postSigned(app, { body })
+    expect(res.status).toBe(200)
+    expect(res.body.enqueued).toBe(0)
+    expect(mod._calls.enqueue).toHaveLength(0)
+  })
+
+  it('200 and 0 enqueues for legacy "closedwon" string when allowlist is stageId-based', async () => {
+    const mod = makeFakeDealSyncModule()
+    const app = await buildApp(mod)
+    const body = [{
+      subscriptionType: 'deal.propertyChange',
+      objectId: '12345',
+      propertyName: 'dealstage',
+      propertyValue: 'closedwon'
     }]
     const res = await postSigned(app, { body })
     expect(res.status).toBe(200)
@@ -175,7 +195,7 @@ describe('HTTP /webhooks/hubspot (Private App HMAC + array body)', () => {
     const body = [
       { subscriptionType: 'deal.creation', objectId: 'IGNORE-1' },
       { subscriptionType: 'deal.propertyChange', objectId: 'KEEP-1', propertyName: 'amount', propertyValue: '10' },
-      { subscriptionType: 'deal.propertyChange', objectId: 'KEEP-2', propertyName: 'dealstage', propertyValue: 'closedwon' },
+      { subscriptionType: 'deal.propertyChange', objectId: 'KEEP-2', propertyName: 'dealstage', propertyValue: '1409249445' },
       { subscriptionType: 'deal.deletion', objectId: 'IGNORE-2' }
     ]
     const res = await postSigned(app, { body })
@@ -191,7 +211,7 @@ describe('HTTP /webhooks/hubspot (Private App HMAC + array body)', () => {
     const body = [{
       subscriptionType: 'deal.propertyChange',
       propertyName: 'dealstage',
-      propertyValue: 'closedwon'
+      propertyValue: '1409249445'
     }]
     const res = await postSigned(app, { body })
     expect(res.status).toBe(200)
@@ -206,7 +226,7 @@ describe('HTTP /webhooks/hubspot (Private App HMAC + array body)', () => {
       subscriptionType: 'deal.propertyChange',
       objectId: '12345',
       propertyName: 'dealstage',
-      propertyValue: 'closedwon'
+      propertyValue: '1409249445'
     }]
     const rawBody = JSON.stringify(body)
     const ts = Date.now()
@@ -243,5 +263,79 @@ describe('HTTP /webhooks/hubspot (Private App HMAC + array body)', () => {
       .send([])
     expect(res.status).toBe(500)
     expect(mod._calls.enqueue).toHaveLength(0)
+  })
+
+  describe('Pipeline Comercial Visual Branding selector', () => {
+    it('accepts dealstage with stageId 1409249445 (Cierre Ganado) under default config', async () => {
+      const mod = makeFakeDealSyncModule()
+      const app = await buildApp(mod)
+      const body = [{
+        subscriptionType: 'deal.propertyChange',
+        objectId: 'CVB-1',
+        propertyName: 'dealstage',
+        propertyValue: '1409249445'
+      }]
+      const res = await postSigned(app, { body })
+      expect(res.status).toBe(202)
+      expect(res.body.enqueued).toBe(1)
+      expect(mod._calls.enqueue[0].objectId).toBe('CVB-1')
+    })
+
+    it('rejects a Cierre Ganado event with a different stageId (sales pipeline)', async () => {
+      const mod = makeFakeDealSyncModule()
+      const app = await buildApp(mod)
+      const body = [{
+        subscriptionType: 'deal.propertyChange',
+        objectId: 'SALES-1',
+        propertyName: 'dealstage',
+        propertyValue: '888888'
+      }]
+      const res = await postSigned(app, { body })
+      expect(res.status).toBe(200)
+      expect(res.body.enqueued).toBe(0)
+      expect(mod._calls.enqueue).toHaveLength(0)
+    })
+
+    it('honors a custom HS_ALLOWED_STAGE_IDS via config override (CSV)', async () => {
+      const mod = makeFakeDealSyncModule()
+      const cfg = baseConfig({
+        deals: { allowedStageIds: ['STAGE-A', 'STAGE-B'], allowedPipelineIds: [], rejectUnknownPipeline: false }
+      })
+      const app = await buildApp(mod, cfg)
+      const accepted = [{
+        subscriptionType: 'deal.propertyChange',
+        objectId: 'X-1',
+        propertyName: 'dealstage',
+        propertyValue: 'STAGE-A'
+      }]
+      const rejected = [{
+        subscriptionType: 'deal.propertyChange',
+        objectId: 'X-2',
+        propertyName: 'dealstage',
+        propertyValue: '1409249445'
+      }]
+      const res1 = await postSigned(app, { body: accepted })
+      expect(res1.status).toBe(202)
+      expect(mod._calls.enqueue).toHaveLength(1)
+      const res2 = await postSigned(app, { body: rejected })
+      expect(res2.status).toBe(200)
+      expect(res2.body.enqueued).toBe(0)
+      expect(mod._calls.enqueue).toHaveLength(1)
+    })
+
+    it('returns 200 with enqueued=0 when dealstage has no value (defensive)', async () => {
+      const mod = makeFakeDealSyncModule()
+      const app = await buildApp(mod)
+      const body = [{
+        subscriptionType: 'deal.propertyChange',
+        objectId: 'NO-STAGE',
+        propertyName: 'dealstage',
+        propertyValue: null
+      }]
+      const res = await postSigned(app, { body })
+      expect(res.status).toBe(200)
+      expect(res.body.enqueued).toBe(0)
+      expect(mod._calls.enqueue).toHaveLength(0)
+    })
   })
 })
