@@ -55,10 +55,10 @@ function createApp({ config, logger = null, dealSyncModule = null, panelReposito
       return reply.code(200).send({ ok: true, enqueued: 0 })
     }
 
-    const allowedStageIds = Array.isArray(config.deals && config.deals.allowedStageIds)
+    const allowedStages = Array.isArray(config.deals && config.deals.allowedStageIds)
       ? config.deals.allowedStageIds.map((s) => String(s))
       : []
-    const allowedStageSet = new Set(allowedStageIds)
+    const allowedStageSet = new Set(allowedStages)
 
     let enqueued = 0
     let lastResult = null
@@ -71,7 +71,7 @@ function createApp({ config, logger = null, dealSyncModule = null, panelReposito
         log.warn('webhook.stage_not_allowed', {
           objectId: event.objectId || event.dealId || null,
           stageId,
-          allowedStageIds
+          allowedStageIds: allowedStages
         })
         continue
       }
