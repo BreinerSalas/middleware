@@ -4,7 +4,7 @@ const require = createRequire(import.meta.url)
 const { MongoMemoryServer } = require('mongodb-memory-server')
 const mongoose = require('mongoose')
 
-const { createDealSyncModule } = require('../../src/composition/dealSyncModule.js')
+const { createDealSyncModule, buildWriteBackPayload } = require('../../src/composition/dealSyncModule.js')
 const { MongoJobRepository } = require('../../src/adapters/outbound/mongo/MongoJobRepository.js')
 const { JOB_STATUS } = require('../../src/core/domain/SyncJob.js')
 const { SkipSyncError } = require('../../src/core/domain/errors.js')
@@ -38,7 +38,6 @@ beforeEach(async () => {
     config: {
       mongodbUri: 'mongodb://x',
       hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com', propertyOdooCustomerId: 'id_cliente_odoo', propertyOdooOrderId: 'id_orden_odoo' },
-      webhook: { sharedSecret: 's', headerName: 'x-smartflow-secret' },
       odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
       server: { port: 0, nodeEnv: 'test' },
       logging: { level: 'error' },
@@ -116,7 +115,6 @@ describe('composition/dealSyncModule end-to-end', () => {
         config: {
           mongodbUri: 'mongodb://x',
           hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com', propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' },
-          webhook: { sharedSecret: 's', headerName: 'x' },
           odoo: { mode: 'http', baseUrl: 'https://odoo.example.com', db: 'mydb', login: 'me@x.com', apiKey: 'k' },
           server: { port: 0, nodeEnv: 'test' },
           logging: { level: 'error' },
@@ -167,7 +165,6 @@ describe('composition/dealSyncModule end-to-end', () => {
       config: {
         mongodbUri: 'mongodb://x',
         hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com', propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' },
-        webhook: { sharedSecret: 's', headerName: 'x' },
         odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
         server: { port: 0, nodeEnv: 'test' },
         logging: { level: 'error' },
@@ -207,7 +204,6 @@ describe('composition/dealSyncModule end-to-end', () => {
       config: {
         mongodbUri: 'mongodb://x',
         hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com', propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' },
-        webhook: { sharedSecret: 's', headerName: 'x' },
         odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
         server: { port: 0, nodeEnv: 'test' },
         logging: { level: 'error' },
@@ -248,7 +244,6 @@ describe('composition/dealSyncModule end-to-end', () => {
       config: {
         mongodbUri: 'mongodb://x',
         hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com', propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' },
-        webhook: { sharedSecret: 's', headerName: 'x' },
         odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
         deals: { allowedStageIds: [CIERRE_GANADO], allowedPipelineIds: [CVB], rejectUnknownPipeline: true },
         server: { port: 0, nodeEnv: 'test' },
@@ -286,7 +281,6 @@ describe('composition/dealSyncModule end-to-end', () => {
       config: {
         mongodbUri: 'mongodb://x',
         hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com', propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' },
-        webhook: { sharedSecret: 's', headerName: 'x' },
         odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
         deals: { allowedStageIds: [CIERRE_GANADO], allowedPipelineIds: [CVB], rejectUnknownPipeline: true },
         server: { port: 0, nodeEnv: 'test' },
@@ -314,4 +308,21 @@ describe('composition/dealSyncModule end-to-end', () => {
     expect(calls.upsert).toHaveLength(1)
     expect(calls.writeBack).toHaveLength(1)
   }, 30_000)
+})
+
+describe('buildWriteBackPayload (quote flow)', () => {
+  it('returns id_presupuesto_odoo from targetRef when mapping has one', () => {
+    const payload = buildWriteBackPayload({ sourceId: 'D-1', targetId: 'SO-1', targetRef: 'S06613' })
+    expect(payload).toEqual({ id_presupuesto_odoo: 'S06613' })
+    expect(payload).not.toHaveProperty('id_orden_odoo')
+  })
+
+  it('returns null id_presupuesto_odoo when mapping has no targetRef', () => {
+    const payload = buildWriteBackPayload({ sourceId: 'D-1', targetId: 'SO-1', targetRef: null })
+    expect(payload).toEqual({ id_presupuesto_odoo: null })
+  })
+
+  it('returns null id_presupuesto_odoo when mapping is null', () => {
+    expect(buildWriteBackPayload(null)).toEqual({ id_presupuesto_odoo: null })
+  })
 })

@@ -8,6 +8,7 @@ const { connectMongo, disconnectMongo } = require('./adapters/outbound/mongo/con
 const { createDealSyncModule } = require('./composition/dealSyncModule')
 const { createHubspotApiClient } = require('./adapters/outbound/hubspot/hubspotApiClient')
 const { provisionDealProperties } = require('./composition/provisionDealProperties')
+const { buildDealPropertyDefinitions } = require('./composition/dealPropertyDefinitions')
 
 async function start({ config = null } = {}) {
   const cfg = config || load()
@@ -19,24 +20,7 @@ async function start({ config = null } = {}) {
     baseUrl: cfg.hubspot.apiBase,
     accessToken: cfg.hubspot.accessToken
   })
-  const dealPropertiesToProvision = [
-    {
-      name: cfg.hubspot.propertyOdooOrderId,
-      label: 'ID Orden Odoo',
-      type: 'string',
-      fieldType: 'text',
-      groupName: 'dealinformation',
-      description: 'ID de la orden de fabricacion (mrp.production) creada en Odoo al cerrar el negocio.'
-    },
-    {
-      name: cfg.hubspot.propertyOdooCustomerId,
-      label: 'ID Cliente Odoo',
-      type: 'string',
-      fieldType: 'text',
-      groupName: 'dealinformation',
-      description: 'ID del partner (res.partner) en Odoo. Override por deal del env default ODOO_DEFAULT_CUSTOMER_ID.'
-    }
-  ]
+  const dealPropertiesToProvision = buildDealPropertyDefinitions(cfg.hubspot)
   try {
     const summary = await provisionDealProperties({
       api: hubspotApi,

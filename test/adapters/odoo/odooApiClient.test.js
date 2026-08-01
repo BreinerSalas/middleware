@@ -159,10 +159,11 @@ describe('odooApiClient', () => {
     await expect(api.createManufacturingOrder({})).rejects.toThrow(/Validation error/)
   })
 
-  it('http mode createSalesOrder uses execute_kw on sale.order.create', async () => {
+  it('http mode createSalesOrder uses execute_kw on sale.order.create and reads the name back', async () => {
     const post = vi.fn()
       .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
       .mockResolvedValueOnce({ data: { result: 17 }, status: 200 })
+      .mockResolvedValueOnce({ data: { result: [{ id: 17, name: 'S06613', state: 'draft' }] }, status: 200 })
     const api = createOdooApiClient({
       mode: 'http', baseUrl: 'https://odoo.example.com',
       db: 'db', login: 'l@x.com', apiKey: 'k',
@@ -170,9 +171,27 @@ describe('odooApiClient', () => {
     })
     const r = await api.createSalesOrder({ partner_id: 7, order_line: [] })
     expect(r.id).toBe('17')
+    expect(r.ref).toBe('S06613')
+    expect(r.state).toBe('draft')
+    expect(post).toHaveBeenCalledTimes(3)
     expect(post.mock.calls[1][1].params.args).toEqual([
       'db', 2, 'k', 'sale.order', 'create', [{ partner_id: 7, order_line: [] }], {}
     ])
+    expect(post.mock.calls[2][1].params.args).toEqual([
+      'db', 2, 'k', 'sale.order', 'read', [[17]], { fields: ['name', 'state'] }
+    ])
+  })
+
+  it('http mode createSalesOrder surfaces the read-after-create error', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({ data: { result: 17 }, status: 200 })
+      .mockResolvedValueOnce({ data: { error: { code: 200, data: { message: 'read failed' } } }, status: 200 })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+    })
+    await expect(api.createSalesOrder({})).rejects.toThrow(/read failed/)
   })
 
   it('http mode updateSalesOrder uses execute_kw on sale.order.write', async () => {
@@ -190,20 +209,32 @@ describe('odooApiClient', () => {
     ])
   })
 
-  it('http mode searchSalesOrderByOrigin uses execute_kw on sale.order.search', async () => {
+  it('http mode searchSalesOrderByOrigin uses execute_kw on sale.order.search_read', async () => {
     const post = vi.fn()
       .mockResolvedValueOnce({ data: { result: 4 }, status: 200 })
-      .mockResolvedValueOnce({ data: { result: [17, 18] }, status: 200 })
+      .mockResolvedValueOnce({
+        data: {
+          result: [
+            { id: 17, name: 'S06613', state: 'draft', country_expense: [78, 'DDP Colombia'] },
+            { id: 18, name: 'S06614', state: 'draft', country_expense: false }
+          ]
+        },
+        status: 200
+      })
     const api = createOdooApiClient({
       mode: 'http', baseUrl: 'https://odoo.example.com',
       db: 'db', login: 'l@x.com', apiKey: 'k',
       transport: { post }
     })
     const r = await api.searchSalesOrderByOrigin('hs:62939072525')
-    expect(r).toEqual([17, 18])
+    expect(r).toEqual([
+      { id: 17, name: 'S06613', state: 'draft', countryExpenseId: 78 },
+      { id: 18, name: 'S06614', state: 'draft', countryExpenseId: null }
+    ])
     expect(post.mock.calls[1][1].params.args).toEqual([
-      'db', 4, 'k', 'sale.order', 'search',
-      [[['origin', '=', 'hs:62939072525']]], {}
+      'db', 4, 'k', 'sale.order', 'search_read',
+      [[['origin', '=', 'hs:62939072525']]],
+      { fields: ['id', 'name', 'state', 'country_expense'] }
     ])
   })
 
@@ -262,6 +293,163 @@ describe('odooApiClient', () => {
     expect(r).toEqual({})
   })
 
+  it('http mode readProductUoms returns map of productId->uomId', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({
+        data: {
+          result: [
+            { id: 17, uom_id: [1, 'Units'] },
+            { id: 18, uom_id: [2, 'kg'] }
+          ]
+        },
+        status: 200
+      })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k',
+      transport: { post }
+    })
+    const r = await api.readProductUoms([17, 18])
+    expect(r).toEqual({ 17: 1, 18: 2 })
+    expect(post.mock.calls[1][1].params.args).toEqual([
+      'db', 2, 'k', 'product.product', 'read',
+      [[17, 18]],
+      { fields: ['id', 'uom_id'] }
+    ])
+  })
+
+  it('http mode readProductUoms skips products with no uom_id', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({
+        data: { result: [{ id: 17, uom_id: false }, { id: 18, uom_id: [2, 'kg'] }] },
+        status: 200
+      })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k',
+      transport: { post }
+    })
+    const r = await api.readProductUoms([17, 18])
+    expect(r).toEqual({ 18: 2 })
+  })
+
+  it('http mode readProductUoms returns empty map for empty or non-numeric input', async () => {
+    const post = vi.fn()
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k',
+      transport: { post }
+    })
+    expect(await api.readProductUoms([])).toEqual({})
+    expect(await api.readProductUoms(['not-a-number'])).toEqual({})
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it('stub mode readProductUoms returns empty map', async () => {
+    const api = createOdooApiClient({ mode: 'stub' })
+    const r = await api.readProductUoms([1])
+    expect(r).toEqual({})
+  })
+
+  it('http mode searchProductIdsByNames builds an OR domain of =ilike terms', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({
+        data: {
+          result: [
+            { id: 17, name: 'CLIPSTRIPS P&G', uom_id: [1, 'und'] },
+            { id: 18, name: 'OTRA COSA', uom_id: [2, 'kg'] }
+          ]
+        },
+        status: 200
+      })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k',
+      transport: { post }
+    })
+    const r = await api.searchProductIdsByNames(['CLIPSTRIPS P&G', 'Otra Cosa'])
+    expect(r).toEqual({
+      'clipstrips p&g': { id: 17, uomId: 1, matches: 1, ids: [17] },
+      'otra cosa': { id: 18, uomId: 2, matches: 1, ids: [18] }
+    })
+    expect(post.mock.calls[1][1].params.args).toEqual([
+      'db', 2, 'k', 'product.product', 'search_read',
+      [['|', ['name', '=ilike', 'clipstrips p&g'], ['name', '=ilike', 'otra cosa']]],
+      { fields: ['id', 'name', 'uom_id'] }
+    ])
+  })
+
+  it('http mode searchProductIdsByNames uses no OR operator for a single name', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({ data: { result: [] }, status: 200 })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k',
+      transport: { post }
+    })
+    await api.searchProductIdsByNames(['Solo Uno'])
+    expect(post.mock.calls[1][1].params.args[5]).toEqual([[['name', '=ilike', 'solo uno']]])
+  })
+
+  it('http mode searchProductIdsByNames reports ambiguity instead of picking one', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({
+        data: {
+          result: [
+            { id: 18442, name: 'DUP', uom_id: [1, 'und'] },
+            { id: 18999, name: 'dup', uom_id: [1, 'und'] }
+          ]
+        },
+        status: 200
+      })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k',
+      transport: { post }
+    })
+    const r = await api.searchProductIdsByNames(['DUP'])
+    expect(r.dup).toEqual({ id: 18442, uomId: 1, matches: 2, ids: [18442, 18999] })
+  })
+
+  it('http mode searchProductIdsByNames matches across case and whitespace drift', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({ data: { result: [{ id: 7, name: 'FOO BAR', uom_id: [1, 'und'] }] }, status: 200 })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k',
+      transport: { post }
+    })
+    const r = await api.searchProductIdsByNames(['  Foo   Bar '])
+    expect(r['foo bar'].id).toBe(7)
+  })
+
+  it('http mode searchProductIdsByNames deduplicates and skips the RPC for empty input', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({ data: { result: [] }, status: 200 })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k',
+      transport: { post }
+    })
+    expect(await api.searchProductIdsByNames([])).toEqual({})
+    expect(await api.searchProductIdsByNames(['  ', null])).toEqual({})
+    expect(post).not.toHaveBeenCalled()
+    await api.searchProductIdsByNames(['Uno', 'uno', '  UNO  '])
+    expect(post.mock.calls[1][1].params.args[5]).toEqual([[['name', '=ilike', 'uno']]])
+  })
+
+  it('stub mode searchProductIdsByNames returns empty map', async () => {
+    const api = createOdooApiClient({ mode: 'stub' })
+    expect(await api.searchProductIdsByNames(['ANY'])).toEqual({})
+  })
+
   it('http mode default transport does not send Authorization header', async () => {
     const axios = require('axios')
     const captured = []
@@ -286,5 +474,149 @@ describe('odooApiClient', () => {
       expect(call.headers).not.toHaveProperty('Authorization')
       expect(call.headers).not.toHaveProperty('authorization')
     }
+  })
+})
+
+describe('readPartnerCountries', () => {
+  it('http mode reads partners and maps country_id and parent_id', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({
+        data: {
+          result: [
+            { id: 10, country_id: [10, 'Argentina'], parent_id: false },
+            { id: 11, country_id: [49, 'Colombia'], parent_id: [7, 'Padre SA'] }
+          ]
+        },
+        status: 200
+      })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+    })
+    const r = await api.readPartnerCountries([10, 11])
+    expect(r).toEqual({
+      10: { countryId: 10, countryName: 'Argentina', parentId: null },
+      11: { countryId: 49, countryName: 'Colombia', parentId: 7 }
+    })
+    expect(post.mock.calls[1][1].params.args).toEqual([
+      'db', 2, 'k', 'res.partner', 'read', [[10, 11]], { fields: ['id', 'country_id', 'parent_id'] }
+    ])
+  })
+
+  it('http mode returns empty map for empty or non-numeric input without RPC', async () => {
+    const post = vi.fn()
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+    })
+    expect(await api.readPartnerCountries([])).toEqual({})
+    expect(await api.readPartnerCountries(['not-a-number', null])).toEqual({})
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it('stub mode returns empty map', async () => {
+    const api = createOdooApiClient({ mode: 'stub' })
+    expect(await api.readPartnerCountries([10])).toEqual({})
+  })
+})
+
+describe('listOperationCosts', () => {
+  it('http mode search_reads operation.costs and maps the result shape', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({
+        data: {
+          result: [
+            { id: 71, name: 'DDP Mexico', country_id: [156, 'Mexico'], product_id: false },
+            { id: 116, name: 'CIP Mexico', country_id: [156, 'Mexico'], product_id: false }
+          ]
+        },
+        status: 200
+      })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+    })
+    const r = await api.listOperationCosts()
+    expect(r).toEqual([
+      { id: 71, name: 'DDP Mexico', countryId: 156, countryName: 'Mexico', productId: null },
+      { id: 116, name: 'CIP Mexico', countryId: 156, countryName: 'Mexico', productId: null }
+    ])
+    expect(post.mock.calls[1][1].params.args).toEqual([
+      'db', 2, 'k', 'operation.costs', 'search_read', [[]],
+      { fields: ['id', 'name', 'country_id', 'product_id'] }
+    ])
+  })
+
+  it('stub mode returns empty array', async () => {
+    const api = createOdooApiClient({ mode: 'stub' })
+    expect(await api.listOperationCosts()).toEqual([])
+  })
+})
+
+describe('listOperationCosts memoization + TTL', () => {
+  it('two concurrent calls share a single RPC (one auth + one search_read)', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({
+        data: { result: [{ id: 71, name: 'DDP Mexico', country_id: [156, 'Mexico'], product_id: false }] },
+        status: 200
+      })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+    })
+    const [a, b] = await Promise.all([api.listOperationCosts(), api.listOperationCosts()])
+    expect(a).toEqual(b)
+    expect(post).toHaveBeenCalledTimes(2)
+  })
+
+  it('caches within TTL and refetches after expiry', async () => {
+    let nowMs = 1000
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({
+        data: { result: [{ id: 71, name: 'A', country_id: [1, 'X'], product_id: false }] },
+        status: 200
+      })
+      .mockResolvedValueOnce({
+        data: { result: [{ id: 72, name: 'B', country_id: [1, 'X'], product_id: false }] },
+        status: 200
+      })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post },
+      operationCostsTtlMs: 100,
+      now: () => nowMs
+    })
+    const r1 = await api.listOperationCosts()
+    expect(r1[0].id).toBe(71)
+    nowMs = 1099
+    const r2 = await api.listOperationCosts()
+    expect(r2[0].id).toBe(71)
+    expect(post).toHaveBeenCalledTimes(2)
+    nowMs = 1101
+    const r3 = await api.listOperationCosts()
+    expect(r3[0].id).toBe(72)
+    expect(post).toHaveBeenCalledTimes(3)
+  })
+
+  it('refetches immediately after a failed call (no stale error cached)', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce({
+        data: { result: [{ id: 71, name: 'A', country_id: [1, 'X'], product_id: false }] },
+        status: 200
+      })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post },
+      operationCostsTtlMs: 60000
+    })
+    await expect(api.listOperationCosts()).rejects.toThrow(/network/)
+    const r = await api.listOperationCosts()
+    expect(r[0].id).toBe(71)
   })
 })

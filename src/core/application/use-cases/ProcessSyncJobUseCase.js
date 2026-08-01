@@ -75,11 +75,16 @@ class ProcessSyncJobUseCase {
       await this.audit({
         jobId, sourceId, correlationId,
         event: 'target.upserted', success: true,
-        detail: { targetId: upsertResult.targetId, targetRef: upsertResult.targetRef, salesOrderId: upsertResult.salesOrderId || null }
+        detail: {
+          targetId: upsertResult.targetId,
+          targetRef: upsertResult.targetRef,
+          salesOrderId: upsertResult.salesOrderId || null,
+          metadata: upsertResult.metadata || null
+        }
       })
 
       const payloadHash = (this.retryPolicy.hashPayload && this.retryPolicy.hashPayload(record)) || null
-      const mappingMetadata = { lastJobId: jobId }
+      const mappingMetadata = { lastJobId: jobId, ...(upsertResult.metadata || {}) }
       if (upsertResult.salesOrderId) mappingMetadata.salesOrderId = upsertResult.salesOrderId
       const mapping = await this.mappingRepository.upsert({
         sourceId,
@@ -105,13 +110,20 @@ class ProcessSyncJobUseCase {
     if (typeof this.retryPolicy.buildWriteBackPayload === 'function') {
       return this.retryPolicy.buildWriteBackPayload(mapping)
     }
-    return { id_orden_odoo: mapping.targetId }
+    return { id_presupuesto_odoo: mapping && mapping.targetRef ? mapping.targetRef : null }
   }
 
   async handleError({ job, jobId, sourceId, correlationId, err, priorAttempts, maxAttempts }) {
     if (err instanceof SkipSyncError) {
       const updated = await this.jobRepository.markSkipped(jobId, err)
-      await this.audit({ jobId, sourceId, correlationId, event: 'job.skipped', success: false, detail: { reason: err.reason || err.message } })
+      await this.audit({
+        jobId,
+        sourceId,
+        correlationId,
+        event: 'job.skipped',
+        success: false,
+        detail: { reason: err.reason || err.message, skipDetail: err.detail || null }
+      })
       return { job: updated, skipped: true, error: err }
     }
 

@@ -23,7 +23,7 @@ const {
 
 function buildWriteBackPayload(mapping) {
   return {
-    id_orden_odoo: mapping && mapping.targetId ? mapping.targetId : null
+    id_presupuesto_odoo: mapping && mapping.targetRef ? mapping.targetRef : null
   }
 }
 
@@ -57,6 +57,7 @@ function createDealSyncModule({
     }),
     propertyOdooCustomerId: config.hubspot.propertyOdooCustomerId,
     propertyOdooOrderId: config.hubspot.propertyOdooOrderId,
+    propertyOdooQuoteId: config.hubspot.propertyOdooQuoteId,
     echoGuard,
     logger
   })
@@ -70,6 +71,9 @@ function createDealSyncModule({
     }),
     hashPayload,
     defaultCustomerId: config.odoo.defaultCustomerId,
+    // En modo stub el cliente devuelve {} en todo lookup, asi que product_id es
+    // siempre null; exigir match ahi convertiria cada corrida local en SKIPPED.
+    requireProductMatch: config.odoo.mode === 'http',
     logger
   })
 

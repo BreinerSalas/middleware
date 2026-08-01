@@ -1,0 +1,1014 @@
+{
+  "startedAt": "2026-08-01T03:29:58.438Z",
+  "finishedAt": "2026-08-01T03:30:03.532Z",
+  "target": {
+    "odooBase": "https://visual-branding-stag.odoo.com",
+    "odooDb": "visualbranding-stag-35631058",
+    "hubspotBase": "https://api.hubapi.com"
+  },
+  "summary": {
+    "total": 7,
+    "pass": 5,
+    "warn": 2,
+    "fail": 0,
+    "skip": 0
+  },
+  "results": [
+    {
+      "id": "P1",
+      "status": "pass",
+      "summary": "country_expense is writable (readonly=false, compute=none)",
+      "data": {
+        "type": "many2one",
+        "readonly": false,
+        "required": false,
+        "compute": null,
+        "related": null,
+        "store": true,
+        "hasInverse": false,
+        "help": null,
+        "string": "País"
+      },
+      "durationMs": 924
+    },
+    {
+      "id": "P2",
+      "status": "warn",
+      "summary": "35 country buckets; 27 have >1 record; 0 records with no country",
+      "data": {
+        "totalCountries": 35,
+        "multiCountryCount": 27,
+        "nullCountryCount": 0,
+        "perCountry": [
+          {
+            "countryId": 10,
+            "countryName": "Argentina",
+            "count": 1
+          },
+          {
+            "countryId": 14,
+            "countryName": "Aruba",
+            "count": 2
+          },
+          {
+            "countryId": 32,
+            "countryName": "Bahamas",
+            "count": 2
+          },
+          {
+            "countryId": 18,
+            "countryName": "Barbados",
+            "count": 3
+          },
+          {
+            "countryId": 37,
+            "countryName": "Belize",
+            "count": 2
+          },
+          {
+            "countryId": 27,
+            "countryName": "Bermuda",
+            "count": 1
+          },
+          {
+            "countryId": 29,
+            "countryName": "Bolivia",
+            "count": 4
+          },
+          {
+            "countryId": 31,
+            "countryName": "Brazil",
+            "count": 1
+          },
+          {
+            "countryId": 38,
+            "countryName": "Canada",
+            "count": 3
+          },
+          {
+            "countryId": 123,
+            "countryName": "Cayman Islands",
+            "count": 1
+          },
+          {
+            "countryId": 46,
+            "countryName": "Chile",
+            "count": 4
+          },
+          {
+            "countryId": 49,
+            "countryName": "Colombia",
+            "count": 5
+          },
+          {
+            "countryId": 50,
+            "countryName": "Costa Rica",
+            "count": 9
+          },
+          {
+            "countryId": 53,
+            "countryName": "Curaçao",
+            "count": 3
+          },
+          {
+            "countryId": 61,
+            "countryName": "Dominican Republic",
+            "count": 9
+          },
+          {
+            "countryId": 63,
+            "countryName": "Ecuador",
+            "count": 5
+          },
+          {
+            "countryId": 209,
+            "countryName": "El Salvador",
+            "count": 2
+          },
+          {
+            "countryId": 86,
+            "countryName": "Guadeloupe",
+            "count": 1
+          },
+          {
+            "countryId": 90,
+            "countryName": "Guatemala",
+            "count": 9
+          },
+          {
+            "countryId": 93,
+            "countryName": "Guyana",
+            "count": 1
+          },
+          {
+            "countryId": 96,
+            "countryName": "Honduras",
+            "count": 10
+          },
+          {
+            "countryId": 111,
+            "countryName": "Jamaica",
+            "count": 5
+          },
+          {
+            "countryId": 156,
+            "countryName": "Mexico",
+            "count": 5
+          },
+          {
+            "countryId": 164,
+            "countryName": "Nicaragua",
+            "count": 8
+          },
+          {
+            "countryId": 172,
+            "countryName": "Panama",
+            "count": 10
+          },
+          {
+            "countryId": 185,
+            "countryName": "Paraguay",
+            "count": 5
+          },
+          {
+            "countryId": 173,
+            "countryName": "Peru",
+            "count": 4
+          },
+          {
+            "countryId": 181,
+            "countryName": "Puerto Rico",
+            "count": 5
+          },
+          {
+            "countryId": 210,
+            "countryName": "Sint Maarten (Dutch part)",
+            "count": 1
+          },
+          {
+            "countryId": 206,
+            "countryName": "Suriname",
+            "count": 4
+          },
+          {
+            "countryId": 225,
+            "countryName": "Trinidad and Tobago",
+            "count": 5
+          },
+          {
+            "countryId": 233,
+            "countryName": "United States",
+            "count": 9
+          },
+          {
+            "countryId": 234,
+            "countryName": "Uruguay",
+            "count": 5
+          },
+          {
+            "countryId": 238,
+            "countryName": "Venezuela",
+            "count": 3
+          },
+          {
+            "countryId": 240,
+            "countryName": "Virgin Islands (USA)",
+            "count": 1
+          }
+        ]
+      },
+      "durationMs": 107
+    },
+    {
+      "id": "P3",
+      "status": "warn",
+      "summary": "27 ambiguous countries, all either have a generic record or share numeric params",
+      "data": {
+        "countries": [
+          {
+            "countryId": 14,
+            "countryName": "Aruba",
+            "recordCount": 2,
+            "hasGeneric": true,
+            "genericId": 88,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 88,
+                "name": "DDP Aruba",
+                "product_id": false
+              },
+              {
+                "id": 172,
+                "name": "CPT Aruba",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 32,
+            "countryName": "Bahamas",
+            "recordCount": 2,
+            "hasGeneric": true,
+            "genericId": 73,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 73,
+                "name": "DDP Bahamas",
+                "product_id": false
+              },
+              {
+                "id": 207,
+                "name": "DDP Bahamas 0",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 18,
+            "countryName": "Barbados",
+            "recordCount": 3,
+            "hasGeneric": true,
+            "genericId": 74,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 74,
+                "name": "DDP Barbados",
+                "product_id": false
+              },
+              {
+                "id": 169,
+                "name": "CPT Barbados",
+                "product_id": false
+              },
+              {
+                "id": 208,
+                "name": "DDP Barbados 0",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 37,
+            "countryName": "Belize",
+            "recordCount": 2,
+            "hasGeneric": true,
+            "genericId": 87,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 87,
+                "name": "DDP Belize",
+                "product_id": false
+              },
+              {
+                "id": 193,
+                "name": "CPT Belize",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 29,
+            "countryName": "Bolivia",
+            "recordCount": 4,
+            "hasGeneric": true,
+            "genericId": 79,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 79,
+                "name": "DDP Bolivia",
+                "product_id": false
+              },
+              {
+                "id": 145,
+                "name": "EXW Bolivia (con Duca)",
+                "product_id": false
+              },
+              {
+                "id": 146,
+                "name": "EXW Bolivia (sin Duca)",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 38,
+            "countryName": "Canada",
+            "recordCount": 3,
+            "hasGeneric": true,
+            "genericId": 93,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 93,
+                "name": "DDP Canada",
+                "product_id": false
+              },
+              {
+                "id": 174,
+                "name": "CIF Canada",
+                "product_id": false
+              },
+              {
+                "id": 175,
+                "name": "FOB Canada",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 46,
+            "countryName": "Chile",
+            "recordCount": 4,
+            "hasGeneric": true,
+            "genericId": 83,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 83,
+                "name": "DDP Chile",
+                "product_id": false
+              },
+              {
+                "id": 115,
+                "name": "CPT Chile",
+                "product_id": false
+              },
+              {
+                "id": 196,
+                "name": "EXW Chile (con Duca)",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 49,
+            "countryName": "Colombia",
+            "recordCount": 5,
+            "hasGeneric": true,
+            "genericId": 78,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 78,
+                "name": "DDP Colombia",
+                "product_id": false
+              },
+              {
+                "id": 153,
+                "name": "DAP Colombia",
+                "product_id": false
+              },
+              {
+                "id": 154,
+                "name": "EXW Colombia (con Duca)",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 50,
+            "countryName": "Costa Rica",
+            "recordCount": 9,
+            "hasGeneric": true,
+            "genericId": 66,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 66,
+                "name": "DDP Costa Rica",
+                "product_id": false
+              },
+              {
+                "id": 103,
+                "name": "Costa Rica Sin Gastos",
+                "product_id": false
+              },
+              {
+                "id": 104,
+                "name": "CPT Costa Rica",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 53,
+            "countryName": "Curaçao",
+            "recordCount": 3,
+            "hasGeneric": true,
+            "genericId": 89,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 89,
+                "name": "DDP Curacao",
+                "product_id": false
+              },
+              {
+                "id": 170,
+                "name": "CPT Curacao",
+                "product_id": false
+              },
+              {
+                "id": 182,
+                "name": "DAP Curacao",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 61,
+            "countryName": "Dominican Republic",
+            "recordCount": 9,
+            "hasGeneric": true,
+            "genericId": 68,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 68,
+                "name": "DDP Dominican Republic",
+                "product_id": false
+              },
+              {
+                "id": 110,
+                "name": "DDP Dominican Republic Aéreo",
+                "product_id": false
+              },
+              {
+                "id": 117,
+                "name": "DAP Dominican Republic",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 63,
+            "countryName": "Ecuador",
+            "recordCount": 5,
+            "hasGeneric": true,
+            "genericId": 80,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 80,
+                "name": "DDP Ecuador",
+                "product_id": false
+              },
+              {
+                "id": 147,
+                "name": "EXW Ecuador (con Duca)",
+                "product_id": false
+              },
+              {
+                "id": 148,
+                "name": "EXW Ecuador (sin Duca)",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 209,
+            "countryName": "El Salvador",
+            "recordCount": 2,
+            "hasGeneric": true,
+            "genericId": 94,
+            "numericParamsEqual": true,
+            "sample": [
+              {
+                "id": 94,
+                "name": "El Salvador",
+                "product_id": false
+              },
+              {
+                "id": 210,
+                "name": "El Salvador 0",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 90,
+            "countryName": "Guatemala",
+            "recordCount": 9,
+            "hasGeneric": true,
+            "genericId": 63,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 63,
+                "name": "DDP Guatemala",
+                "product_id": false
+              },
+              {
+                "id": 95,
+                "name": "Guatemala Sin Gastos",
+                "product_id": false
+              },
+              {
+                "id": 96,
+                "name": "Guatemala  Seguro + Impuestos",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 96,
+            "countryName": "Honduras",
+            "recordCount": 10,
+            "hasGeneric": true,
+            "genericId": 64,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 64,
+                "name": "DDP Honduras",
+                "product_id": false
+              },
+              {
+                "id": 97,
+                "name": "Honduras Sin Gastos",
+                "product_id": false
+              },
+              {
+                "id": 111,
+                "name": "CPT Honduras",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 111,
+            "countryName": "Jamaica",
+            "recordCount": 5,
+            "hasGeneric": true,
+            "genericId": 75,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 75,
+                "name": "DDP Jamaica",
+                "product_id": false
+              },
+              {
+                "id": 118,
+                "name": "CPT Jamaica",
+                "product_id": false
+              },
+              {
+                "id": 190,
+                "name": "DDP Jamaica caso especial",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 156,
+            "countryName": "Mexico",
+            "recordCount": 5,
+            "hasGeneric": true,
+            "genericId": 71,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 71,
+                "name": "DDP México",
+                "product_id": false
+              },
+              {
+                "id": 116,
+                "name": "CIP México",
+                "product_id": false
+              },
+              {
+                "id": 124,
+                "name": "EXW México con DUCA",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 164,
+            "countryName": "Nicaragua",
+            "recordCount": 8,
+            "hasGeneric": true,
+            "genericId": 65,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 65,
+                "name": "DDP Nicaragua",
+                "product_id": false
+              },
+              {
+                "id": 102,
+                "name": "Nicaragua Sin Gastos",
+                "product_id": false
+              },
+              {
+                "id": 106,
+                "name": "CPT Nicaragua",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 172,
+            "countryName": "Panama",
+            "recordCount": 10,
+            "hasGeneric": true,
+            "genericId": 67,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 67,
+                "name": "DDP Panamá",
+                "product_id": false
+              },
+              {
+                "id": 101,
+                "name": "Panama Sin Gastos",
+                "product_id": false
+              },
+              {
+                "id": 107,
+                "name": "CPT Panamá",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 185,
+            "countryName": "Paraguay",
+            "recordCount": 5,
+            "hasGeneric": true,
+            "genericId": 82,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 82,
+                "name": "DDP Paraguay",
+                "product_id": false
+              },
+              {
+                "id": 149,
+                "name": "EXW Paraguay (con Duca)",
+                "product_id": false
+              },
+              {
+                "id": 150,
+                "name": "EXW Paraguay (sin Duca)",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 173,
+            "countryName": "Peru",
+            "recordCount": 4,
+            "hasGeneric": true,
+            "genericId": 85,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 85,
+                "name": "EXW Peru (con Duca)",
+                "product_id": false
+              },
+              {
+                "id": 156,
+                "name": "DAP Peru",
+                "product_id": false
+              },
+              {
+                "id": 157,
+                "name": "DDP Peru",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 181,
+            "countryName": "Puerto Rico",
+            "recordCount": 5,
+            "hasGeneric": true,
+            "genericId": 70,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 70,
+                "name": "DDP Puerto Rico",
+                "product_id": false
+              },
+              {
+                "id": 108,
+                "name": "EXW Puerto Rico (con Duca)",
+                "product_id": false
+              },
+              {
+                "id": 109,
+                "name": "EXW Puerto Rico (sin Duca)",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 206,
+            "countryName": "Suriname",
+            "recordCount": 4,
+            "hasGeneric": true,
+            "genericId": 86,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 86,
+                "name": "DDP Suriname",
+                "product_id": false
+              },
+              {
+                "id": 112,
+                "name": "CPT Suriname",
+                "product_id": false
+              },
+              {
+                "id": 126,
+                "name": "EXW Suriname (con DUCA)",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 225,
+            "countryName": "Trinidad and Tobago",
+            "recordCount": 5,
+            "hasGeneric": true,
+            "genericId": 72,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 72,
+                "name": "DDP Trinidad and Tobago",
+                "product_id": false
+              },
+              {
+                "id": 128,
+                "name": "EXW  con Duca Trinidad and Tobago",
+                "product_id": false
+              },
+              {
+                "id": 129,
+                "name": "EXW  sin Duca Trinidad and Tobago",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 233,
+            "countryName": "United States",
+            "recordCount": 9,
+            "hasGeneric": true,
+            "genericId": 69,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 69,
+                "name": "DDP United States",
+                "product_id": false
+              },
+              {
+                "id": 113,
+                "name": "EXW United States (con DUCA)",
+                "product_id": false
+              },
+              {
+                "id": 114,
+                "name": "EXW United States (sin DUCA)",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 234,
+            "countryName": "Uruguay",
+            "recordCount": 5,
+            "hasGeneric": true,
+            "genericId": 81,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 81,
+                "name": "DDP Uruguay",
+                "product_id": false
+              },
+              {
+                "id": 130,
+                "name": "DAP Uruguay",
+                "product_id": false
+              },
+              {
+                "id": 151,
+                "name": "EXW Uruguay (con Duca)",
+                "product_id": false
+              }
+            ]
+          },
+          {
+            "countryId": 238,
+            "countryName": "Venezuela",
+            "recordCount": 3,
+            "hasGeneric": true,
+            "genericId": 139,
+            "numericParamsEqual": false,
+            "sample": [
+              {
+                "id": 139,
+                "name": "Venezuela (sin incoterm)",
+                "product_id": false
+              },
+              {
+                "id": 140,
+                "name": "Venezuela DDP",
+                "product_id": false
+              },
+              {
+                "id": 141,
+                "name": "Venezuela DAP",
+                "product_id": false
+              }
+            ]
+          }
+        ]
+      },
+      "durationMs": 2845
+    },
+    {
+      "id": "P4",
+      "status": "pass",
+      "summary": "all 3 recent-deal partners have country_id directly",
+      "data": {
+        "totalPartners": 2368,
+        "partnersWithoutCountry": 561,
+        "recentDeals": 9,
+        "partnersChecked": 3,
+        "childWithoutCountry": 0
+      },
+      "durationMs": 426
+    },
+    {
+      "id": "P5",
+      "status": "pass",
+      "summary": "every partner country has a matching operation.costs record",
+      "data": {
+        "ocCountries": [
+          "Argentina",
+          "Aruba",
+          "Bahamas",
+          "Barbados",
+          "Belize",
+          "Bermuda",
+          "Bolivia",
+          "Brazil",
+          "Canada",
+          "Cayman Islands",
+          "Chile",
+          "Colombia",
+          "Costa Rica",
+          "Curaçao",
+          "Dominican Republic",
+          "Ecuador",
+          "El Salvador",
+          "Guadeloupe",
+          "Guatemala",
+          "Guyana",
+          "Honduras",
+          "Jamaica",
+          "Mexico",
+          "Nicaragua",
+          "Panama",
+          "Paraguay",
+          "Peru",
+          "Puerto Rico",
+          "Sint Maarten (Dutch part)",
+          "Suriname",
+          "Trinidad and Tobago",
+          "United States",
+          "Uruguay",
+          "Venezuela",
+          "Virgin Islands (USA)"
+        ],
+        "partnerCountries": [
+          "Costa Rica",
+          "Nicaragua"
+        ],
+        "inPartnersNotInOC": [],
+        "inOCNotInPartners": [
+          "Argentina",
+          "Aruba",
+          "Bahamas",
+          "Barbados",
+          "Belize",
+          "Bermuda",
+          "Bolivia",
+          "Brazil",
+          "Canada",
+          "Cayman Islands",
+          "Chile",
+          "Colombia",
+          "Curaçao",
+          "Dominican Republic",
+          "Ecuador",
+          "El Salvador",
+          "Guadeloupe",
+          "Guatemala",
+          "Guyana",
+          "Honduras",
+          "Jamaica",
+          "Mexico",
+          "Panama",
+          "Paraguay",
+          "Peru",
+          "Puerto Rico",
+          "Sint Maarten (Dutch part)",
+          "Suriname",
+          "Trinidad and Tobago",
+          "United States",
+          "Uruguay",
+          "Venezuela",
+          "Virgin Islands (USA)"
+        ]
+      },
+      "durationMs": 313
+    },
+    {
+      "id": "P6",
+      "status": "pass",
+      "summary": "all 1 confirmed historical SOs have MO count == line count",
+      "data": {
+        "rows": [
+          {
+            "soName": "S06613",
+            "lineCount": 1,
+            "moCount": 1
+          }
+        ]
+      },
+      "durationMs": 212
+    },
+    {
+      "id": "P7",
+      "status": "pass",
+      "summary": "HubSpot property deals/id_presupuesto_odoo exists (type=string, fieldType=text)",
+      "data": {
+        "name": "id_presupuesto_odoo",
+        "label": "ID Presupuesto Odoo",
+        "type": "string",
+        "fieldType": "text",
+        "groupName": "dealinformation"
+      },
+      "durationMs": 266
+    }
+  ]
+}

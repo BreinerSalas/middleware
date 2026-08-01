@@ -2,28 +2,47 @@
 
 const { createEchoGuard } = require('../../../core/shared/echoGuard')
 
-const DEAL_PROPERTIES_TO_FETCH = [
-  'dealname',
-  'dealstage',
-  'amount',
-  'closedate',
-  'pipeline',
-  'id_cliente_odoo',
-  'id_orden_odoo'
-]
+const DEFAULT_DEAL_PROPERTY_NAMES = {
+  dealname: 'dealname',
+  dealstage: 'dealstage',
+  amount: 'amount',
+  closedate: 'closedate',
+  pipeline: 'pipeline',
+  customer: 'id_cliente_odoo',
+  order: 'id_orden_odoo',
+  quote: 'id_presupuesto_odoo'
+}
+
+function buildDealPropertiesToFetch(opts = {}) {
+  const customer = opts.propertyOdooCustomerId || DEFAULT_DEAL_PROPERTY_NAMES.customer
+  const order = opts.propertyOdooOrderId || DEFAULT_DEAL_PROPERTY_NAMES.order
+  const quote = opts.propertyOdooQuoteId || DEFAULT_DEAL_PROPERTY_NAMES.quote
+  return [
+    'dealname', 'dealstage', 'amount', 'closedate', 'pipeline',
+    customer, order, quote
+  ]
+}
+
+const DEFAULT_DEAL_PROPERTIES_TO_FETCH = buildDealPropertiesToFetch()
 
 class HubspotSourceGateway {
-  constructor({ apiClient, propertyOdooCustomerId, propertyOdooOrderId, echoGuard = null, logger = null } = {}) {
+  constructor({ apiClient, propertyOdooCustomerId, propertyOdooOrderId, propertyOdooQuoteId, echoGuard = null, logger = null } = {}) {
     if (!apiClient) throw new Error('HubspotSourceGateway requires apiClient')
     this.apiClient = apiClient
-    this.propertyOdooCustomerId = propertyOdooCustomerId || 'id_cliente_odoo'
-    this.propertyOdooOrderId = propertyOdooOrderId || 'id_orden_odoo'
+    this.propertyOdooCustomerId = propertyOdooCustomerId || DEFAULT_DEAL_PROPERTY_NAMES.customer
+    this.propertyOdooOrderId = propertyOdooOrderId || DEFAULT_DEAL_PROPERTY_NAMES.order
+    this.propertyOdooQuoteId = propertyOdooQuoteId || DEFAULT_DEAL_PROPERTY_NAMES.quote
     this.echoGuard = echoGuard || createEchoGuard({ ttlMs: 10000 })
     this.logger = logger
   }
 
   async fetchRecord(sourceId) {
-    const data = await this.apiClient.getDeal(sourceId, DEAL_PROPERTIES_TO_FETCH)
+    const properties = buildDealPropertiesToFetch({
+      propertyOdooCustomerId: this.propertyOdooCustomerId,
+      propertyOdooOrderId: this.propertyOdooOrderId,
+      propertyOdooQuoteId: this.propertyOdooQuoteId
+    })
+    const data = await this.apiClient.getDeal(sourceId, properties)
     return {
       id: data.id,
       properties: data.properties || {},
@@ -55,6 +74,7 @@ class HubspotSourceGateway {
     const properties = {}
     if (payload.id_orden_odoo != null) properties[this.propertyOdooOrderId] = payload.id_orden_odoo
     if (payload.id_cliente_odoo != null) properties[this.propertyOdooCustomerId] = payload.id_cliente_odoo
+    if (payload.id_presupuesto_odoo != null) properties[this.propertyOdooQuoteId] = payload.id_presupuesto_odoo
     if (Object.keys(properties).length === 0) return
     const echoKey = `${sourceId}:${JSON.stringify(properties)}`
     if (this.echoGuard.shouldSuppress(echoKey)) {
@@ -66,4 +86,8 @@ class HubspotSourceGateway {
   }
 }
 
-module.exports = { HubspotSourceGateway, DEAL_PROPERTIES_TO_FETCH }
+module.exports = {
+  HubspotSourceGateway,
+  DEAL_PROPERTIES_TO_FETCH: DEFAULT_DEAL_PROPERTIES_TO_FETCH,
+  buildDealPropertiesToFetch
+}

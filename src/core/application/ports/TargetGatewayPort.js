@@ -14,6 +14,9 @@
  * @property {string|null} targetRef
  * @property {string|null} syncToken
  * @property {Object} [raw]
+ * @property {string} salesOrderId  Deprecated alias for targetId (kept for backwards compat).
+ * @property {Object} [metadata]    Free-form, persisted into mapping.metadata. Example shape:
+ *                                  { countryExpense: { status, id, countryId, countryName, reason, matches, ambiguous } }
  */
 
 /**

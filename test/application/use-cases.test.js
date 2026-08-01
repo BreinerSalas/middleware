@@ -196,6 +196,51 @@ describe('ProcessSyncJobUseCase', () => {
     expect(map.metadata.salesOrderId).toBe('SO-1')
   })
 
+  it('merges upsertResult.metadata into mapping.metadata', async () => {
+    const gwWithMeta = fakeTargetGateway({
+      upsert: async () => ({
+        targetId: 'SO-1', targetRef: 'S06613', syncToken: 'draft',
+        salesOrderId: 'SO-1',
+        metadata: { countryExpense: { status: 'resolved', id: 78, countryId: 49, countryName: 'Colombia', reason: 'ddp_exact_match', matches: 1, ambiguous: false } }
+      })
+    })
+    const u = new ProcessSyncJobUseCase({
+      jobRepository: jobRepo, mappingRepository: mappingRepo,
+      sourceGateway: sourceGw, targetGateway: gwWithMeta,
+      auditTrail: audit, validators: [], retryPolicy: { jitter: false }
+    })
+    const created = await jobRepo.create({ sourceId: 'D-10', payload: null, dedupeKey: null, status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8 })
+    await u.execute({ job: created })
+    const map = mappingRepo._all()[0]
+    expect(map.metadata.countryExpense).toEqual({
+      status: 'resolved', id: 78, countryId: 49, countryName: 'Colombia',
+      reason: 'ddp_exact_match', matches: 1, ambiguous: false
+    })
+    expect(map.metadata.salesOrderId).toBe('SO-1')
+    expect(map.metadata.lastJobId).toBe(created._id)
+  })
+
+  it('includes metadata in the target.upserted audit detail', async () => {
+    const gwWithMeta = fakeTargetGateway({
+      upsert: async () => ({
+        targetId: 'SO-1', targetRef: 'S06613', syncToken: 'draft', salesOrderId: 'SO-1',
+        metadata: { countryExpense: { status: 'unresolved', reason: 'partner_has_no_country' } }
+      })
+    })
+    const u = new ProcessSyncJobUseCase({
+      jobRepository: jobRepo, mappingRepository: mappingRepo,
+      sourceGateway: sourceGw, targetGateway: gwWithMeta,
+      auditTrail: audit, validators: [], retryPolicy: { jitter: false }
+    })
+    const created = await jobRepo.create({ sourceId: 'D-11', payload: null, dedupeKey: null, status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8 })
+    await u.execute({ job: created })
+    const upserted = audit._all().find((a) => a.event === 'target.upserted')
+    expect(upserted.detail.targetId).toBe('SO-1')
+    expect(upserted.detail.targetRef).toBe('S06613')
+    expect(upserted.detail.salesOrderId).toBe('SO-1')
+    expect(upserted.detail.metadata).toEqual({ countryExpense: { status: 'unresolved', reason: 'partner_has_no_country' } })
+  })
+
   it('SkipSyncError -> SKIPPED with no retry', async () => {
     const v = () => { throw new SkipSyncError('no line items') }
     const u = new ProcessSyncJobUseCase({
@@ -208,6 +253,34 @@ describe('ProcessSyncJobUseCase', () => {
     expect(res.skipped).toBe(true)
     expect(res.job.status).toBe(JOB_STATUS.SKIPPED)
     expect(res.job.lastError).toBe('no line items')
+  })
+
+  it('job.skipped audit carries err.detail as skipDetail so the reason is diagnosable', async () => {
+    const detail = { code: 'ODOO_PRODUCT_NOT_FOUND', unresolved: [{ lineItemId: 'L-1', reason: 'not_found' }] }
+    const v = () => { throw new SkipSyncError('producto no resuelto', { detail }) }
+    const u = new ProcessSyncJobUseCase({
+      jobRepository: jobRepo, mappingRepository: mappingRepo,
+      sourceGateway: sourceGw, targetGateway: targetGw,
+      auditTrail: audit, validators: [v], retryPolicy: { jitter: false }
+    })
+    const created = await jobRepo.create({ sourceId: 'D-3', payload: null, dedupeKey: null, status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8 })
+    await u.execute({ job: created })
+    const skipped = audit._all().find((a) => a.event === 'job.skipped')
+    expect(skipped.detail.reason).toBe('producto no resuelto')
+    expect(skipped.detail.skipDetail).toEqual(detail)
+  })
+
+  it('job.skipped audit sets skipDetail to null when the error has no detail', async () => {
+    const v = () => { throw new SkipSyncError('sin detalle') }
+    const u = new ProcessSyncJobUseCase({
+      jobRepository: jobRepo, mappingRepository: mappingRepo,
+      sourceGateway: sourceGw, targetGateway: targetGw,
+      auditTrail: audit, validators: [v], retryPolicy: { jitter: false }
+    })
+    const created = await jobRepo.create({ sourceId: 'D-4', payload: null, dedupeKey: null, status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8 })
+    await u.execute({ job: created })
+    const skipped = audit._all().find((a) => a.event === 'job.skipped')
+    expect(skipped.detail.skipDetail).toBeNull()
   })
 
   it('retryable error -> RETRY_PENDING with nextRetryAt', async () => {

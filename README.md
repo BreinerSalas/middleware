@@ -1,8 +1,8 @@
 # smartflow-middleware
 
-Sincronización HubSpot ↔ Odoo de órdenes de fabricación (Fase 2). Construido con arquitectura hexagonal en JavaScript plano (CommonJS).
+Sincronización HubSpot ↔ Odoo de presupuestos (sale.order) que generan órdenes de fabricación (mrp.production) al ser confirmados. Construido con arquitectura hexagonal en JavaScript plano (CommonJS).
 
-Cuando un Deal de HubSpot se marca como `closedwon`, este middleware recibe un webhook, consulta el deal completo, crea (o actualiza) una orden de fabricación en Odoo y escribe el ID de Odoo de vuelta en una propiedad del Deal para trazabilidad. Cola persistente con reintentos y dead-letter; idempotente en entrada; seguro ante reinicios.
+Cuando un Deal de HubSpot se marca como Cierre Ganado en el pipeline Comercial Visual Branding, este middleware recibe un webhook, consulta el deal completo, crea (o actualiza) un **presupuesto** en Odoo con su `country_expense` resuelto desde el país del cliente y escribe el nombre del presupuesto (`S06613`, etc.) en la propiedad `id_presupuesto_odoo` del Deal para trazabilidad. Un operador humano confirma el presupuesto en Odoo, que genera las órdenes de fabricación bien vinculadas. Cola persistente con reintentos y dead-letter; idempotente en entrada; seguro ante reinicios.
 
 Incluye un panel de administración/depuración (HTML + JS plano, sin paso de build) para inspeccionar la salud de las conexiones, los mapeos de sincronización y el log de auditoría.
 
@@ -86,7 +86,7 @@ npm ci
 
 # 2) Configurar entorno
 cp .env.example .env
-# editar .env y completar MONGODB_URI, HUBSPOT_ACCESS_TOKEN, WEBHOOK_SHARED_SECRET
+# editar .env y completar MONGODB_URI, HUBSPOT_ACCESS_TOKEN, HUBSPOT_CLIENT_SECRET
 
 # 3) Levantar Mongo (o apuntar MONGODB_URI a una instancia existente)
 docker compose up -d mongo
@@ -133,10 +133,9 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3007/
 |---------------------------------------|--------------------------------------|----------------------------------------------------------------------------|
 | `HUBSPOT_API_BASE`                    | `https://api.hubapi.com`             | Base de la API. Cambiar a `https://api.hubapi.eu` para portal europeo.     |
 | `HUBSPOT_WEBHOOK_TS_TOLERANCE_MS`     | `300000`                             | Ventana de tolerancia del timestamp del webhook (replay protection).       |
-| `WEBHOOK_SHARED_SECRET`               | _(vacío)_                            | Legacy — ya no se usa. Mantener en `.env` para compat con configs viejas.  |
-| `WEBHOOK_SHARED_SECRET_HEADER_NAME`   | `x-smartflow-secret`                 | Legacy — header histórico del Workflow de HubSpot.                          |
 | `HS_PROPERTY_ODOO_CUSTOMER_ID`       | `id_cliente_odoo`                    | Propiedad custom del Deal que guarda el ID de cliente Odoo.                |
-| `HS_PROPERTY_ODOO_ORDER_ID`          | `id_orden_odoo`                      | Propiedad custom del Deal que guarda el ID de orden Odoo (writeback).      |
+| `HS_PROPERTY_ODOO_ORDER_ID`          | `id_orden_odoo`                      | Propiedad custom del Deal — **reservada** para un futuro backfill de la MO. El middleware ya no la escribe; ver `HS_PROPERTY_ODOO_QUOTE_ID`. |
+| `HS_PROPERTY_ODOO_QUOTE_ID`          | `id_presupuesto_odoo`                | Propiedad custom del Deal que recibe el nombre del presupuesto (`sale.order.name`, ej. `S06613`) creado en Odoo. **Limitación:** los cambios de line items en HubSpot posteriores al primer sync NO se propagan al presupuesto; recrear manualmente en Odoo si hace falta. |
 | `ODOO_CLIENT_MODE`                    | `stub`                               | `stub` (en memoria, para tests/dev) o `http` (real JSON-RPC).              |
 | `ODOO_BASE_URL`                       | _(vacío)_                            | Requerida si `ODOO_CLIENT_MODE=http` (ej. `https://odoo.example.com`).     |
 | `ODOO_DEFAULT_CUSTOMER_ID`            | _(vacío)_                            | `res.partner.id` usado como fallback cuando el deal no tiene `id_cliente_odoo`. Ver sección Odoo. |
@@ -234,7 +233,7 @@ Comportamiento de seguridad:
 Settings → Integrations → **Private Apps** → **Create**. Dar los scopes:
 
 - `crm.objects.deals.read` — leer deals
-- `crm.objects.deals.write` — escribir `id_orden_odoo`
+- `crm.objects.deals.write` — escribir `id_presupuesto_odoo`
 - `crm.schemas.deals.read` — leer propiedades custom
 
 Copiar el token generado (empieza con `pat-…`) a `HUBSPOT_ACCESS_TOKEN`.
@@ -263,7 +262,7 @@ Content-Type: application/json
 Settings → Properties → **Deal properties** → Create property:
 
 - `id_cliente_odoo` (texto) — **opcional si usás `ODOO_DEFAULT_CUSTOMER_ID`**
-- `id_orden_odoo` (texto) — writeback automático
+- `id_presupuesto_odoo` (texto) — writeback automático con el nombre del presupuesto (ej. `S06613`); `id_orden_odoo` queda reservado para un futuro backfill de la MO
 
 Si tu portal usa nombres distintos, sobreescribir con `HS_PROPERTY_ODOO_CUSTOMER_ID` y `HS_PROPERTY_ODOO_ORDER_ID`.
 
@@ -287,7 +286,9 @@ ODOO_BASE_URL=https://odoo.example.com
 ODOO_API_KEY=<key>
 ```
 
-El adapter usa JSON-RPC contra `/jsonrpc` (`common.version` para healthcheck, `execute_kw` para crear/actualizar órdenes). El mapper `dealToManufacturingOrderMapper` convierte un Deal de HubSpot al shape de `mrp.production` — los mapeos de campos custom se hacen ahí, no en el adapter.
+El adapter usa JSON-RPC contra `/jsonrpc` (`common.version` para healthcheck, `execute_kw` para crear/actualizar presupuestos y consultar costos). El mapper `dealToSaleOrderMapper` convierte un Deal de HubSpot al shape de `sale.order` con `country_expense` resuelto desde `res.partner.country_id` + `operation.costs` (política `DDP <País>` case/accent-insensitive, fallback al id más bajo con `metadata.countryExpense.ambiguous=true`).
+
+El país del gasto se resuelve así: el middleware lee el `res.partner` del deal, obtiene su `country_id` (caminando `parent_id` si el contacto hijo no tiene país), busca entre los registros de `operation.costs` con ese país, y elige el que matchea exactamente `DDP <Country>`. Si no hay match, degrada a `status: 'unresolved'` con `reason: 'no_ddp_exact_match'` y crea el presupuesto sin el campo, agregando un marcador `[smartflow] País no resuelto` a la `note` para visibilidad en Odoo.
 
 > **Aún no integrado contra un Odoo real** — el sandbox está pendiente. La interfaz `OdooApiClient` está diseñada para que cambiar `stub` → `http` no toque el dominio.
 
@@ -333,6 +334,7 @@ Cada checkpoint del plan deja un reporte en `docs/testing/`:
 - `2026-07-20-plan-panel.tdd.md` — H8 panel admin (5 commits, 58 tests).
 - `2026-07-28-plan-hubspot-private-app.tdd.md` — Adaptación a HubSpot Private App (HMAC v3 + array body, 5 commits, 27 tests).
 - `2026-07-28-plan-odoo-default-customer.tdd.md` — Default customer por env (1 commit, 9 tests).
+- `2026-07-31-quote-country-expense.tdd.md` — Sale.order + `country_expense` + Odoo genera la MO (49 tests; 517 totales). Plan: [`docs/plan-presupuesto-pais-y-mo.md`](docs/plan-presupuesto-pais-y-mo.md). Probes de staging: [`docs/testing/2026-07-31-probe-results.json`](docs/testing/2026-07-31-probe-results.json).
 
 Cada reporte documenta ciclos RED → GREEN con archivos tocados, tests añadidos y resultados.
 
@@ -386,7 +388,7 @@ smartflow-middleware/
 
 ## Notas operativas
 
-- **Eco suprimido**: cuando el worker hace writeback a HubSpot, ignora webhooks de HubSpot que resulten de su propio writeback (compara `id_orden_odoo` antes/después). Sin esto, cada sync generaría un loop infinito.
+- **Eco suprimido**: cuando el worker hace writeback a HubSpot, ignora webhooks de HubSpot que resulten de su propio writeback (compara `id_presupuesto_odoo` antes/después). Sin esto, cada sync generaría un loop infinito.
 - **Mutex por sourceId**: `shared.mutex` evita que dos workers procesen el mismo deal en paralelo. Garantía de orden dentro de un sourceId.
 - **Recuperación de huérfanos**: al boot, jobs en `PROCESSING` por más de 30 min se devuelven a `PENDING` (`recoverOrphans`).
 - **Backoff exponencial**: 1s → 2s → 4s → … → `RETRY_MAX_DELAY_MS`. Después de `MAX_RETRY_ATTEMPTS` intentos, el job pasa a `DEAD_LETTER` y deja de reintentarse (visible en el panel).

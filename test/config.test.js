@@ -71,19 +71,40 @@ describe('config', () => {
     expect(cfg.hubspot.signatureTimestampToleranceMs).toBe(300000)
   })
 
-  it('accepts custom header name and HubSpot property names', () => {
+  it('accepts custom HubSpot property names', () => {
     const env = {
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
       HUBSPOT_CLIENT_SECRET: 'my-secret',
-      WEBHOOK_SHARED_SECRET_HEADER_NAME: 'X-Custom-Secret',
       HS_PROPERTY_ODOO_CUSTOMER_ID: 'cust',
       HS_PROPERTY_ODOO_ORDER_ID: 'order'
     }
     const cfg = load({ env })
-    expect(cfg.webhook.headerName).toBe('x-custom-secret')
     expect(cfg.hubspot.propertyOdooCustomerId).toBe('cust')
     expect(cfg.hubspot.propertyOdooOrderId).toBe('order')
+  })
+
+  it('accepts HS_PROPERTY_ODOO_QUOTE_ID and defaults propertyOdooQuoteId to id_presupuesto_odoo', () => {
+    const cfg = load({
+      env: {
+        MONGODB_URI: 'mongodb://localhost:27017/x',
+        HUBSPOT_ACCESS_TOKEN: 'tok',
+        HUBSPOT_CLIENT_SECRET: 'my-secret',
+        HS_PROPERTY_ODOO_QUOTE_ID: 'id_quote_custom'
+      }
+    })
+    expect(cfg.hubspot.propertyOdooQuoteId).toBe('id_quote_custom')
+  })
+
+  it('defaults propertyOdooQuoteId to id_presupuesto_odoo when env var missing', () => {
+    const cfg = load({
+      env: {
+        MONGODB_URI: 'mongodb://localhost:27017/x',
+        HUBSPOT_ACCESS_TOKEN: 'tok',
+        HUBSPOT_CLIENT_SECRET: 'my-secret'
+      }
+    })
+    expect(cfg.hubspot.propertyOdooQuoteId).toBe('id_presupuesto_odoo')
   })
 
   it('parses ODOO_DB and ODOO_LOGIN when provided', () => {
@@ -146,17 +167,6 @@ describe('config', () => {
     }
     const cfg = load({ env })
     expect(cfg.odoo.baseUrl).toBe('https://bsalas.odoo.com')
-  })
-
-  it('does not require WEBHOOK_SHARED_SECRET (legacy/optional)', () => {
-    const env = {
-      MONGODB_URI: 'mongodb://localhost:27017/x',
-      HUBSPOT_ACCESS_TOKEN: 'tok',
-      HUBSPOT_CLIENT_SECRET: 'my-secret'
-    }
-    expect(() => load({ env })).not.toThrow()
-    const cfg = load({ env })
-    expect(cfg.webhook.sharedSecret).toBe('')
   })
 
   it('auto-loads .env from cwd when called without envFile', () => {

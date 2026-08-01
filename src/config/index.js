@@ -12,10 +12,9 @@ const REQUIRED_KEYS = [
 const OPTIONAL_KEYS = [
   'HUBSPOT_API_BASE',
   'HUBSPOT_WEBHOOK_TS_TOLERANCE_MS',
-  'WEBHOOK_SHARED_SECRET',
-  'WEBHOOK_SHARED_SECRET_HEADER_NAME',
   'HS_PROPERTY_ODOO_CUSTOMER_ID',
   'HS_PROPERTY_ODOO_ORDER_ID',
+  'HS_PROPERTY_ODOO_QUOTE_ID',
   'ODOO_CLIENT_MODE',
   'ODOO_BASE_URL',
   'ODOO_DB',
@@ -77,11 +76,8 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       clientSecret: env.HUBSPOT_CLIENT_SECRET,
       signatureTimestampToleranceMs: Number(env.HUBSPOT_WEBHOOK_TS_TOLERANCE_MS || 300000),
       propertyOdooCustomerId: env.HS_PROPERTY_ODOO_CUSTOMER_ID || 'id_cliente_odoo',
-      propertyOdooOrderId: env.HS_PROPERTY_ODOO_ORDER_ID || 'id_orden_odoo'
-    },
-    webhook: {
-      sharedSecret: env.WEBHOOK_SHARED_SECRET || '',
-      headerName: (env.WEBHOOK_SHARED_SECRET_HEADER_NAME || 'x-smartflow-secret').toLowerCase()
+      propertyOdooOrderId: env.HS_PROPERTY_ODOO_ORDER_ID || 'id_orden_odoo',
+      propertyOdooQuoteId: env.HS_PROPERTY_ODOO_QUOTE_ID || 'id_presupuesto_odoo'
     },
     odoo: {
       mode: (env.ODOO_CLIENT_MODE || 'stub').toLowerCase(),

@@ -68,4 +68,29 @@ describe('HubspotSourceGateway', () => {
     await gw.writeBack('D-1', { id_orden_odoo: 'PO-1' })
     expect(api.updateDeal).toHaveBeenCalledTimes(1)
   })
+
+  it('writeBack writes id_presupuesto_odoo to the configured quote property', async () => {
+    const api = makeApiClient({ patch: vi.fn(async () => ({})) })
+    const gw = new HubspotSourceGateway({
+      apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order', propertyOdooQuoteId: 'id_presupuesto_odoo'
+    })
+    await gw.writeBack('D-1', { id_presupuesto_odoo: 'S06613' })
+    expect(api.updateDeal).toHaveBeenCalledWith('D-1', { id_presupuesto_odoo: 'S06613' })
+  })
+
+  it('fetchRecord requests the configured quote property', async () => {
+    const api = makeApiClient()
+    const gw = new HubspotSourceGateway({
+      apiClient: api, propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b', propertyOdooQuoteId: 'c'
+    })
+    await gw.fetchRecord('D-1')
+    expect(api.getDeal).toHaveBeenCalledWith('D-1', expect.arrayContaining(['c']))
+  })
+
+  it('defaults propertyOdooQuoteId to id_presupuesto_odoo when not provided', async () => {
+    const api = makeApiClient({ patch: vi.fn(async () => ({})) })
+    const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order' })
+    await gw.writeBack('D-1', { id_presupuesto_odoo: 'S06613' })
+    expect(api.updateDeal).toHaveBeenCalledWith('D-1', { id_presupuesto_odoo: 'S06613' })
+  })
 })
