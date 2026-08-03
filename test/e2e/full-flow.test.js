@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const request = require('supertest')
@@ -24,6 +24,12 @@ afterAll(async () => {
   await mongoose.disconnect()
   if (mongoServer) await mongoServer.stop()
 }, 60_000)
+
+beforeEach(async () => {
+  const collections = await mongoose.connection.db.collections()
+  await Promise.all(collections.map((c) => c.deleteMany({})))
+  calls = { writeBack: [], upsert: [] }
+})
 
 const config = {
   mongodbUri: 'mongodb://x',
@@ -161,6 +167,183 @@ describe('e2e: webhook -> job -> upsert -> writeback (Private App HMAC)', () => 
     const job = await JobModel.findOne({ sourceId: 'D-SALES' }).lean()
     expect(job).toBeTruthy()
     expect(job.status).toBe('SKIPPED')
+
+    await mod.stopWorker()
+  }, 60_000)
+
+  it('fan-out: 2 eligible quotes -> 2 sale.order + 2 writebacks to quotes (decision B fallback case still passes)', async () => {
+    calls = { writeBack: [], upsert: [], enqueue: [], fetchRecord: [] }
+    const DEAL_ID = 'D-FANOUT-1'
+    const QUOTE_GT = 'Q-GT'
+    const QUOTE_HN = 'Q-HN'
+
+    const sourceGateway = {
+      apiClient: {
+        getDealQuotes: async () => [
+          { id: QUOTE_GT, properties: { hs_status: 'APPROVAL_NOT_NEEDED', pais_de_destino: 'GT', hs_title: 'Cotiz GT', hs_currency: 'GTQ' } },
+          { id: QUOTE_HN, properties: { hs_status: 'APPROVAL_NOT_NEEDED', pais_de_destino: 'HN', hs_title: 'Cotiz HN', hs_currency: 'HNL' } }
+        ]
+      },
+      async fetchRecord(sourceId) {
+        calls.fetchRecord.push(sourceId)
+        const { parseSourceId } = require('../../src/adapters/outbound/hubspot/HubspotSourceGateway.js')
+        const { dealId, quoteId } = parseSourceId(sourceId)
+        if (quoteId) {
+          const quote = await this.apiClient.getDealQuotes()
+            .then((qs) => qs.find((q) => q.id === quoteId))
+          return {
+            id: sourceId,
+            dealId,
+            quoteId,
+            properties: { id_cliente_odoo: '42', dealstage: CIERRE_GANADO_STAGE_ID, pipeline: CVB_PIPELINE_ID, dealname: 'Fan-Out Demo' },
+            quote: { id: quoteId, properties: quote.properties }
+          }
+        }
+        return {
+          id: sourceId,
+          dealId,
+          quoteId: null,
+          properties: { id_cliente_odoo: '42', dealstage: CIERRE_GANADO_STAGE_ID, pipeline: CVB_PIPELINE_ID, dealname: 'Fan-Out Demo' }
+        }
+      },
+      async resolveReferences(record) {
+        const lines = record.quoteId
+          ? [{ id: `L-${record.quoteId}-1`, hs_sku: 'SKU-1', quantity: 1, price: 9.99, name: `Item ${record.quoteId}` }]
+          : [{ id: 'L-DEAL-1', hs_sku: 'SKU-1', quantity: 1, price: 9.99, name: 'Deal Item' }]
+        return { odooCustomerId: '42', lineItems: lines }
+      },
+      async writeBack(sourceId, properties) {
+        calls.writeBack.push({ sourceId, properties })
+      }
+    }
+    const targetGateway = {
+      async upsert({ record, references }) {
+        calls.upsert.push({ recordId: record.id, quoteId: record.quoteId, dealId: record.dealId })
+        const ref = `S066${record.quoteId ? record.quoteId.slice(-2) : 'DE'}`
+        return { targetId: record.id, targetRef: ref, syncToken: 'draft' }
+      }
+    }
+    mod = createDealSyncModule({
+      config,
+      sourceGateway,
+      targetGateway,
+      logger: null,
+      recoverOrphansOnStart: false
+    })
+    app = createApp({ config, dealSyncModule: mod, logger: null })
+    await app.listen({ port: 0, host: '127.0.0.1' })
+    await mod.startWorker()
+
+    const body = [{
+      subscriptionType: 'deal.propertyChange',
+      objectId: DEAL_ID,
+      propertyName: 'dealstage',
+      propertyValue: CIERRE_GANADO_STAGE_ID
+    }]
+    const rawBody = JSON.stringify(body)
+    const ts = Date.now()
+    const addr = app.server.address()
+    const fullUrl = `https://127.0.0.1:${addr.port}/webhooks/hubspot`
+    const sig = crypto
+      .createHmac('sha256', 'e2e-test-secret')
+      .update('POST' + fullUrl + rawBody + String(ts))
+      .digest('base64')
+
+    const res = await request(app.server)
+      .post('/webhooks/hubspot')
+      .set('x-hubspot-signature-v3', sig)
+      .set('x-hubspot-request-timestamp', String(ts))
+      .send(body)
+    expect(res.status).toBe(202)
+
+    const expectedTotal = 2 // 1 deal + 2 quote children
+    for (let i = 0; i < 100; i += 1) {
+      await new Promise((r) => setTimeout(r, 50))
+      if (calls.writeBack.length >= 2 && calls.upsert.length >= 2) break
+    }
+
+    expect(calls.upsert).toHaveLength(2)
+    const upsertIds = calls.upsert.map((u) => u.recordId).sort()
+    expect(upsertIds).toEqual([`${DEAL_ID}:q${QUOTE_GT}`, `${DEAL_ID}:q${QUOTE_HN}`].sort())
+    expect(calls.writeBack).toHaveLength(2)
+    const writebackIds = calls.writeBack.map((w) => w.sourceId).sort()
+    expect(writebackIds).toEqual([`${DEAL_ID}:q${QUOTE_GT}`, `${DEAL_ID}:q${QUOTE_HN}`].sort())
+    for (const wb of calls.writeBack) {
+      expect(wb.properties).toHaveProperty('id_presupuesto_odoo')
+    }
+
+    const { JobModel } = require('../../src/adapters/outbound/mongo/schemas/job.schema.js')
+    const dealJob = await JobModel.findOne({ sourceId: DEAL_ID, kind: 'deal' }).lean()
+    expect(dealJob).toBeTruthy()
+    expect(dealJob.status).toBe('COMPLETED')
+    const quoteJobs = await JobModel.find({ kind: 'quote' }).lean()
+    expect(quoteJobs).toHaveLength(2)
+    for (const qj of quoteJobs) {
+      expect(qj.status).toBe('COMPLETED')
+      expect(qj.sourceId).toMatch(new RegExp(`^${DEAL_ID}:q(${QUOTE_GT}|${QUOTE_HN})$`))
+    }
+
+    await mod.stopWorker()
+  }, 60_000)
+
+  it('fallback: deal with no eligible quotes -> 1 upsert via legacy path (decision B)', async () => {
+    calls = { writeBack: [], upsert: [] }
+    const sourceGateway = {
+      apiClient: {
+        getDealQuotes: async () => []
+      },
+      async fetchRecord(sourceId) {
+        return { id: sourceId, dealId: sourceId, quoteId: null, properties: { id_cliente_odoo: '42', dealstage: CIERRE_GANADO_STAGE_ID, pipeline: CVB_PIPELINE_ID, dealname: 'No Quotes' } }
+      },
+      async resolveReferences() { return { odooCustomerId: '42', lineItems: [{ id: 'L-1', hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'Item 1' }] } },
+      async writeBack(sourceId, properties) { calls.writeBack.push({ sourceId, properties }) }
+    }
+    const targetGateway = {
+      async upsert({ record }) { calls.upsert.push({ recordId: record.id }); return { targetId: '1', targetRef: 'S00001', syncToken: 'draft' } }
+    }
+    mod = createDealSyncModule({ config, sourceGateway, targetGateway, logger: null, recoverOrphansOnStart: false })
+    app = createApp({ config, dealSyncModule: mod, logger: null })
+    await app.listen({ port: 0, host: '127.0.0.1' })
+    await mod.startWorker()
+
+    const body = [{
+      subscriptionType: 'deal.propertyChange',
+      objectId: 'D-NOQ',
+      propertyName: 'dealstage',
+      propertyValue: CIERRE_GANADO_STAGE_ID
+    }]
+    const rawBody = JSON.stringify(body)
+    const ts = Date.now()
+    const addr = app.server.address()
+    const fullUrl = `https://127.0.0.1:${addr.port}/webhooks/hubspot`
+    const sig = crypto
+      .createHmac('sha256', 'e2e-test-secret')
+      .update('POST' + fullUrl + rawBody + String(ts))
+      .digest('base64')
+
+    const res = await request(app.server)
+      .post('/webhooks/hubspot')
+      .set('x-hubspot-signature-v3', sig)
+      .set('x-hubspot-request-timestamp', String(ts))
+      .send(body)
+    expect(res.status).toBe(202)
+
+    for (let i = 0; i < 100; i += 1) {
+      await new Promise((r) => setTimeout(r, 50))
+      if (calls.writeBack.length > 0 && calls.upsert.length > 0) break
+    }
+
+    expect(calls.upsert).toHaveLength(1)
+    expect(calls.upsert[0].recordId).toBe('D-NOQ')
+    expect(calls.writeBack).toHaveLength(1)
+    expect(calls.writeBack[0].sourceId).toBe('D-NOQ')
+
+    const { JobModel } = require('../../src/adapters/outbound/mongo/schemas/job.schema.js')
+    const dealJob = await JobModel.findOne({ sourceId: 'D-NOQ' }).lean()
+    expect(dealJob).toBeTruthy()
+    expect(dealJob.status).toBe('COMPLETED')
+    const quoteJobs = await JobModel.find({ kind: 'quote' }).lean()
+    expect(quoteJobs).toHaveLength(0)
 
     await mod.stopWorker()
   }, 60_000)

@@ -12,7 +12,7 @@ class EnqueueSyncJobUseCase {
     this.logger = logger
   }
 
-  async execute({ sourceId, correlationId = null, rawPayload = null, maxAttempts = 8 } = {}) {
+  async execute({ sourceId, correlationId = null, rawPayload = null, maxAttempts = 8, kind = 'deal' } = {}) {
     if (!sourceId) throw new Error('sourceId required')
     const dedupeKey = buildDedupeKey({ sourceId, rawPayload })
 
@@ -33,6 +33,7 @@ class EnqueueSyncJobUseCase {
       correlationId,
       payload: rawPayload,
       dedupeKey,
+      kind,
       status: JOB_STATUS.PENDING,
       attempts: 0,
       maxAttempts
@@ -43,7 +44,7 @@ class EnqueueSyncJobUseCase {
     } catch (err) {
       if (this.logger) this.logger.warn('dedupeGuard.markSeen failed; continuing', { error: err.message })
     }
-    if (this.logger) this.logger.info('sync job enqueued', { jobId: persisted._id, sourceId, dedupeKey })
+    if (this.logger) this.logger.info('sync job enqueued', { jobId: persisted._id, sourceId, kind, dedupeKey })
     return { job: persisted, deduped: false, dedupeKey }
   }
 }

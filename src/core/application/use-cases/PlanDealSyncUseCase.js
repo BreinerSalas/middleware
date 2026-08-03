@@ -105,7 +105,8 @@ class PlanDealSyncUseCase {
       const result = await this.enqueueSyncJobUseCase.execute({
         sourceId: childSourceId,
         correlationId,
-        rawPayload: childRawPayload
+        rawPayload: childRawPayload,
+        kind: 'quote'
       })
       enqueued.push({
         sourceId: childSourceId,
