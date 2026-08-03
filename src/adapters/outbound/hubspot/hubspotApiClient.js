@@ -248,6 +248,12 @@ function createHubspotApiClient({
     } catch (err) { throw normalizeHubspotError(err) }
   }
 
+  async function updateCustomProperty(objectType, name, body) {
+    try {
+      return await requestWithRateLimit('patch', `/crm/v3/properties/${objectType}/${name}`, body)
+    } catch (err) { throw normalizeHubspotError(err) }
+  }
+
   async function searchProducts({ filterGroups = [], properties = [], limit = 100, after = null } = {}) {
     const body = { filterGroups, properties, limit }
     if (after) body.after = after
@@ -275,7 +281,7 @@ function createHubspotApiClient({
     searchProductByHsSku, createProduct, updateProduct,
     batchUpsertProducts,
     searchProducts,
-    getCustomProperty, createCustomProperty, ensureCustomProperty,
+    getCustomProperty, createCustomProperty, updateCustomProperty, ensureCustomProperty,
     _http: http,
     _rateLimiter: rl
   }
