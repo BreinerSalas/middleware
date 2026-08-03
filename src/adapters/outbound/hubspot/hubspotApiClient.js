@@ -5,6 +5,15 @@ const { createRateLimiter } = require('../../../core/shared/rateLimiter')
 
 const LINE_ITEM_PROPERTIES = ['hs_sku', 'quantity', 'price', 'name']
 
+const QUOTE_PROPERTIES = [
+  'hs_status',
+  'hs_title',
+  'hs_currency',
+  'hs_quote_amount',
+  'pais_de_destino',
+  'id_presupuesto_odoo'
+]
+
 function createAxiosHttpClient({ baseUrl, accessToken, timeoutMs = 10000 } = {}) {
   return axios.create({
     baseURL: baseUrl,
@@ -93,11 +102,12 @@ function createHubspotApiClient({
     } catch (err) { throw normalizeHubspotError(err) }
   }
 
-  async function getDealLineItems(dealId) {
-    if (!dealId) return []
+  async function getLineItemsFor(objectType, objectId) {
+    if (!objectId) return []
+    const url = `/crm/v3/objects/${objectType}/${objectId}/associations/line_items`
     let assoc
     try {
-      assoc = await requestWithRateLimit('get', `/crm/v3/objects/deals/${dealId}/associations/line_items`)
+      assoc = await requestWithRateLimit('get', url)
     } catch (err) { throw normalizeHubspotError(err) }
     const ids = (assoc.results ? assoc.results : [])
       .map((r) => r.id || r.toObjectId || r['to-object-id'])
@@ -117,6 +127,52 @@ function createHubspotApiClient({
       quantity: Number(li.properties && li.properties.quantity) || 1,
       price: Number(li.properties && li.properties.price) || 0,
       name: (li.properties && li.properties.name) || null
+    }))
+  }
+
+  async function getDealLineItems(dealId) {
+    return getLineItemsFor('deals', dealId)
+  }
+
+  async function getQuoteLineItems(quoteId) {
+    return getLineItemsFor('quotes', quoteId)
+  }
+
+  async function getQuote(quoteId, properties = []) {
+    try {
+      return await requestWithRateLimit('get', `/crm/v3/objects/quotes/${quoteId}`, {
+        params: properties.length > 0 ? { properties: properties.join(',') } : undefined
+      })
+    } catch (err) { throw normalizeHubspotError(err) }
+  }
+
+  async function updateQuote(quoteId, properties) {
+    try {
+      return await requestWithRateLimit('patch', `/crm/v3/objects/quotes/${quoteId}`, { properties })
+    } catch (err) { throw normalizeHubspotError(err) }
+  }
+
+  async function getDealQuotes(dealId, properties = QUOTE_PROPERTIES) {
+    if (!dealId) return []
+    let assoc
+    try {
+      assoc = await requestWithRateLimit('get', `/crm/v3/objects/deals/${dealId}/associations/quotes`)
+    } catch (err) { throw normalizeHubspotError(err) }
+    const ids = (assoc.results ? assoc.results : [])
+      .map((r) => r.id || r.toObjectId || r['to-object-id'])
+      .filter(Boolean)
+    if (ids.length === 0) return []
+    let batch
+    try {
+      batch = await requestWithRateLimit('post', '/crm/v3/objects/quotes/batch/read', {
+        properties: Array.isArray(properties) ? properties : QUOTE_PROPERTIES,
+        inputs: ids.map((id) => ({ id: String(id) }))
+      })
+    } catch (err) { throw normalizeHubspotError(err) }
+    const results = (batch.results ? batch.results : [])
+    return results.map((q) => ({
+      id: q.id,
+      properties: q.properties || {}
     }))
   }
 
@@ -215,6 +271,7 @@ function createHubspotApiClient({
 
   return {
     getDeal, getDealAssociations, getDealLineItems, updateDeal,
+    getLineItemsFor, getQuote, getQuoteLineItems, getDealQuotes, updateQuote,
     searchProductByHsSku, createProduct, updateProduct,
     batchUpsertProducts,
     searchProducts,
@@ -228,6 +285,7 @@ module.exports = {
   createHubspotApiClient,
   createAxiosHttpClient,
   LINE_ITEM_PROPERTIES,
+  QUOTE_PROPERTIES,
   parseRetryAfterMs,
   shouldRetryOn429
 }
