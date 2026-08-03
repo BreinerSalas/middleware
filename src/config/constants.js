@@ -17,6 +17,11 @@ const ENTITIES = Object.freeze({
   DEAL: 'deal'
 })
 
+const JOB_KIND = Object.freeze({
+  DEAL: 'deal',
+  QUOTE: 'quote'
+})
+
 const DEAL_STAGE_CLOSED_WON_ID = '1409249445'
 
 const DEAL_PIPELINE_COMMERCIAL_VISUAL_BRANDING = 't_5728252902aef7e9938dfcbb6cdc2af8'
@@ -25,6 +30,7 @@ module.exports = {
   JOB_STATUS,
   SOURCES,
   ENTITIES,
+  JOB_KIND,
   DEAL_STAGE_CLOSED_WON_ID,
   DEAL_PIPELINE_COMMERCIAL_VISUAL_BRANDING
 }

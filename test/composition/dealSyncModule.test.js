@@ -10,7 +10,8 @@ const { JOB_STATUS } = require('../../src/core/domain/SyncJob.js')
 const { SkipSyncError } = require('../../src/core/domain/errors.js')
 const {
   createMustHaveDealStage,
-  createMustBeInPipeline
+  createMustBeInPipeline,
+  mustHaveLineItems
 } = require('../../src/composition/validators.js')
 
 const CVB = 't_5728252902aef7e9938dfcbb6cdc2af8'
@@ -85,12 +86,6 @@ function mustBeClosedWon({ record } = {}) {
   const stage = record && record.properties && record.properties.dealstage
   const { SkipSyncError } = require('../../src/core/domain/errors.js')
   if (stage !== 'closedwon') throw new SkipSyncError(`dealstage=${stage}`)
-}
-
-function mustHaveLineItems({ references = {} } = {}) {
-  const items = references && references.lineItems
-  const { SkipSyncError } = require('../../src/core/domain/errors.js')
-  if (!items || items.length === 0) throw new SkipSyncError('no line items')
 }
 
 function mustHaveOdooCustomerId({ references, record } = {}) {

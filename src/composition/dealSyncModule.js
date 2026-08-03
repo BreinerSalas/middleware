@@ -3,6 +3,7 @@
 const { v4: uuidv4 } = require('uuid')
 const { EnqueueSyncJobUseCase } = require('../core/application/use-cases/EnqueueSyncJobUseCase')
 const { ProcessSyncJobUseCase } = require('../core/application/use-cases/ProcessSyncJobUseCase')
+const { PlanDealSyncUseCase } = require('../core/application/use-cases/PlanDealSyncUseCase')
 const { JobPoller } = require('../core/application/JobPoller')
 const { hashPayload } = require('../core/shared/hash')
 const { isRetryableError } = require('../core/domain/RetryPolicy')
@@ -20,6 +21,7 @@ const {
   createMustHaveDealStage,
   createMustBeInPipeline
 } = require('./validators')
+const { JOB_KIND } = require('../config/constants')
 
 function buildWriteBackPayload(mapping) {
   return {
@@ -39,6 +41,7 @@ function createDealSyncModule({
   echoGuard = null,
   processSyncJobUseCase = null,
   enqueueSyncJobUseCase = null,
+  planDealSyncUseCase = null,
   jobPoller = null,
   validators = null,
   clock = () => Date.now()
@@ -58,6 +61,8 @@ function createDealSyncModule({
     propertyOdooCustomerId: config.hubspot.propertyOdooCustomerId,
     propertyOdooOrderId: config.hubspot.propertyOdooOrderId,
     propertyOdooQuoteId: config.hubspot.propertyOdooQuoteId,
+    propertyQuoteCountry: config.hubspot.propertyQuoteCountry,
+    quoteEligibleStatuses: config.hubspot.quoteEligibleStatuses,
     echoGuard,
     logger
   })
@@ -71,6 +76,7 @@ function createDealSyncModule({
     }),
     hashPayload,
     defaultCustomerId: config.odoo.defaultCustomerId,
+    propertyQuoteCountry: config.hubspot.propertyQuoteCountry,
     // En modo stub el cliente devuelve {} en todo lookup, asi que product_id es
     // siempre null; exigir match ahi convertiria cada corrida local en SKIPPED.
     requireProductMatch: config.odoo.mode === 'http',
@@ -113,10 +119,25 @@ function createDealSyncModule({
     logger
   })
 
+  // Pre-flight validators for the deal planner: same list as _processSyncJobUseCase
+  // minus mustHaveLineItems (per-quote check; the planner doesn't resolve
+  // references). The planner filters by identity.
+  const _planDealSyncUseCase = planDealSyncUseCase || new PlanDealSyncUseCase({
+    sourceGateway: _sourceGateway,
+    enqueueSyncJobUseCase: _enqueueSyncJobUseCase,
+    jobRepository: _jobRepository,
+    auditTrail: _auditTrail,
+    validators: _validators,
+    logger
+  })
+
   const _jobPoller = jobPoller || new JobPoller({
     jobRepository: _jobRepository,
     processFn: async (job) => {
-      return _processSyncJobUseCase.execute({ job })
+      if (job && job.kind === JOB_KIND.QUOTE) return _processSyncJobUseCase.execute({ job })
+      const plan = await _planDealSyncUseCase.execute({ job })
+      if (plan && plan.mode === 'fallback') return _processSyncJobUseCase.execute({ job })
+      return plan
     },
     concurrency: config.worker.concurrency,
     pollIntervalMs: config.worker.pollIntervalMs,
@@ -147,7 +168,8 @@ function createDealSyncModule({
       auditTrail: _auditTrail,
       sourceGateway: _sourceGateway,
       targetGateway: _targetGateway,
-      jobPoller: _jobPoller
+      jobPoller: _jobPoller,
+      planDealSyncUseCase: _planDealSyncUseCase
     }
   }
 }
