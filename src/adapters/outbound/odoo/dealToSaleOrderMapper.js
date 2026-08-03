@@ -7,16 +7,42 @@ function resolveProductId(line) {
   return null
 }
 
-function mapDealToSaleOrder({ hsDeal, odooCustomerId, hsLineItems = [], countryExpenseId = null } = {}) {
+function mapDealToSaleOrder({
+  hsDeal,
+  odooCustomerId,
+  hsLineItems = [],
+  countryExpenseId = null,
+  origin = null,
+  dealId = null,
+  quoteId = null,
+  quote = null,
+  countryCodeProperty = 'pais_de_destino'
+} = {}) {
   if (!hsDeal) throw new Error('mapDealToSaleOrder requires hsDeal')
   if (!odooCustomerId) {
     const err = new Error('odooCustomerId is required to build sale order payload')
     err.code = 'MISSING_ODOO_CUSTOMER_ID'
     throw err
   }
-  const origin = `hs:${hsDeal.id}`
+
+  let resolvedOrigin = origin
+  if (!resolvedOrigin) {
+    const dId = dealId || hsDeal.id
+    resolvedOrigin = quoteId ? `hs:${dId}:q${quoteId}` : `hs:${dId}`
+  }
+
   const dealName = hsDeal.properties && hsDeal.properties.dealname
-  const note = dealName ? `Deal: ${dealName}` : undefined
+  const noteLines = []
+  if (dealName) noteLines.push(`Deal: ${dealName}`)
+  if (quote && quote.properties) {
+    const title = quote.properties.hs_title
+    const iso = countryCodeProperty ? quote.properties[countryCodeProperty] : null
+    if (title) {
+      noteLines.push(iso ? `Cotización: ${title} (${iso})` : `Cotización: ${title}`)
+    }
+  }
+  const note = noteLines.length > 0 ? noteLines.join('\n') : undefined
+
   const items = Array.isArray(hsLineItems) ? hsLineItems : []
 
   const orderLines = items.map((li) => {
@@ -31,7 +57,7 @@ function mapDealToSaleOrder({ hsDeal, odooCustomerId, hsLineItems = [], countryE
   })
 
   const saleOrder = {
-    origin,
+    origin: resolvedOrigin,
     partner_id: Number(odooCustomerId) || odooCustomerId,
     order_line: orderLines,
     note
