@@ -84,8 +84,101 @@ function buildSaleOrderUpdatePayload({ saleOrder, existing } = {}) {
 
 const SMARTFLOW_MARKER = '[smartflow] País no resuelto: revisar country_expense antes de confirmar.'
 
+async function resolveCountryIdFromPartner(odooCustomerId, { apiClient, logger = null, correlationId = null } = {}) {
+  const empty = { countryId: null, countryName: null, reason: null }
+  const numericId = odooCustomerId != null && Number.isFinite(Number(odooCustomerId)) ? Number(odooCustomerId) : null
+  if (numericId == null) {
+    return { ...empty, reason: 'no_odoo_customer_id' }
+  }
+  if (!apiClient || typeof apiClient.readPartnerCountries !== 'function') {
+    return { ...empty, reason: 'readPartnerCountries_not_supported' }
+  }
+  let partner = null
+  try {
+    const map = await apiClient.readPartnerCountries([numericId]) || {}
+    partner = map[numericId] || null
+    const seen = new Set()
+    while (partner && !partner.countryId && partner.parentId && !seen.has(Number(partner.parentId))) {
+      seen.add(Number(partner.parentId))
+      let parentMap = {}
+      try {
+        parentMap = await apiClient.readPartnerCountries([Number(partner.parentId)]) || {}
+      } catch (parentErr) {
+        if (logger) logger.warn('odoo.upsert.readPartnerCountries.parent failed', { error: parentErr.message, correlationId })
+        break
+      }
+      partner = parentMap[Number(partner.parentId)] || null
+    }
+  } catch (err) {
+    if (logger) logger.warn('odoo.upsert.readPartnerCountries failed', { error: err.message, correlationId })
+    return { ...empty, reason: 'partner_lookup_failed' }
+  }
+  if (!partner || !partner.countryId) {
+    return { ...empty, reason: 'partner_has_no_country' }
+  }
+  return { countryId: partner.countryId, countryName: partner.countryName || null }
+}
+
+async function resolveCountryIdFromIsoCode(iso, { apiClient, logger = null } = {}) {
+  const empty = { countryId: null, countryName: null, reason: null }
+  if (iso == null || String(iso).trim() === '') {
+    return { ...empty, reason: 'missing_iso' }
+  }
+  if (!apiClient || typeof apiClient.searchCountryIdsByCodes !== 'function') {
+    return { ...empty, reason: 'searchCountryIdsByCodes_not_supported' }
+  }
+  let result = {}
+  try {
+    result = await apiClient.searchCountryIdsByCodes([String(iso).trim()]) || {}
+  } catch (err) {
+    if (logger) logger.warn('odoo.upsert.searchCountryIdsByCodes failed', { iso, error: err.message })
+    return { ...empty, reason: 'searchCountryIdsByCodes_failed' }
+  }
+  const hit = result[String(iso).trim()]
+  if (!hit) {
+    return { ...empty, reason: 'quote_country_iso_not_found' }
+  }
+  return { countryId: hit.id, countryName: hit.name || null }
+}
+
+async function pickCountryExpenseRecord({ countryId, countryName, apiClient, logger = null, correlationId = null } = {}) {
+  const empty = {
+    status: 'unresolved',
+    id: null,
+    countryId,
+    countryName: countryName || null,
+    reason: null,
+    matches: 0,
+    ambiguous: false
+  }
+  if (!apiClient || typeof apiClient.listOperationCosts !== 'function') {
+    return { ...empty, reason: 'listOperationCosts_not_supported' }
+  }
+  let records = []
+  try {
+    records = await apiClient.listOperationCosts() || []
+  } catch (err) {
+    if (logger) logger.warn('odoo.upsert.listOperationCosts failed', { error: err.message, correlationId })
+    return { ...empty, reason: 'operation_costs_lookup_failed' }
+  }
+  const countryRecords = records.filter((r) => r && r.countryId === countryId)
+  const picked = pickOperationCostForCountry(countryRecords, countryName)
+  if (!picked) {
+    return { ...empty, reason: 'no_operation_cost_for_country' }
+  }
+  return {
+    status: 'resolved',
+    id: picked.id,
+    countryId,
+    countryName: countryName || null,
+    reason: picked.reason || 'ddp_exact_match',
+    matches: picked.matches,
+    ambiguous: picked.ambiguous
+  }
+}
+
 class OdooTargetGateway {
-  constructor({ apiClient, hashPayload, logger = null, defaultCustomerId = '', requireProductMatch = true } = {}) {
+  constructor({ apiClient, hashPayload, logger = null, defaultCustomerId = '', requireProductMatch = true, propertyQuoteCountry = 'pais_de_destino' } = {}) {
     if (!apiClient) throw new Error('OdooTargetGateway requires apiClient')
     if (typeof hashPayload !== 'function') throw new Error('OdooTargetGateway requires hashPayload')
     this.apiClient = apiClient
@@ -93,6 +186,7 @@ class OdooTargetGateway {
     this.logger = logger
     this.defaultCustomerId = defaultCustomerId ? String(defaultCustomerId) : ''
     this.requireProductMatch = requireProductMatch !== false
+    this.propertyQuoteCountry = propertyQuoteCountry || 'pais_de_destino'
   }
 
   async upsert({ existingTargetId = null, record, references = {}, correlationId = null } = {}) {
@@ -114,7 +208,9 @@ class OdooTargetGateway {
 
     if (this.requireProductMatch) this.assertProductsResolved(enrichedLineItems, record, correlationId)
 
-    const countryExpense = await this.resolveCountryExpense(odooCustomerId, correlationId)
+    const countryExpense = record && record.quote
+      ? await this.resolveCountryExpenseFromQuote(record.quote, odooCustomerId, correlationId)
+      : await this.resolveCountryExpense(odooCustomerId, correlationId)
 
     let payload
     try {
@@ -240,6 +336,55 @@ class OdooTargetGateway {
       matches: picked.matches,
       ambiguous: picked.ambiguous
     }
+  }
+
+  async resolveCountryExpenseFromQuote(quote, odooCustomerId, correlationId) {
+    const empty = {
+      status: 'unresolved',
+      id: null,
+      countryId: null,
+      countryName: null,
+      reason: null,
+      matches: 0,
+      ambiguous: false
+    }
+    const countryProp = this.propertyQuoteCountry || 'pais_de_destino'
+    const iso = quote && quote.properties ? quote.properties[countryProp] : null
+    if (iso) {
+      const resolved = await resolveCountryIdFromIsoCode(iso, { apiClient: this.apiClient, logger: this.logger })
+      if (resolved.countryId) {
+        const picked = await pickCountryExpenseRecord({
+          countryId: resolved.countryId,
+          countryName: resolved.countryName,
+          apiClient: this.apiClient,
+          logger: this.logger,
+          correlationId
+        })
+        if (picked.status === 'resolved') return picked
+        return { ...empty, countryId: resolved.countryId, countryName: resolved.countryName, reason: picked.reason || 'no_operation_cost_for_country' }
+      }
+      // ISO no resolvío — cae al partner walk con marca diagnóstica
+      const fromPartner = await resolveCountryIdFromPartner(odooCustomerId, { apiClient: this.apiClient, logger: this.logger, correlationId })
+      if (!fromPartner.countryId) {
+        return {
+          ...empty,
+          reason: resolved.reason || 'quote_country_iso_not_found'
+        }
+      }
+      const picked = await pickCountryExpenseRecord({
+        countryId: fromPartner.countryId,
+        countryName: fromPartner.countryName,
+        apiClient: this.apiClient,
+        logger: this.logger,
+        correlationId
+      })
+      if (picked.status === 'resolved') {
+        return { ...picked, reason: 'partner_walk_after_iso_miss' }
+      }
+      return { ...empty, countryId: fromPartner.countryId, countryName: fromPartner.countryName, reason: 'partner_walk_after_iso_miss' }
+    }
+    // Sin ISO en la quote — comportamiento legacy
+    return await this.resolveCountryExpense(odooCustomerId, correlationId)
   }
 
   async upsertSalesOrder({ payload, correlationId }) {
@@ -388,4 +533,4 @@ class OdooTargetGateway {
   }
 }
 
-module.exports = { OdooTargetGateway, collectUnresolvedLines, buildSaleOrderUpdatePayload }
+module.exports = { OdooTargetGateway, collectUnresolvedLines, buildSaleOrderUpdatePayload, resolveCountryIdFromPartner, resolveCountryIdFromIsoCode, pickCountryExpenseRecord }
