@@ -234,6 +234,138 @@ describe('composition/dealSyncModule end-to-end', () => {
     expect(calls.writeBack).toHaveLength(1)
   }, 30_000)
 
+  it('planner error path: non-Skip failure while planning -> RETRY_PENDING, not stuck in PROCESSING forever', async () => {
+    // Regression test: PlanDealSyncUseCase has no try/catch of its own. Before
+    // the fix, a non-SkipSyncError thrown while planning (e.g. HubSpot 5xx
+    // while fetching the deal) propagated out of the poller's processFn
+    // uncaught — JobPoller only logs it, never touches the job — leaving the
+    // deal job PROCESSING forever with no retry and no dead-letter.
+    let fetchCount = 0
+    const sourceGateway = {
+      async fetchRecord(sourceId) {
+        fetchCount += 1
+        if (fetchCount === 1) {
+          const e = new Error('hubspot unavailable')
+          e.httpStatus = 503
+          throw e
+        }
+        return { id: sourceId, properties: { id_cliente_odoo: '42', dealstage: 'closedwon' } }
+      },
+      async resolveReferences() { return { odooCustomerId: '42', lineItems: [{ id: 'L-1' }] } },
+      async writeBack(sourceId, properties) { calls.writeBack.push({ sourceId, properties }) }
+    }
+    moduleUnderTest = createDealSyncModule({
+      config: {
+        mongodbUri: 'mongodb://x',
+        hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com', propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' },
+        odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
+        server: { port: 0, nodeEnv: 'test' },
+        logging: { level: 'error' },
+        worker: { concurrency: 1, pollIntervalMs: 50 },
+        retry: { maxAttempts: 8, maxDelayMs: 60_000 }
+      },
+      sourceGateway,
+      targetGateway: makeTargetGateway(calls),
+      logger: null,
+      recoverOrphansOnStart: false,
+      validators: [mustBeClosedWon, mustHaveLineItems, mustHaveOdooCustomerId]
+    })
+    await moduleUnderTest.enqueueWebhook({ rawBody: {}, objectId: 'D-PLANNER-ERR', eventType: 'x' })
+    const { JobModel } = require('../../src/adapters/outbound/mongo/schemas/job.schema.js')
+    let job = null
+    for (let i = 0; i < 30; i += 1) {
+      await moduleUnderTest._internals.jobPoller.tick()
+      await new Promise((r) => setTimeout(r, 20))
+      job = await JobModel.findOne({ sourceId: 'D-PLANNER-ERR' }).lean()
+      if (job && job.status === 'RETRY_PENDING') break
+    }
+    expect(job.status).toBe('RETRY_PENDING')
+    expect(job.attempts).toBe(1)
+    expect(job.lastError).toMatch(/hubspot unavailable/)
+
+    // Not stuck: force nextRetryAt into the past and confirm the retry actually runs.
+    await JobModel.updateOne({ _id: job._id }, { $set: { nextRetryAt: new Date(Date.now() - 1000) } })
+    for (let i = 0; i < 30; i += 1) {
+      await moduleUnderTest._internals.jobPoller.tick()
+      await new Promise((r) => setTimeout(r, 20))
+      job = await JobModel.findOne({ sourceId: 'D-PLANNER-ERR' }).lean()
+      if (job && job.status === 'COMPLETED') break
+    }
+    expect(job.status).toBe('COMPLETED')
+    expect(calls.writeBack).toHaveLength(1)
+  }, 30_000)
+
+  it('default validators wire createMustHaveQuoteCountry: quote job SKIPPED if its country vanishes before processing', async () => {
+    // No `validators` override below -> exercises the REAL default list built
+    // by createDealSyncModule (this is what proves createMustHaveQuoteCountry
+    // is actually wired in, not just unit-tested in isolation).
+    const DEAL_ID = 'D-RACE-1'
+    const QUOTE_OK = 'Q-OK'
+    const QUOTE_RACE = 'Q-RACE'
+    const sourceGateway = {
+      apiClient: {
+        getDealQuotes: async () => [
+          { id: QUOTE_OK, properties: { hs_status: 'APPROVAL_NOT_NEEDED', pais_de_destino: 'GT', hs_title: 'OK' } },
+          { id: QUOTE_RACE, properties: { hs_status: 'APPROVAL_NOT_NEEDED', pais_de_destino: 'HN', hs_title: 'Race' } }
+        ]
+      },
+      async fetchRecord(sourceId) {
+        const { parseSourceId } = require('../../src/adapters/outbound/hubspot/HubspotSourceGateway.js')
+        const { dealId, quoteId } = parseSourceId(sourceId)
+        if (quoteId) {
+          // Simulate the quote's country property vanishing between the
+          // planning read (getDealQuotes above) and this per-quote processing
+          // read — only for QUOTE_RACE.
+          const quoteProps = quoteId === QUOTE_RACE
+            ? { hs_status: 'APPROVAL_NOT_NEEDED', hs_title: 'Race' }
+            : { hs_status: 'APPROVAL_NOT_NEEDED', pais_de_destino: 'GT', hs_title: 'OK' }
+          return {
+            id: sourceId,
+            dealId,
+            quoteId,
+            properties: { id_cliente_odoo: '42', dealstage: CIERRE_GANADO, pipeline: CVB },
+            quote: { id: quoteId, properties: quoteProps }
+          }
+        }
+        return { id: sourceId, dealId, quoteId: null, properties: { id_cliente_odoo: '42', dealstage: CIERRE_GANADO, pipeline: CVB } }
+      },
+      async resolveReferences() { return { odooCustomerId: '42', lineItems: [{ id: 'L-1' }] } },
+      async writeBack(sourceId, properties) { calls.writeBack.push({ sourceId, properties }) }
+    }
+    moduleUnderTest = createDealSyncModule({
+      config: {
+        mongodbUri: 'mongodb://x',
+        hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com', propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' },
+        odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
+        deals: { allowedStageIds: [CIERRE_GANADO], allowedPipelineIds: [CVB], rejectUnknownPipeline: true },
+        server: { port: 0, nodeEnv: 'test' },
+        logging: { level: 'error' },
+        worker: { concurrency: 1, pollIntervalMs: 50 },
+        retry: { maxAttempts: 8, maxDelayMs: 60_000 }
+      },
+      sourceGateway,
+      targetGateway: makeTargetGateway(calls),
+      logger: null,
+      recoverOrphansOnStart: false
+    })
+    await moduleUnderTest.enqueueWebhook({ rawBody: {}, objectId: DEAL_ID, eventType: 'x' })
+    const { JobModel } = require('../../src/adapters/outbound/mongo/schemas/job.schema.js')
+    let quoteJobs = []
+    for (let i = 0; i < 60; i += 1) {
+      await moduleUnderTest._internals.jobPoller.tick()
+      await new Promise((r) => setTimeout(r, 20))
+      quoteJobs = await JobModel.find({ kind: 'quote' }).lean()
+      if (quoteJobs.length === 2 && quoteJobs.every((j) => ['COMPLETED', 'SKIPPED'].includes(j.status))) break
+    }
+    expect(quoteJobs).toHaveLength(2)
+    const okJob = quoteJobs.find((j) => j.sourceId.endsWith(QUOTE_OK))
+    const raceJob = quoteJobs.find((j) => j.sourceId.endsWith(QUOTE_RACE))
+    expect(okJob.status).toBe('COMPLETED')
+    expect(raceJob.status).toBe('SKIPPED')
+    expect(raceJob.lastError).toMatch(/pais_de_destino/)
+    expect(calls.upsert).toHaveLength(1)
+  }, 30_000)
+
   it('Pipeline selector: SKIPPED when deal pipeline is not in allowed list (sales pipeline)', async () => {
     moduleUnderTest = createDealSyncModule({
       config: {

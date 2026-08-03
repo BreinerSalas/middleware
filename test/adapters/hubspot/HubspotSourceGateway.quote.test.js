@@ -262,6 +262,35 @@ describe('HubspotSourceGateway — composed sourceId', () => {
     expect(api.updateDeal).not.toHaveBeenCalled()
   })
 
+  it('writeBack uses propertyQuoteOdooQuoteId (not propertyOdooQuoteId) as the outgoing property key on a quote', async () => {
+    // The deal and the quote can have this field under different internal
+    // names in HubSpot. Deliberately set them to DIFFERENT values here to
+    // prove the quote path writes under its own name, not the deal's.
+    const api = makeApiClient()
+    const gw = new HubspotSourceGateway({
+      apiClient: api,
+      propertyOdooCustomerId: 'cust',
+      propertyOdooOrderId: 'order',
+      propertyOdooQuoteId: 'id_presupuesto_odoo',
+      propertyQuoteOdooQuoteId: 'quote_odoo_so_name'
+    })
+    await gw.writeBack('D-1:qQ-1', { id_presupuesto_odoo: 'S06613' })
+    expect(api.updateQuote).toHaveBeenCalledWith('Q-1', { quote_odoo_so_name: 'S06613' })
+    expect(api.updateDeal).not.toHaveBeenCalled()
+  })
+
+  it('writeBack falls back to propertyOdooQuoteId on a quote when propertyQuoteOdooQuoteId is not given', async () => {
+    const api = makeApiClient()
+    const gw = new HubspotSourceGateway({
+      apiClient: api,
+      propertyOdooCustomerId: 'cust',
+      propertyOdooOrderId: 'order',
+      propertyOdooQuoteId: 'id_presupuesto_odoo'
+    })
+    await gw.writeBack('D-1:qQ-1', { id_presupuesto_odoo: 'S06613' })
+    expect(api.updateQuote).toHaveBeenCalledWith('Q-1', { id_presupuesto_odoo: 'S06613' })
+  })
+
   it('writeBack keeps legacy deal-update path when the sourceId is plain deal', async () => {
     const api = makeApiClient()
     const gw = new HubspotSourceGateway({

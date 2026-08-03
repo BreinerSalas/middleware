@@ -19,7 +19,8 @@ const {
   mustBeClosedWon,
   createMustHaveOdooCustomerId,
   createMustHaveDealStage,
-  createMustBeInPipeline
+  createMustBeInPipeline,
+  createMustHaveQuoteCountry
 } = require('./validators')
 const { JOB_KIND } = require('../config/constants')
 
@@ -61,6 +62,7 @@ function createDealSyncModule({
     propertyOdooCustomerId: config.hubspot.propertyOdooCustomerId,
     propertyOdooOrderId: config.hubspot.propertyOdooOrderId,
     propertyOdooQuoteId: config.hubspot.propertyOdooQuoteId,
+    propertyQuoteOdooQuoteId: config.hubspot.propertyQuoteOdooQuoteId,
     propertyQuoteCountry: config.hubspot.propertyQuoteCountry,
     quoteEligibleStatuses: config.hubspot.quoteEligibleStatuses,
     echoGuard,
@@ -91,7 +93,11 @@ function createDealSyncModule({
       rejectWhenMissing: _defaultDealsConfig.rejectUnknownPipeline !== false
     }),
     mustHaveLineItems,
-    createMustHaveOdooCustomerId({ defaultCustomerId: config.odoo.defaultCustomerId })
+    createMustHaveOdooCustomerId({ defaultCustomerId: config.odoo.defaultCustomerId }),
+    // No-op on the deal (fallback) path; on a quote job it re-checks the
+    // country property right before processing, since listEligibleQuotes only
+    // guaranteed it was present at planning time.
+    createMustHaveQuoteCountry({ countryProperty: config.hubspot.propertyQuoteCountry })
   ]
   const _validators = Array.isArray(validators) ? validators : defaultValidators
 
@@ -135,9 +141,28 @@ function createDealSyncModule({
     jobRepository: _jobRepository,
     processFn: async (job) => {
       if (job && job.kind === JOB_KIND.QUOTE) return _processSyncJobUseCase.execute({ job })
-      const plan = await _planDealSyncUseCase.execute({ job })
-      if (plan && plan.mode === 'fallback') return _processSyncJobUseCase.execute({ job })
-      return plan
+      try {
+        const plan = await _planDealSyncUseCase.execute({ job })
+        if (plan && plan.mode === 'fallback') return _processSyncJobUseCase.execute({ job })
+        return plan
+      } catch (err) {
+        // PlanDealSyncUseCase already turns SkipSyncError into markSkipped and
+        // never re-throws it. Anything that reaches here is a non-Skip failure
+        // (e.g. HubSpot 5xx/429 while listing quotes) that would otherwise leave
+        // the deal job stuck in PROCESSING forever — JobPoller only logs an
+        // unhandled processFn rejection, it never touches the job, and
+        // findClaimable only reclaims PENDING/RETRY_PENDING. Route it through
+        // the same retry/dead-letter policy ProcessSyncJobUseCase uses.
+        return _processSyncJobUseCase.handleError({
+          job,
+          jobId: job._id,
+          sourceId: job.sourceId,
+          correlationId: job.correlationId,
+          err,
+          priorAttempts: job.attempts,
+          maxAttempts: job.maxAttempts
+        })
+      }
     },
     concurrency: config.worker.concurrency,
     pollIntervalMs: config.worker.pollIntervalMs,

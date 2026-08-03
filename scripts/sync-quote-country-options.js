@@ -48,6 +48,20 @@ async function planOptions({ apiClient, hubspot, propertyName, logger }) {
   }
 
   const countryMap = await apiClient.searchCountryIdsByCodes(ISO_CODES) || {}
+  // res.country is a static base table; CR/GT/HN/SV/NI/PA/MX always exist on a
+  // real Odoo instance. An empty countryMap means the ISO lookup itself came
+  // back empty (stub mode, or a swallowed connectivity failure), not "Odoo
+  // genuinely has zero of these countries" — refuse rather than silently
+  // publishing the raw ISO list with no names attached to HubSpot.
+  if (Object.keys(countryMap).length === 0) {
+    const err = new Error(
+      'sync-quote-country-options: Odoo returned no res.country rows for any configured ISO — ' +
+      'refusing to publish a blind country list. Check ODOO_CLIENT_MODE=http and connectivity.'
+    )
+    err.code = 'EMPTY_COUNTRY_MAP'
+    throw err
+  }
+
   const usedIsos = []
   for (const iso of ISO_CODES) {
     const country = countryMap[iso]
@@ -63,20 +77,34 @@ async function planOptions({ apiClient, hubspot, propertyName, logger }) {
   const finalIsos = usedIsos.length > 0 ? usedIsos : ISO_CODES
 
   let currentProperty = null
+  let propertyLookupFailed = false
   try {
     currentProperty = await hubspot.getCustomProperty('quotes', propertyName)
   } catch (err) {
+    propertyLookupFailed = true
     if (logger) logger.warn('sync-quote-country-options: property lookup failed', { propertyName, error: err.message })
   }
 
   const options = buildOptions({ countries: countryMap, countriesWithOpCosts: new Set(usedIsos), usedIsos: finalIsos })
-  return { options, usedIsos: finalIsos, countryMap, currentProperty }
+  return { options, usedIsos: finalIsos, countryMap, currentProperty, propertyLookupFailed }
 }
 
-async function applyOptions({ hubspot, propertyName, options, currentProperty, dryRun, logger }) {
+async function applyOptions({ hubspot, propertyName, options, currentProperty, propertyLookupFailed = false, dryRun, logger }) {
   if (dryRun) {
     if (logger) logger.info('sync-quote-country-options.dry-run', { propertyName, proposed: options, current: currentProperty && currentProperty.options ? currentProperty.options : null })
     return { changed: false, dryRun: true }
+  }
+  // Without a successful read we don't know the real label/groupName, so a
+  // write here would silently clobber them with hardcoded defaults. Abort
+  // loudly instead of writing blind — this is the one path that mutates a
+  // live HubSpot property schema.
+  if (propertyLookupFailed || !currentProperty) {
+    const err = new Error(
+      `sync-quote-country-options: refusing to write "${propertyName}" without a successful property read ` +
+      '(label/groupName would silently revert to hardcoded defaults). Re-run once the read succeeds, or pass --dry-run to preview.'
+    )
+    err.code = 'PROPERTY_LOOKUP_FAILED'
+    throw err
   }
   const body = {
     label: (currentProperty && currentProperty.label) || 'País de destino (ISO-2)',
@@ -88,6 +116,14 @@ async function applyOptions({ hubspot, propertyName, options, currentProperty, d
   await hubspot.updateCustomProperty('quotes', propertyName, body)
   if (logger) logger.info('sync-quote-country-options.updated', { propertyName, optionsCount: options.length })
   return { changed: true, dryRun: false }
+}
+
+// parseArgs turns `--dry-run=true`/`--dry-run=1` into the string 'true' or the
+// number 1 (only bare `--dry-run` yields the boolean true) — match all of
+// them, so a mistyped `=true` never silently performs a real write.
+function resolveDryRun(args) {
+  const raw = args && args['dry-run']
+  return raw === true || raw === 'true' || raw === 1 || raw === '1'
 }
 
 async function main() {
@@ -102,7 +138,7 @@ async function main() {
     ].join('\n'))
     return
   }
-  const dryRun = args['dry-run'] === true
+  const dryRun = resolveDryRun(args)
   const explicitProp = typeof args['country-prop'] === 'string' ? args['country-prop'] : null
   const cfg = load()
   const logger = createLogger({ level: cfg.logging.level })
@@ -124,7 +160,8 @@ async function main() {
     const plan = await planOptions({ apiClient, hubspot, propertyName, logger })
     const result = await applyOptions({
       hubspot, propertyName, options: plan.options,
-      currentProperty: plan.currentProperty, dryRun, logger
+      currentProperty: plan.currentProperty, propertyLookupFailed: plan.propertyLookupFailed,
+      dryRun, logger
     })
     const out = {
       propertyName,
@@ -149,4 +186,4 @@ if (require.main === module) {
   })
 }
 
-module.exports = { planOptions, applyOptions, buildOptions }
+module.exports = { planOptions, applyOptions, buildOptions, resolveDryRun }

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { planOptions, applyOptions, buildOptions } = require('../../scripts/sync-quote-country-options.js')
+const { planOptions, applyOptions, buildOptions, resolveDryRun } = require('../../scripts/sync-quote-country-options.js')
 
 function makeApiClient({ operationCosts = [], countryMap = {} } = {}) {
   return {
@@ -73,6 +73,29 @@ describe('planOptions', () => {
     const plan = await planOptions({ apiClient, hubspot, propertyName: 'pais_de_destino' })
     expect(plan.usedIsos.sort()).toEqual(['CR', 'GT', 'HN', 'MX', 'NI', 'PA', 'SV'])
   })
+
+  it('refuses to plan when the Odoo ISO lookup returns nothing at all (e.g. ODOO_CLIENT_MODE=stub)', async () => {
+    // res.country is a static Odoo base table; a genuinely-connected Odoo
+    // always answers at least one of CR/GT/HN/SV/NI/PA/MX. An empty countryMap
+    // means the client couldn't really answer (stub mode, or a swallowed
+    // connectivity failure) — silently falling back to the raw ISO list here
+    // would publish country codes with no names attached to production HubSpot.
+    const apiClient = makeApiClient({ operationCosts: [], countryMap: {} })
+    const hubspot = makeHubspot()
+    await expect(planOptions({ apiClient, hubspot, propertyName: 'pais_de_destino' }))
+      .rejects.toThrow(/no res\.country rows/)
+  })
+
+  it('reports propertyLookupFailed when the HubSpot property read throws', async () => {
+    const apiClient = makeApiClient({
+      operationCosts: [{ countryId: 90, countryName: 'Guatemala' }],
+      countryMap: { GT: { id: 90, name: 'Guatemala' } }
+    })
+    const hubspot = { getCustomProperty: vi.fn(async () => { throw new Error('403') }) }
+    const plan = await planOptions({ apiClient, hubspot, propertyName: 'pais_de_destino' })
+    expect(plan.propertyLookupFailed).toBe(true)
+    expect(plan.currentProperty).toBeNull()
+  })
 })
 
 describe('applyOptions — dry-run', () => {
@@ -103,5 +126,56 @@ describe('applyOptions — dry-run', () => {
     expect(call[0]).toBe('quotes')
     expect(call[1]).toBe('pais_de_destino')
     expect(call[2].options).toEqual([{ label: 'Sin definir', value: '' }, { label: 'GT — Guatemala', value: 'GT' }])
+  })
+
+  it('refuses to write when the property lookup failed (would silently revert label/groupName)', async () => {
+    const hubspot = makeHubspot()
+    await expect(applyOptions({
+      hubspot,
+      propertyName: 'pais_de_destino',
+      options: [{ label: 'Sin definir', value: '' }],
+      currentProperty: null,
+      propertyLookupFailed: true,
+      dryRun: false
+    })).rejects.toThrow(/refusing to write/)
+    expect(hubspot._update).not.toHaveBeenCalled()
+  })
+
+  it('refuses to write when currentProperty is null even without an explicit propertyLookupFailed flag', async () => {
+    const hubspot = makeHubspot()
+    await expect(applyOptions({
+      hubspot,
+      propertyName: 'pais_de_destino',
+      options: [{ label: 'Sin definir', value: '' }],
+      currentProperty: null,
+      dryRun: false
+    })).rejects.toThrow(/refusing to write/)
+    expect(hubspot._update).not.toHaveBeenCalled()
+  })
+})
+
+describe('resolveDryRun', () => {
+  it('is true for bare --dry-run (parsed as boolean true)', () => {
+    expect(resolveDryRun({ 'dry-run': true })).toBe(true)
+  })
+
+  it('is true for --dry-run=true (parsed as the string "true")', () => {
+    expect(resolveDryRun({ 'dry-run': 'true' })).toBe(true)
+  })
+
+  it('is true for --dry-run=1 (parsed as the number 1)', () => {
+    expect(resolveDryRun({ 'dry-run': 1 })).toBe(true)
+  })
+
+  it('is true for --dry-run="1"', () => {
+    expect(resolveDryRun({ 'dry-run': '1' })).toBe(true)
+  })
+
+  it('is false when the flag is absent', () => {
+    expect(resolveDryRun({})).toBe(false)
+  })
+
+  it('is false for --dry-run=false (parsed as the string "false")', () => {
+    expect(resolveDryRun({ 'dry-run': 'false' })).toBe(false)
   })
 })

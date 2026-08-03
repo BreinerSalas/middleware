@@ -134,6 +134,30 @@ describe('OdooTargetGateway.upsert — ISO-driven country_expense', () => {
     expect(api.readPartnerCountries).not.toHaveBeenCalled()
   })
 
+  it('wires origin/note from record.dealId+quoteId+quote explicitly, not derived from record.id', async () => {
+    // record.id is deliberately NOT of the form "<dealId>:q<quoteId>" — if the
+    // mapper were still deriving origin from hsDeal.id (the pre-fix bug), this
+    // would produce a garbage origin and drop the quote note entirely.
+    const api = makeApi({
+      productMap: { 'SKU-1': 17 },
+      partnerCountry: { 42: { countryId: 49, countryName: 'Colombia', parentId: null } },
+      operationCosts: ocGT,
+      searchCountryIdsByCodes: true
+    })
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, requireProductMatch: false })
+    const record = {
+      id: 'opaque-source-id-not-shaped-like-deal-colon-q-quote',
+      dealId: 'D-9',
+      quoteId: 'Q-9',
+      properties: { id_cliente_odoo: '42', dealname: 'Fan-Out Demo' },
+      quote: { id: 'Q-9', properties: { pais_de_destino: 'GT', hs_title: 'Cotiz GT' } }
+    }
+    await gw.upsert({ record, references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] } })
+    const soPayload = api.createSalesOrder.mock.calls[0][0]
+    expect(soPayload.origin).toBe('hs:D-9:qQ-9')
+    expect(soPayload.note).toBe('Deal: Fan-Out Demo\nCotización: Cotiz GT (GT)')
+  })
+
   it('degrades to partner walk when quote is missing', async () => {
     const api = makeApi({
       productMap: { 'SKU-1': 17 },

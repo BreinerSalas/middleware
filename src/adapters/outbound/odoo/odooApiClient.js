@@ -155,10 +155,29 @@ function createOdooApiClient({
     return ocPromise
   }
 
-  let countryPromise = null
-  let countryCache = new Map()
-  let countryCacheAt = 0
+  // countryCache: code -> { entry, at } — each code carries its own TTL stamp.
+  // countryInflight: code -> Promise<entry|null> — only codes with no live
+  // in-flight request are batched into a fresh RPC; every code (fresh or
+  // reused) resolves from ITS OWN derived promise, so a caller asking for GT
+  // can never resolve with HN's row even when both are requested concurrently.
+  const countryCache = new Map()
+  const countryInflight = new Map()
   const countryCacheTtlMs = operationCostsTtlMs
+
+  async function fetchCountryRows(codesToFetch) {
+    const result = await executeKw('res.country', 'search_read',
+      [[['code', 'in', codesToFetch]]],
+      { fields: ['id', 'code', 'name'] }
+    )
+    const rows = (Array.isArray(result) ? result : [])
+    const byCode = new Map()
+    for (const r of rows) {
+      if (!r || r.code == null || r.id == null) continue
+      byCode.set(String(r.code), { id: Number(r.id), name: r.name || null })
+    }
+    return byCode
+  }
+
   async function searchCountryIdsByCodes(codes) {
     if (!Array.isArray(codes) || codes.length === 0) return {}
     const cleaned = []
@@ -171,41 +190,43 @@ function createOdooApiClient({
       cleaned.push(c)
     }
     if (cleaned.length === 0) return {}
-    if (countryPromise) return countryPromise
-    if (now() - countryCacheAt < countryCacheTtlMs) {
-      const out = {}
-      for (const code of cleaned) {
-        const cached = countryCache.get(code)
-        if (cached) out[code] = cached
+
+    const nowMs = now()
+    const out = {}
+    const needsFetch = []
+    for (const code of cleaned) {
+      const cached = countryCache.get(code)
+      if (cached && (nowMs - cached.at) < countryCacheTtlMs) {
+        if (cached.entry) out[code] = cached.entry
+        continue
       }
-      if (Object.keys(out).length === cleaned.length) return out
+      needsFetch.push(code)
     }
-    countryPromise = (async () => {
-      try {
-        const result = await executeKw('res.country', 'search_read',
-          [[['code', 'in', cleaned]]],
-          { fields: ['id', 'code', 'name'] }
-        )
-        const rows = (Array.isArray(result) ? result : [])
-        const found = {}
-        for (const r of rows) {
-          if (!r || r.code == null || r.id == null) continue
-          const entry = { id: Number(r.id), name: r.name || null }
-          found[String(r.code)] = entry
-          countryCache.set(String(r.code), entry)
-        }
-        countryCacheAt = now()
-        // Return only what was asked; if some codes are missing, leave them out.
-        const out = {}
-        for (const code of cleaned) {
-          if (found[code]) out[code] = found[code]
-        }
-        return out
-      } finally {
-        countryPromise = null
+    if (needsFetch.length === 0) return out
+
+    const freshCodes = needsFetch.filter((code) => !countryInflight.has(code))
+    if (freshCodes.length > 0) {
+      const batchPromise = fetchCountryRows(freshCodes)
+      for (const code of freshCodes) {
+        const codePromise = batchPromise
+          .then((rowsByCode) => rowsByCode.get(code) || null)
+          .finally(() => {
+            if (countryInflight.get(code) === codePromise) countryInflight.delete(code)
+          })
+        countryInflight.set(code, codePromise)
       }
-    })()
-    return countryPromise
+    }
+
+    // A failed RPC rejects here (never reaching countryCache.set below), so the
+    // failure is never cached — the next call retries fresh once the finally()
+    // above has cleared the in-flight entries.
+    await Promise.all(needsFetch.map(async (code) => {
+      const entry = await countryInflight.get(code)
+      countryCache.set(code, { entry, at: now() })
+      if (entry) out[code] = entry
+    }))
+
+    return out
   }
 
   return {

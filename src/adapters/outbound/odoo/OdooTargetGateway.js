@@ -218,7 +218,11 @@ class OdooTargetGateway {
         hsDeal: record,
         odooCustomerId,
         hsLineItems: enrichedLineItems,
-        countryExpenseId: countryExpense.status === 'resolved' ? countryExpense.id : null
+        countryExpenseId: countryExpense.status === 'resolved' ? countryExpense.id : null,
+        dealId: record.dealId || null,
+        quoteId: record.quoteId || null,
+        quote: record.quote || null,
+        countryCodeProperty: this.propertyQuoteCountry
       })
     } catch (err) {
       if (err.code === 'MISSING_ODOO_CUSTOMER_ID') {

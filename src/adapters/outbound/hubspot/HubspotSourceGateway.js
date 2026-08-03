@@ -103,6 +103,7 @@ class HubspotSourceGateway {
     propertyOdooCustomerId,
     propertyOdooOrderId,
     propertyOdooQuoteId,
+    propertyQuoteOdooQuoteId,
     propertyQuoteCountry,
     quoteEligibleStatuses,
     echoGuard = null,
@@ -113,6 +114,10 @@ class HubspotSourceGateway {
     this.propertyOdooCustomerId = propertyOdooCustomerId || DEFAULT_DEAL_PROPERTY_NAMES.customer
     this.propertyOdooOrderId = propertyOdooOrderId || DEFAULT_DEAL_PROPERTY_NAMES.order
     this.propertyOdooQuoteId = propertyOdooQuoteId || DEFAULT_DEAL_PROPERTY_NAMES.quote
+    // The deal and the quote objects can have this property under different
+    // internal names; default to the deal's when not given explicitly (matches
+    // config/index.js's own fallback for HS_PROPERTY_QUOTE_ODOO_QUOTE_ID).
+    this.propertyQuoteOdooQuoteId = propertyQuoteOdooQuoteId || this.propertyOdooQuoteId
     this.propertyQuoteCountry = propertyQuoteCountry || DEFAULT_QUOTE_PROPERTY_NAMES.country
     this.quoteEligibleStatuses = Array.isArray(quoteEligibleStatuses) && quoteEligibleStatuses.length > 0
       ? quoteEligibleStatuses
@@ -139,7 +144,7 @@ class HubspotSourceGateway {
     if (quoteId) {
       const quoteProps = buildQuotePropertiesToFetch({
         propertyQuoteCountry: this.propertyQuoteCountry,
-        propertyOdooQuoteId: this.propertyOdooQuoteId
+        propertyOdooQuoteId: this.propertyQuoteOdooQuoteId
       })
       const quote = await this.apiClient.getQuote(quoteId, quoteProps)
       record.quote = { id: quote.id, properties: quote.properties || {} }
@@ -183,7 +188,9 @@ class HubspotSourceGateway {
     const properties = {}
     if (payload.id_orden_odoo != null) properties[this.propertyOdooOrderId] = payload.id_orden_odoo
     if (payload.id_cliente_odoo != null) properties[this.propertyOdooCustomerId] = payload.id_cliente_odoo
-    if (payload.id_presupuesto_odoo != null) properties[this.propertyOdooQuoteId] = payload.id_presupuesto_odoo
+    if (payload.id_presupuesto_odoo != null) {
+      properties[quoteId ? this.propertyQuoteOdooQuoteId : this.propertyOdooQuoteId] = payload.id_presupuesto_odoo
+    }
     if (Object.keys(properties).length === 0) return
     const echoKey = `${sourceId}:${JSON.stringify(properties)}`
     if (this.echoGuard.shouldSuppress(echoKey)) {

@@ -95,6 +95,51 @@ describe('odooApiClient.searchCountryIdsByCodes', () => {
       expect(post).toHaveBeenCalledTimes(2) // authenticate + single search_read
     })
 
+    it('does NOT cross-poison results when concurrent calls request DIFFERENT codes', async () => {
+      // Regression test: the fan-out enqueues one quote job per country and
+      // WORKER_CONCURRENCY runs several in parallel, each resolving a single,
+      // different ISO. A shared in-flight promise keyed on nothing (the
+      // original bug) means the loser of the race gets the winner's country
+      // map instead of its own. `post` answers from the actual request body
+      // rather than call order, so this holds regardless of interleaving.
+      const countryRows = {
+        GT: { id: 90, code: 'GT', name: 'Guatemala' },
+        HN: { id: 96, code: 'HN', name: 'Honduras' }
+      }
+      const post = vi.fn(async (_url, body) => {
+        if (body.params.method === 'authenticate') return { data: { result: 4 }, status: 200 }
+        const requestedCodes = body.params.args[5][0][0][2]
+        const rows = requestedCodes.map((c) => countryRows[c]).filter(Boolean)
+        return { data: { result: rows }, status: 200 }
+      })
+      const api = createOdooApiClient({
+        mode: 'http', baseUrl: 'https://odoo.example.com',
+        db: 'db', login: 'l@x.com', apiKey: 'k',
+        transport: { post }
+      })
+      const [gt, hn] = await Promise.all([
+        api.searchCountryIdsByCodes(['GT']),
+        api.searchCountryIdsByCodes(['HN'])
+      ])
+      expect(gt).toEqual({ GT: { id: 90, name: 'Guatemala' } })
+      expect(hn).toEqual({ HN: { id: 96, name: 'Honduras' } })
+    })
+
+    it('does not cache a failed RPC — a later call for the same code retries fresh', async () => {
+      const post = vi.fn()
+        .mockResolvedValueOnce({ data: { result: 4 }, status: 200 })
+        .mockRejectedValueOnce(new Error('network blip'))
+        .mockResolvedValueOnce({ data: { result: [{ id: 90, code: 'GT', name: 'Guatemala' }] }, status: 200 })
+      const api = createOdooApiClient({
+        mode: 'http', baseUrl: 'https://odoo.example.com',
+        db: 'db', login: 'l@x.com', apiKey: 'k',
+        transport: { post }
+      })
+      await expect(api.searchCountryIdsByCodes(['GT'])).rejects.toThrow('network blip')
+      const result = await api.searchCountryIdsByCodes(['GT'])
+      expect(result).toEqual({ GT: { id: 90, name: 'Guatemala' } })
+    })
+
     it('reuses cached result across calls (no second RPC repeated for the same codes)', async () => {
       const post = vi.fn()
         .mockResolvedValueOnce({ data: { result: 4 }, status: 200 })
