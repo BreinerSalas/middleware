@@ -13,6 +13,72 @@ const DEFAULT_DEAL_PROPERTY_NAMES = {
   quote: 'id_presupuesto_odoo'
 }
 
+const DEFAULT_QUOTE_PROPERTY_NAMES = {
+  country: 'pais_de_destino',
+  odooQuoteId: 'id_presupuesto_odoo'
+}
+
+const DEFAULT_QUOTE_ELIGIBLE_STATUSES = ['APPROVAL_NOT_NEEDED', 'APPROVED']
+
+function parseSourceId(sourceId) {
+  if (sourceId == null) return { dealId: null, quoteId: null }
+  const s = String(sourceId)
+  const idx = s.indexOf(':q')
+  if (idx === -1) return { dealId: s, quoteId: null }
+  const dealId = s.slice(0, idx)
+  const quoteId = s.slice(idx + 2)
+  if (!quoteId) return { dealId: s, quoteId: null }
+  return { dealId, quoteId }
+}
+
+function isEligibleQuote(quote, { countryProperty, allowedStatuses } = {}) {
+  if (!quote || typeof quote !== 'object') {
+    return { eligible: false, reason: 'missing_quote' }
+  }
+  const props = quote.properties
+  if (!props || typeof props !== 'object') {
+    return { eligible: false, reason: 'missing_properties' }
+  }
+  const statuses = Array.isArray(allowedStatuses) ? allowedStatuses : DEFAULT_QUOTE_ELIGIBLE_STATUSES
+  const status = props.hs_status != null ? String(props.hs_status) : null
+  if (!status) {
+    return { eligible: false, reason: 'missing_status' }
+  }
+  if (!statuses.includes(status)) {
+    return { eligible: false, reason: 'status_not_eligible', detail: { status, allowed: statuses } }
+  }
+  const countryProp = countryProperty || DEFAULT_QUOTE_PROPERTY_NAMES.country
+  const country = props[countryProp]
+  if (country == null || String(country).trim() === '') {
+    return { eligible: false, reason: 'missing_country' }
+  }
+  return { eligible: true, reason: 'ok' }
+}
+
+async function listEligibleQuotes({ dealId, sourceGateway }) {
+  if (!sourceGateway || typeof sourceGateway.apiClient.getDealQuotes !== 'function') {
+    throw new Error('listEligibleQuotes requires a sourceGateway with apiClient.getDealQuotes')
+  }
+  const quotes = await sourceGateway.apiClient.getDealQuotes(dealId)
+  const result = { eligible: [], skipped: [], currencies: [] }
+  const currencySet = new Set()
+  for (const q of (Array.isArray(quotes) ? quotes : [])) {
+    const verdict = isEligibleQuote(q, {
+      countryProperty: sourceGateway.propertyQuoteCountry,
+      allowedStatuses: sourceGateway.quoteEligibleStatuses
+    })
+    if (verdict.eligible) {
+      result.eligible.push(q)
+      const currency = q.properties && q.properties.hs_currency
+      if (currency != null && String(currency).trim() !== '') currencySet.add(String(currency))
+    } else {
+      result.skipped.push({ quoteId: q.id, reason: verdict.reason })
+    }
+  }
+  result.currencies = [...currencySet]
+  return result
+}
+
 function buildDealPropertiesToFetch(opts = {}) {
   const customer = opts.propertyOdooCustomerId || DEFAULT_DEAL_PROPERTY_NAMES.customer
   const order = opts.propertyOdooOrderId || DEFAULT_DEAL_PROPERTY_NAMES.order
@@ -23,45 +89,87 @@ function buildDealPropertiesToFetch(opts = {}) {
   ]
 }
 
+function buildQuotePropertiesToFetch(opts = {}) {
+  const country = opts.propertyQuoteCountry || DEFAULT_QUOTE_PROPERTY_NAMES.country
+  const quoteId = opts.propertyOdooQuoteId || DEFAULT_DEAL_PROPERTY_NAMES.quote
+  return ['hs_status', 'hs_title', 'hs_currency', 'hs_quote_amount', country, quoteId]
+}
+
 const DEFAULT_DEAL_PROPERTIES_TO_FETCH = buildDealPropertiesToFetch()
 
 class HubspotSourceGateway {
-  constructor({ apiClient, propertyOdooCustomerId, propertyOdooOrderId, propertyOdooQuoteId, echoGuard = null, logger = null } = {}) {
+  constructor({
+    apiClient,
+    propertyOdooCustomerId,
+    propertyOdooOrderId,
+    propertyOdooQuoteId,
+    propertyQuoteCountry,
+    quoteEligibleStatuses,
+    echoGuard = null,
+    logger = null
+  } = {}) {
     if (!apiClient) throw new Error('HubspotSourceGateway requires apiClient')
     this.apiClient = apiClient
     this.propertyOdooCustomerId = propertyOdooCustomerId || DEFAULT_DEAL_PROPERTY_NAMES.customer
     this.propertyOdooOrderId = propertyOdooOrderId || DEFAULT_DEAL_PROPERTY_NAMES.order
     this.propertyOdooQuoteId = propertyOdooQuoteId || DEFAULT_DEAL_PROPERTY_NAMES.quote
+    this.propertyQuoteCountry = propertyQuoteCountry || DEFAULT_QUOTE_PROPERTY_NAMES.country
+    this.quoteEligibleStatuses = Array.isArray(quoteEligibleStatuses) && quoteEligibleStatuses.length > 0
+      ? quoteEligibleStatuses
+      : DEFAULT_QUOTE_ELIGIBLE_STATUSES
     this.echoGuard = echoGuard || createEchoGuard({ ttlMs: 10000 })
     this.logger = logger
   }
 
   async fetchRecord(sourceId) {
-    const properties = buildDealPropertiesToFetch({
+    const { dealId, quoteId } = parseSourceId(sourceId)
+    const dealProps = buildDealPropertiesToFetch({
       propertyOdooCustomerId: this.propertyOdooCustomerId,
       propertyOdooOrderId: this.propertyOdooOrderId,
       propertyOdooQuoteId: this.propertyOdooQuoteId
     })
-    const data = await this.apiClient.getDeal(sourceId, properties)
-    return {
-      id: data.id,
+    const data = await this.apiClient.getDeal(dealId, dealProps)
+    const record = {
+      id: sourceId,
+      dealId: data.id,
+      quoteId: quoteId || null,
       properties: data.properties || {},
       associations: data.associations || {}
     }
+    if (quoteId) {
+      const quoteProps = buildQuotePropertiesToFetch({
+        propertyQuoteCountry: this.propertyQuoteCountry,
+        propertyOdooQuoteId: this.propertyOdooQuoteId
+      })
+      const quote = await this.apiClient.getQuote(quoteId, quoteProps)
+      record.quote = { id: quote.id, properties: quote.properties || {} }
+    }
+    return record
   }
 
   async resolveReferences(record) {
     const references = {}
     if (!record || !record.id) return references
+    const dealId = record.dealId || record.id
+    const quoteId = record.quoteId || null
     try {
-      const data = await this.apiClient.getDealAssociations(record.id, ['contact', 'company'])
-      references.associations = data && data.results ? data.results : []
+      if (quoteId) {
+        // quotes do not carry contact/company associations at the deal level
+        references.associations = []
+      } else {
+        const data = await this.apiClient.getDealAssociations(dealId, ['contact', 'company'])
+        references.associations = data && data.results ? data.results : []
+      }
     } catch (err) {
       this.logger && this.logger.warn('hubspot.resolveReferences.associations failed', { sourceId: record.id, error: err.message })
       references.associations = []
     }
     try {
-      references.lineItems = await this.apiClient.getDealLineItems(record.id)
+      if (quoteId && typeof this.apiClient.getQuoteLineItems === 'function') {
+        references.lineItems = await this.apiClient.getQuoteLineItems(quoteId)
+      } else {
+        references.lineItems = await this.apiClient.getDealLineItems(dealId)
+      }
     } catch (err) {
       this.logger && this.logger.warn('hubspot.resolveReferences.lineItems failed', { sourceId: record.id, error: err.message })
       references.lineItems = []
@@ -71,6 +179,7 @@ class HubspotSourceGateway {
 
   async writeBack(sourceId, payload = {}) {
     if (!payload || typeof payload !== 'object') return
+    const { dealId, quoteId } = parseSourceId(sourceId)
     const properties = {}
     if (payload.id_orden_odoo != null) properties[this.propertyOdooOrderId] = payload.id_orden_odoo
     if (payload.id_cliente_odoo != null) properties[this.propertyOdooCustomerId] = payload.id_cliente_odoo
@@ -81,13 +190,23 @@ class HubspotSourceGateway {
       if (this.logger) this.logger.debug('hubspot.writeBack suppressed by echo guard', { sourceId, echoKey })
       return
     }
-    await this.apiClient.updateDeal(sourceId, properties)
-    if (this.logger) this.logger.info('hubspot.writeBack', { sourceId, properties })
+    if (quoteId) {
+      await this.apiClient.updateQuote(quoteId, properties)
+    } else {
+      await this.apiClient.updateDeal(dealId, properties)
+    }
+    if (this.logger) this.logger.info('hubspot.writeBack', { sourceId, dealId, quoteId, properties })
   }
 }
 
 module.exports = {
   HubspotSourceGateway,
   DEAL_PROPERTIES_TO_FETCH: DEFAULT_DEAL_PROPERTIES_TO_FETCH,
-  buildDealPropertiesToFetch
+  buildDealPropertiesToFetch,
+  buildQuotePropertiesToFetch,
+  parseSourceId,
+  isEligibleQuote,
+  listEligibleQuotes,
+  DEFAULT_QUOTE_ELIGIBLE_STATUSES,
+  DEFAULT_QUOTE_PROPERTY_NAMES
 }
