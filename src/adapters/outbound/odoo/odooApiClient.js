@@ -63,6 +63,9 @@ function createOdooApiClient({
       },
       async updateManufacturingOrder(targetId, payload) {
         return { id: targetId, ref: targetId, state: 'confirmed', raw: payload }
+      },
+      async searchCountryIdsByCodes(_codes) {
+        return {}
       }
     }
   }
@@ -150,6 +153,59 @@ function createOdooApiClient({
       }
     })()
     return ocPromise
+  }
+
+  let countryPromise = null
+  let countryCache = new Map()
+  let countryCacheAt = 0
+  const countryCacheTtlMs = operationCostsTtlMs
+  async function searchCountryIdsByCodes(codes) {
+    if (!Array.isArray(codes) || codes.length === 0) return {}
+    const cleaned = []
+    const seen = new Set()
+    for (const raw of codes) {
+      if (raw == null) continue
+      const c = String(raw).trim()
+      if (!c || seen.has(c)) continue
+      seen.add(c)
+      cleaned.push(c)
+    }
+    if (cleaned.length === 0) return {}
+    if (countryPromise) return countryPromise
+    if (now() - countryCacheAt < countryCacheTtlMs) {
+      const out = {}
+      for (const code of cleaned) {
+        const cached = countryCache.get(code)
+        if (cached) out[code] = cached
+      }
+      if (Object.keys(out).length === cleaned.length) return out
+    }
+    countryPromise = (async () => {
+      try {
+        const result = await executeKw('res.country', 'search_read',
+          [[['code', 'in', cleaned]]],
+          { fields: ['id', 'code', 'name'] }
+        )
+        const rows = (Array.isArray(result) ? result : [])
+        const found = {}
+        for (const r of rows) {
+          if (!r || r.code == null || r.id == null) continue
+          const entry = { id: Number(r.id), name: r.name || null }
+          found[String(r.code)] = entry
+          countryCache.set(String(r.code), entry)
+        }
+        countryCacheAt = now()
+        // Return only what was asked; if some codes are missing, leave them out.
+        const out = {}
+        for (const code of cleaned) {
+          if (found[code]) out[code] = found[code]
+        }
+        return out
+      } finally {
+        countryPromise = null
+      }
+    })()
+    return countryPromise
   }
 
   return {
@@ -305,6 +361,7 @@ function createOdooApiClient({
         { fields: ['id', 'name', 'default_code', 'list_price'], offset, limit })
     },
     listOperationCosts,
+    searchCountryIdsByCodes,
 
     async createManufacturingOrder(payload) {
       const result = await executeKw('mrp.production', 'create', [payload])
