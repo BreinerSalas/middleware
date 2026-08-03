@@ -1,7 +1,7 @@
 'use strict'
 
 const { Schema, model } = require('mongoose')
-const { JOB_STATUS } = require('../../../../config/constants')
+const { JOB_STATUS, JOB_KIND } = require('../../../../config/constants')
 
 const TERMINAL = [JOB_STATUS.COMPLETED, JOB_STATUS.SKIPPED, JOB_STATUS.DEAD_LETTER]
 
@@ -10,6 +10,12 @@ const JobSchema = new Schema({
   correlationId: { type: String, default: null, index: true },
   payload: { type: Schema.Types.Mixed, default: null },
   dedupeKey: { type: String, default: null, index: true },
+  kind: {
+    type: String,
+    enum: Object.values(JOB_KIND),
+    default: JOB_KIND.DEAL,
+    index: true
+  },
   status: {
     type: String,
     enum: Object.values(JOB_STATUS),

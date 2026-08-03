@@ -19,6 +19,7 @@ class SyncJob {
     correlationId = null,
     payload = null,
     dedupeKey = null,
+    kind = 'deal',
     status = JOB_STATUS.PENDING,
     attempts = 0,
     maxAttempts = 8,
@@ -36,6 +37,7 @@ class SyncJob {
     this.correlationId = correlationId
     this.payload = payload
     this.dedupeKey = dedupeKey
+    this.kind = kind
     this.status = status
     this.attempts = attempts
     this.maxAttempts = maxAttempts
@@ -104,6 +106,7 @@ class SyncJob {
       correlationId: this.correlationId,
       payload: this.payload,
       dedupeKey: this.dedupeKey,
+      kind: this.kind,
       status: this.status,
       attempts: this.attempts,
       maxAttempts: this.maxAttempts,

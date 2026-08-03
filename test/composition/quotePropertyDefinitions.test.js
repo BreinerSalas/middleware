@@ -1,0 +1,35 @@
+import { describe, it, expect } from 'vitest'
+import { createRequire } from 'node:module'
+const require = createRequire(import.meta.url)
+const { buildQuotePropertyDefinitions } = require('../../src/composition/quotePropertyDefinitions.js')
+
+describe('buildQuotePropertyDefinitions', () => {
+  it('returns two properties: country dropdown + odoo quote id', () => {
+    const defs = buildQuotePropertyDefinitions({
+      propertyQuoteCountry: 'pais_de_destino',
+      propertyOdooQuoteId: 'id_presupuesto_odoo'
+    })
+    expect(defs).toHaveLength(2)
+    expect(defs[0].name).toBe('pais_de_destino')
+    expect(defs[0].type).toBe('enumeration')
+    expect(defs[0].fieldType).toBe('select')
+    expect(defs[1].name).toBe('id_presupuesto_odoo')
+    expect(defs[1].type).toBe('string')
+    expect(defs[1].fieldType).toBe('text')
+  })
+
+  it('defaults the country property to pais_de_destino', () => {
+    const defs = buildQuotePropertyDefinitions({})
+    expect(defs[0].name).toBe('pais_de_destino')
+  })
+
+  it('defaults the quote id property to id_presupuesto_odoo', () => {
+    const defs = buildQuotePropertyDefinitions({})
+    expect(defs[1].name).toBe('id_presupuesto_odoo')
+  })
+
+  it('seeds the country dropdown with a "Sin definir" placeholder', () => {
+    const defs = buildQuotePropertyDefinitions({})
+    expect(defs[0].options).toEqual([{ label: 'Sin definir', value: '' }])
+  })
+})

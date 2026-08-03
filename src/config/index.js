@@ -15,6 +15,9 @@ const OPTIONAL_KEYS = [
   'HS_PROPERTY_ODOO_CUSTOMER_ID',
   'HS_PROPERTY_ODOO_ORDER_ID',
   'HS_PROPERTY_ODOO_QUOTE_ID',
+  'HS_PROPERTY_QUOTE_COUNTRY',
+  'HS_PROPERTY_QUOTE_ODOO_QUOTE_ID',
+  'HS_QUOTE_ELIGIBLE_STATUSES',
   'ODOO_CLIENT_MODE',
   'ODOO_BASE_URL',
   'ODOO_DB',
@@ -68,6 +71,7 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
   }
   const stageIds = parseCsvList(env.HS_ALLOWED_STAGE_IDS)
   const pipelineIds = parseCsvList(env.HS_ALLOWED_PIPELINE_IDS)
+  const quoteEligibleStatuses = parseCsvList(env.HS_QUOTE_ELIGIBLE_STATUSES)
   return {
     mongodbUri: env.MONGODB_URI,
     hubspot: {
@@ -77,7 +81,10 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       signatureTimestampToleranceMs: Number(env.HUBSPOT_WEBHOOK_TS_TOLERANCE_MS || 300000),
       propertyOdooCustomerId: env.HS_PROPERTY_ODOO_CUSTOMER_ID || 'id_cliente_odoo',
       propertyOdooOrderId: env.HS_PROPERTY_ODOO_ORDER_ID || 'id_orden_odoo',
-      propertyOdooQuoteId: env.HS_PROPERTY_ODOO_QUOTE_ID || 'id_presupuesto_odoo'
+      propertyOdooQuoteId: env.HS_PROPERTY_ODOO_QUOTE_ID || 'id_presupuesto_odoo',
+      propertyQuoteCountry: env.HS_PROPERTY_QUOTE_COUNTRY || 'pais_de_destino',
+      propertyQuoteOdooQuoteId: env.HS_PROPERTY_QUOTE_ODOO_QUOTE_ID || env.HS_PROPERTY_ODOO_QUOTE_ID || 'id_presupuesto_odoo',
+      quoteEligibleStatuses: quoteEligibleStatuses.length > 0 ? quoteEligibleStatuses : ['APPROVAL_NOT_NEEDED', 'APPROVED']
     },
     odoo: {
       mode: (env.ODOO_CLIENT_MODE || 'stub').toLowerCase(),

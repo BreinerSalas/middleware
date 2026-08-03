@@ -7,8 +7,9 @@ const { createApp } = require('./app')
 const { connectMongo, disconnectMongo } = require('./adapters/outbound/mongo/connection')
 const { createDealSyncModule } = require('./composition/dealSyncModule')
 const { createHubspotApiClient } = require('./adapters/outbound/hubspot/hubspotApiClient')
-const { provisionDealProperties } = require('./composition/provisionDealProperties')
+const { provisionProperties } = require('./composition/provisionProperties')
 const { buildDealPropertyDefinitions } = require('./composition/dealPropertyDefinitions')
+const { buildQuotePropertyDefinitions } = require('./composition/quotePropertyDefinitions')
 
 async function start({ config = null } = {}) {
   const cfg = config || load()
@@ -21,17 +22,18 @@ async function start({ config = null } = {}) {
     accessToken: cfg.hubspot.accessToken
   })
   const dealPropertiesToProvision = buildDealPropertyDefinitions(cfg.hubspot)
+  const quotePropertiesToProvision = buildQuotePropertyDefinitions(cfg.hubspot)
   try {
-    const summary = await provisionDealProperties({
-      api: hubspotApi,
-      properties: dealPropertiesToProvision,
-      logger
-    })
+    const [dealSummary, quoteSummary] = await Promise.all([
+      provisionProperties({ api: hubspotApi, objectType: 'deals', properties: dealPropertiesToProvision, logger }),
+      provisionProperties({ api: hubspotApi, objectType: 'quotes', properties: quotePropertiesToProvision, logger })
+    ])
+    const combined = [...dealSummary, ...quoteSummary]
     logger.info('hubspot.provision.summary', {
-      total: summary.length,
-      created: summary.filter((s) => s.status === 'created').length,
-      existing: summary.filter((s) => s.status === 'existing').length,
-      failed: summary.filter((s) => s.status === 'failed').length
+      total: combined.length,
+      created: combined.filter((s) => s.status === 'created').length,
+      existing: combined.filter((s) => s.status === 'existing').length,
+      failed: combined.filter((s) => s.status === 'failed').length
     })
   } catch (err) {
     logger.warn('hubspot.provision.bootstrap.failed', { error: err.message })

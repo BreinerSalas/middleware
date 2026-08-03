@@ -29,6 +29,22 @@ function createMustHaveOdooCustomerId({ defaultCustomerId = '' } = {}) {
   }
 }
 
+function createMustHaveQuoteCountry({ countryProperty = 'pais_de_destino' } = {}) {
+  const prop = countryProperty || 'pais_de_destino'
+  return function mustHaveQuoteCountry({ record } = {}) {
+    // No-op on the legacy deal path (no quote): the partner-country fallback in
+    // OdooTargetGateway.resolveCountryExpense handles it.
+    if (!record || !record.quoteId) return
+    const quoteProps = (record.quote && record.quote.properties) || {}
+    const country = quoteProps[prop]
+    if (country == null || String(country).trim() === '') {
+      throw new SkipSyncError(`Quote has no ${prop} (country code)`, {
+        detail: { sourceId: record.id, quoteId: record.quoteId, missingProperty: prop }
+      })
+    }
+  }
+}
+
 function mustBeClosedWon({ record } = {}) {
   const props = (record && record.properties) || {}
   const stage = props.dealstage
@@ -79,5 +95,6 @@ module.exports = {
   mustBeClosedWon,
   createMustHaveOdooCustomerId,
   createMustHaveDealStage,
-  createMustBeInPipeline
+  createMustBeInPipeline,
+  createMustHaveQuoteCountry
 }
