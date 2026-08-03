@@ -35,7 +35,6 @@ const config = {
     propertyOdooCustomerId: 'id_cliente_odoo',
     propertyOdooOrderId: 'id_orden_odoo'
   },
-  webhook: { sharedSecret: '', headerName: 'x-smartflow-secret' },
   odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
   deals: {
     allowedStageIds: ['1409249445'],

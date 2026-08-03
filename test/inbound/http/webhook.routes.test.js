@@ -16,7 +16,6 @@ function baseConfig(overrides = {}) {
       propertyOdooCustomerId: 'a',
       propertyOdooOrderId: 'b'
     },
-    webhook: { sharedSecret: '', headerName: 'x-smartflow-secret' },
     odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
     deals: {
       allowedStageIds: ['1409249445'],

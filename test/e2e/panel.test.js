@@ -36,7 +36,6 @@ function buildConfig() {
   return {
     mongodbUri: 'mongodb://x',
     hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com', propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' },
-    webhook: { sharedSecret: 'whsecret', headerName: 'x-smartflow-secret' },
     odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
     server: { port: 0, nodeEnv: 'test' },
     logging: { level: 'error' },

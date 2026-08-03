@@ -8,7 +8,6 @@ function baseConfig() {
   return {
     mongodbUri: 'mongodb://x',
     hubspot: { accessToken: 't', apiBase: 'x', propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' },
-    webhook: { sharedSecret: 's', headerName: 'x-smartflow-secret' },
     odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
     server: { port: 0, nodeEnv: 'test' },
     logging: { level: 'error' },
