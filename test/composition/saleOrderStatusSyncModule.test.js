@@ -84,7 +84,7 @@ describe('saleOrderStatusSyncModule.runIncremental (Fase 6 — docs/plan-cambios
     expect(cursorRepo.set).toHaveBeenCalledWith('sale-order-status-sync', '2026-08-06 09:04:00')
   })
 
-  it('does NOT advance the cursor when any item failed', async () => {
+  it('does NOT advance the cursor when any item failed transiently', async () => {
     const odooSource = makeSource({ pages: [[so(1, 'sale', 'invoiced', '2026-08-06 09:00:00')]] })
     const mappingRepository = makeMappingRepository({ bySourceRef: { 1: { sourceId: 'D-1' } } })
     const hubspotGateway = { writeBack: vi.fn(async () => { throw new Error('boom') }) }
@@ -94,6 +94,21 @@ describe('saleOrderStatusSyncModule.runIncremental (Fase 6 — docs/plan-cambios
     expect(out.failed).toBe(1)
     expect(out.cursorAdvanced).toBe(false)
     expect(cursorRepo.set).not.toHaveBeenCalled()
+  })
+
+  it('does NOT count a permanent failure (e.g. deleted HubSpot record) toward failed, and still advances the cursor', async () => {
+    const odooSource = makeSource({ pages: [[so(1, 'sale', 'invoiced', '2026-08-06 09:00:00')]] })
+    const mappingRepository = makeMappingRepository({ bySourceRef: { 1: { sourceId: 'D-1' } } })
+    const notFound = new Error('resource not found')
+    notFound.httpStatus = 404
+    const hubspotGateway = { writeBack: vi.fn(async () => { throw notFound }) }
+    const cursorRepo = makeCursorRepo()
+    const m = createSaleOrderStatusSyncModule({ odooSource, mappingRepository, hubspotGateway, cursorRepo, logger: makeLogger() })
+    const out = await m.runIncremental({ overlapMs: 60_000 })
+    expect(out.failed).toBe(0)
+    expect(out.permanentlyFailed).toBe(1)
+    expect(out.cursorAdvanced).toBe(true)
+    expect(cursorRepo.set).toHaveBeenCalledWith('sale-order-status-sync', '2026-08-06 08:59:00')
   })
 
   it('calls revertDealStage when the sale.order was cancelled (Fase 6)', async () => {

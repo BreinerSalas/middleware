@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isRetryableError, calculateNextRetry, shouldDeadLetter } from '../../src/core/domain/RetryPolicy.js'
+import { isRetryableError, isPermanentHttpError, calculateNextRetry, shouldDeadLetter } from '../../src/core/domain/RetryPolicy.js'
 import { TransientSyncError } from '../../src/core/domain/errors.js'
 
 describe('RetryPolicy', () => {
@@ -42,6 +42,40 @@ describe('RetryPolicy', () => {
     it('reads status from response.status', () => {
       expect(isRetryableError({ response: { status: 503 } })).toBe(true)
       expect(isRetryableError({ response: { status: 404 } })).toBe(false)
+    })
+  })
+
+  describe('isPermanentHttpError (Fase 6 — no bloquear el cursor con fallos que nunca se van a resolver)', () => {
+    it('returns false for null/undefined', () => {
+      expect(isPermanentHttpError(null)).toBe(false)
+      expect(isPermanentHttpError(undefined)).toBe(false)
+    })
+
+    it('returns true for non-retryable 4xx statuses (404, 400, etc.)', () => {
+      for (const s of [400, 401, 403, 404, 422]) {
+        expect(isPermanentHttpError({ httpStatus: s })).toBe(true)
+      }
+    })
+
+    it('returns false for retryable statuses, even though they are 4xx (408, 409, 425, 429)', () => {
+      for (const s of [408, 409, 425, 429]) {
+        expect(isPermanentHttpError({ httpStatus: s })).toBe(false)
+      }
+    })
+
+    it('returns false for 5xx server errors', () => {
+      for (const s of [500, 502, 503, 504]) {
+        expect(isPermanentHttpError({ httpStatus: s })).toBe(false)
+      }
+    })
+
+    it('returns false for a generic error with no status (safe default: block/retry)', () => {
+      expect(isPermanentHttpError(new Error('boom'))).toBe(false)
+    })
+
+    it('honors an explicit transient flag over the status', () => {
+      expect(isPermanentHttpError({ httpStatus: 404, transient: true })).toBe(false)
+      expect(isPermanentHttpError({ httpStatus: 500, transient: false })).toBe(true)
     })
   })
 
