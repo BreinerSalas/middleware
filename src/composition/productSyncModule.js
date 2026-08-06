@@ -1,6 +1,11 @@
 'use strict'
 
 const async = require('async')
+const { parseOdooDateUtc, formatOdooDateUtc } = require('../core/shared/odooDate')
+
+const DEFAULT_OVERLAP_MS = 60 * 1000
+const EPOCH_WATERMARK = '1970-01-01 00:00:00'
+const DEFAULT_CURSOR_KEY = 'product-sync'
 
 function createProductSyncModule({
   config = {},
@@ -10,7 +15,8 @@ function createProductSyncModule({
   concurrency = 10,
   chunkSize = 100,
   mappingRepo = null,
-  runRepo = null
+  runRepo = null,
+  cursorRepo = null
 } = {}) {
   if (!odooSource) throw new Error('createProductSyncModule requires odooSource')
   if (!hubspotGateway) throw new Error('createProductSyncModule requires hubspotGateway')
@@ -116,6 +122,44 @@ function createProductSyncModule({
     return results
   }
 
+  async function syncSingleItems(products, { dryRun }) {
+    return async.mapLimit(products, Math.max(1, Math.min(3, singleConcurrency)), async (p) => {
+      try {
+        const r = await syncOneItem(p, { dryRun })
+        const out = { sourceId: p.id, sku: p.default_code, ...r }
+        if (r && r.id && !r.skipped && !r.failed && !dryRun) {
+          out.action = r.created === true ? 'created' : 'updated'
+          out.hubspotId = r.id
+        }
+        return out
+      } catch (err) {
+        if (logger && typeof logger.error === 'function') {
+          logger.error('product-sync.item.failed', { sourceId: p.id, sku: p.default_code, error: err.message })
+        }
+        return { sourceId: p.id, sku: p.default_code, failed: true, error: err.message }
+      }
+    })
+  }
+
+  async function persistMappings(results) {
+    if (!mappingRepo) return
+    const toPersist = results
+      .filter((r) => r.hubspotId && r.sourceId && !r.failed && !r.dryRun && !r.skipped)
+      .map((r) => ({
+        odooId: r.sourceId,
+        hsSku: r.sku == null ? null : String(r.sku),
+        hubspotId: r.hubspotId,
+        action: r.action || (r.created ? 'created' : 'updated')
+      }))
+      .filter((m) => m.hsSku && m.hsSku !== 'null' && m.hsSku !== 'false')
+    if (toPersist.length === 0) return
+    try {
+      await mappingRepo.bulkUpsertMany({ items: toPersist })
+    } catch (err) {
+      log('error', 'product-sync.mappingRepo.bulkUpsertMany failed', { error: err.message, count: toPersist.length })
+    }
+  }
+
   async function runOnce({ limit = null, dryRun = false, includeNoSku = false } = {}) {
     const total = await odooSource.count({ includeNoSku })
     log('info', 'product-sync.start', { total, limit, dryRun, includeNoSku })
@@ -146,22 +190,7 @@ function createProductSyncModule({
       batchResults = withSku.map((p) => ({ sourceId: p.id, sku: p.default_code, failed: true, error: err.message }))
     }
 
-    const singleResults = await async.mapLimit(withoutSku, Math.max(1, Math.min(3, singleConcurrency)), async (p) => {
-      try {
-        const r = await syncOneItem(p, { dryRun })
-        const out = { sourceId: p.id, sku: p.default_code, ...r }
-        if (r && r.id && !r.skipped && !r.failed && !dryRun) {
-          out.action = r.created === true ? 'created' : 'updated'
-          out.hubspotId = r.id
-        }
-        return out
-      } catch (err) {
-        if (logger && typeof logger.error === 'function') {
-          logger.error('product-sync.item.failed', { sourceId: p.id, sku: p.default_code, error: err.message })
-        }
-        return { sourceId: p.id, sku: p.default_code, failed: true, error: err.message }
-      }
-    })
+    const singleResults = await syncSingleItems(withoutSku, { dryRun })
 
     const results = [...batchResults, ...singleResults]
 
@@ -171,24 +200,7 @@ function createProductSyncModule({
     const failed = results.filter((r) => r.failed).length
     const skipped = results.filter((r) => r.skipped).length
 
-    if (mappingRepo && !dryRun && !batchFailed) {
-      const toPersist = results
-        .filter((r) => r.hubspotId && r.sourceId && !r.failed && !r.dryRun && !r.skipped)
-        .map((r) => ({
-          odooId: r.sourceId,
-          hsSku: r.sku == null ? null : String(r.sku),
-          hubspotId: r.hubspotId,
-          action: r.action || (r.created ? 'created' : 'updated')
-        }))
-        .filter((m) => m.hsSku && m.hsSku !== 'null' && m.hsSku !== 'false')
-      if (toPersist.length > 0) {
-        try {
-          await mappingRepo.bulkUpsertMany({ items: toPersist })
-        } catch (err) {
-          log('error', 'product-sync.mappingRepo.bulkUpsertMany failed', { error: err.message, count: toPersist.length })
-        }
-      }
-    }
+    if (!dryRun && !batchFailed) await persistMappings(results)
 
     log('info', 'product-sync.done', {
       total, count: results.length, succeeded: succeeded.length, created, updated, failed, skipped, dryRun
@@ -214,7 +226,86 @@ function createProductSyncModule({
     return results
   }
 
-  return { runOnce, syncOneItem }
+  async function runIncremental({ includeNoSku = false, overlapMs = DEFAULT_OVERLAP_MS, cursorKey = DEFAULT_CURSOR_KEY } = {}) {
+    if (!cursorRepo) throw new Error('createProductSyncModule requires cursorRepo for runIncremental')
+    const watermark = (await cursorRepo.get(cursorKey)) || EPOCH_WATERMARK
+    log('info', 'product-sync.incremental.start', { cursorKey, watermark, includeNoSku })
+
+    let run = null
+    if (runRepo) {
+      try {
+        run = await runRepo.start({ total: 0, includeNoSku, dryRun: false })
+      } catch (err) {
+        log('error', 'product-sync.runRepo.start failed', { error: err.message })
+      }
+    }
+
+    const results = []
+    let archived = 0
+    let maxSeenMs = parseOdooDateUtc(watermark)
+    let batchFailed = false
+
+    for await (const page of odooSource.listChangedSince({ writeDateGte: watermark, includeNoSku })) {
+      const activeProducts = []
+      for (const product of page) {
+        if (product && product.active === false) {
+          archived += 1
+          continue
+        }
+        activeProducts.push(product)
+        const ms = parseOdooDateUtc(product && product.write_date)
+        if (ms != null && (maxSeenMs == null || ms > maxSeenMs)) maxSeenMs = ms
+      }
+
+      const { withSku, withoutSku } = partition(activeProducts)
+
+      let pageBatchResults = []
+      try {
+        pageBatchResults = await runBatchForOdooItems(withSku, { dryRun: false })
+      } catch (err) {
+        batchFailed = true
+        pageBatchResults = withSku.map((p) => ({ sourceId: p.id, sku: p.default_code, failed: true, error: err.message }))
+      }
+      const pageSingleResults = await syncSingleItems(withoutSku, { dryRun: false })
+      results.push(...pageBatchResults, ...pageSingleResults)
+    }
+
+    const created = results.filter((r) => r.created === true).length
+    const updated = results.filter((r) => r.created === false && !r.failed && !r.skipped).length
+    const failed = results.filter((r) => r.failed).length
+    const skipped = results.filter((r) => r.skipped).length
+
+    if (!batchFailed) await persistMappings(results)
+
+    let cursorAdvanced = false
+    if (failed === 0 && !batchFailed && maxSeenMs != null) {
+      await cursorRepo.set(cursorKey, formatOdooDateUtc(maxSeenMs - overlapMs))
+      cursorAdvanced = true
+    }
+
+    log('info', 'product-sync.incremental.done', {
+      cursorKey, count: results.length, created, updated, failed, skipped, archived, cursorAdvanced
+    })
+
+    if (runRepo && run) {
+      try {
+        await runRepo.complete({
+          runId: run._id || run.id,
+          created,
+          updated,
+          skipped,
+          failed,
+          status: (failed > 0 || batchFailed) ? 'failed' : 'completed'
+        })
+      } catch (err) {
+        log('error', 'product-sync.runRepo.complete failed', { error: err.message })
+      }
+    }
+
+    return { results, created, updated, failed, skipped, archived, cursorAdvanced }
+  }
+
+  return { runOnce, runIncremental, syncOneItem }
 }
 
 module.exports = { createProductSyncModule }
