@@ -167,6 +167,7 @@ function createDealSyncModule({
     concurrency: config.worker.concurrency,
     pollIntervalMs: config.worker.pollIntervalMs,
     recoverOrphansOnStart: true,
+    kind: [JOB_KIND.DEAL, JOB_KIND.QUOTE],
     logger,
     clock
   })

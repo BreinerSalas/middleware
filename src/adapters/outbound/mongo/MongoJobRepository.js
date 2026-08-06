@@ -56,17 +56,19 @@ class MongoJobRepository {
     return toDomain(doc)
   }
 
-  async findClaimable({ limit = 3, now = new Date() } = {}) {
+  async findClaimable({ limit = 3, now = new Date(), kind = null } = {}) {
     const claimed = []
+    const match = {
+      status: { $in: [JOB_STATUS.PENDING, JOB_STATUS.RETRY_PENDING] },
+      $or: [
+        { nextRetryAt: null },
+        { nextRetryAt: { $lte: now } }
+      ]
+    }
+    if (kind) match.kind = Array.isArray(kind) ? { $in: kind } : kind
     for (let i = 0; i < limit; i += 1) {
       const doc = await this.model.findOneAndUpdate(
-        {
-          status: { $in: [JOB_STATUS.PENDING, JOB_STATUS.RETRY_PENDING] },
-          $or: [
-            { nextRetryAt: null },
-            { nextRetryAt: { $lte: now } }
-          ]
-        },
+        match,
         {
           $set: { status: JOB_STATUS.PROCESSING, updatedAt: now },
           $inc: { attempts: 1 }
@@ -124,10 +126,12 @@ class MongoJobRepository {
     return toDomain(doc)
   }
 
-  async recoverOrphans(now = new Date(), watchdogMs = 5 * 60 * 1000) {
+  async recoverOrphans(now = new Date(), watchdogMs = 5 * 60 * 1000, kind = null) {
     const cutoff = new Date(now.getTime() - watchdogMs)
+    const match = { status: JOB_STATUS.PROCESSING, updatedAt: { $lt: cutoff } }
+    if (kind) match.kind = Array.isArray(kind) ? { $in: kind } : kind
     const result = await this.model.updateMany(
-      { status: JOB_STATUS.PROCESSING, updatedAt: { $lt: cutoff } },
+      match,
       { $set: { status: JOB_STATUS.PENDING, updatedAt: now } }
     )
     return result.modifiedCount || 0

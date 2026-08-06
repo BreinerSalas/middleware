@@ -10,6 +10,8 @@ class JobPoller {
     pollIntervalMs = 5000,
     mutex = runSequentially,
     recoverOrphansOnStart = true,
+    kind = null,
+    orphanWatchdogMs = null,
     logger = null,
     clock = () => Date.now(),
     setIntervalFn = setInterval,
@@ -23,6 +25,8 @@ class JobPoller {
     this.pollIntervalMs = Math.max(100, Number(pollIntervalMs) || 5000)
     this.mutex = mutex
     this.recoverOrphansOnStart = recoverOrphansOnStart
+    this.kind = kind
+    this.orphanWatchdogMs = orphanWatchdogMs
     this.logger = logger
     this.clock = clock
     this.setIntervalFn = setIntervalFn
@@ -37,7 +41,11 @@ class JobPoller {
     this._running = true
     if (this.recoverOrphansOnStart) {
       try {
-        const recovered = await this.jobRepository.recoverOrphans(new Date(this.clock()))
+        const recovered = await this.jobRepository.recoverOrphans(
+          new Date(this.clock()),
+          this.orphanWatchdogMs == null ? undefined : this.orphanWatchdogMs,
+          this.kind
+        )
         if (this.logger) this.logger.info('poller.recoverOrphans', { recovered })
       } catch (err) {
         if (this.logger) this.logger.warn('poller.recoverOrphans failed', { error: err.message })
@@ -68,7 +76,7 @@ class JobPoller {
     if (free === 0) return
     let claimed = []
     try {
-      claimed = await this.jobRepository.findClaimable({ limit: free, now: new Date(this.clock()) })
+      claimed = await this.jobRepository.findClaimable({ limit: free, now: new Date(this.clock()), kind: this.kind })
     } catch (err) {
       if (this.logger) this.logger.warn('poller.findClaimable failed', { error: err.message })
       return
