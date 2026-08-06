@@ -153,5 +153,20 @@ describe('MongoJobRepository', () => {
       expect((await repo.findById(productJob._id)).status).toBe(JOB_STATUS.PENDING)
       expect((await repo.findById(dealJob._id)).status).toBe(JOB_STATUS.PROCESSING)
     })
+
+    it('existsActive returns false when there is no PENDING/RETRY_PENDING/PROCESSING job of that kind', async () => {
+      await repo.create({ sourceId: 'D-1', kind: 'deal', status: JOB_STATUS.COMPLETED, attempts: 1, maxAttempts: 8, payload: null, dedupeKey: null })
+      expect(await repo.existsActive({ kind: 'product_sync' })).toBe(false)
+    })
+
+    it('existsActive returns true when a PENDING job of that kind exists', async () => {
+      await repo.create({ sourceId: 'P-1', kind: 'product_sync', status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8, payload: null, dedupeKey: null })
+      expect(await repo.existsActive({ kind: 'product_sync' })).toBe(true)
+    })
+
+    it('existsActive returns true when a RETRY_PENDING job of that kind exists', async () => {
+      await repo.create({ sourceId: 'P-1', kind: 'product_sync', status: JOB_STATUS.RETRY_PENDING, attempts: 1, maxAttempts: 8, nextRetryAt: new Date(Date.now() + 60_000), payload: null, dedupeKey: null })
+      expect(await repo.existsActive({ kind: 'product_sync' })).toBe(true)
+    })
   })
 })

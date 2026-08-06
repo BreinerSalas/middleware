@@ -248,4 +248,33 @@ describe('config', () => {
       expect(cfg.deals.allowedStageIds).toEqual(['1409249445', '999999'])
     })
   })
+
+  describe('productSync (Fase 3 — docs/plan-cambios-2026-08-05.md continuous job loop)', () => {
+    const baseEnv = {
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret'
+    }
+
+    it('defaults to disabled with a 60s tick interval and 30min orphan watchdog', () => {
+      const cfg = load({ env: baseEnv })
+      expect(cfg.productSync.jobEnabled).toBe(false)
+      expect(cfg.productSync.tickIntervalMs).toBe(60000)
+      expect(cfg.productSync.orphanWatchdogMs).toBe(30 * 60 * 1000)
+      expect(cfg.productSync.includeNoSku).toBe(false)
+    })
+
+    it('parses PRODUCT_SYNC_JOB_ENABLED=true to enable the continuous job loop', () => {
+      const cfg = load({ env: { ...baseEnv, PRODUCT_SYNC_JOB_ENABLED: 'true' } })
+      expect(cfg.productSync.jobEnabled).toBe(true)
+    })
+
+    it('parses PRODUCT_SYNC_TICK_INTERVAL_MS and PRODUCT_SYNC_ORPHAN_WATCHDOG_MS overrides', () => {
+      const cfg = load({
+        env: { ...baseEnv, PRODUCT_SYNC_TICK_INTERVAL_MS: '15000', PRODUCT_SYNC_ORPHAN_WATCHDOG_MS: '900000' }
+      })
+      expect(cfg.productSync.tickIntervalMs).toBe(15000)
+      expect(cfg.productSync.orphanWatchdogMs).toBe(900000)
+    })
+  })
 })
