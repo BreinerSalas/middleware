@@ -748,6 +748,30 @@ describe('listOperationCosts memoization + TTL', () => {
     })
   })
 
+  describe('searchSalesOrdersChangedSince (Fase 6 — docs/plan-cambios-2026-08-05.md bidireccionalidad)', () => {
+    it('stub mode returns an empty array', async () => {
+      const api = createOdooApiClient({ mode: 'stub' })
+      expect(await api.searchSalesOrdersChangedSince({ writeDateGte: '2026-08-01 00:00:00' })).toEqual([])
+    })
+
+    it('http mode searches sale.order by write_date and returns the rows', async () => {
+      const post = vi.fn()
+        .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+        .mockResolvedValueOnce({ data: { result: [{ id: 17, name: 'S00017', state: 'cancel', invoice_status: 'no', write_date: '2026-08-06 10:00:00' }] }, status: 200 })
+      const api = createOdooApiClient({
+        mode: 'http', baseUrl: 'https://odoo.example.com',
+        db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+      })
+      const rows = await api.searchSalesOrdersChangedSince({ writeDateGte: '2026-08-01 00:00:00', offset: 20, limit: 50 })
+      expect(rows).toEqual([{ id: 17, name: 'S00017', state: 'cancel', invoice_status: 'no', write_date: '2026-08-06 10:00:00' }])
+      expect(post.mock.calls[1][1].params.args).toEqual([
+        'db', 2, 'k', 'sale.order', 'search_read',
+        [[['write_date', '>', '2026-08-01 00:00:00']]],
+        { fields: ['id', 'name', 'state', 'invoice_status', 'write_date'], offset: 20, limit: 50 }
+      ])
+    })
+  })
+
   describe('searchProductsChangedSince (Fase 3 — docs/plan-cambios-2026-08-05.md incremental sync)', () => {
     it('stub mode returns an empty array', async () => {
       const api = createOdooApiClient({ mode: 'stub' })
