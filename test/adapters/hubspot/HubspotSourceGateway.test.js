@@ -1,14 +1,15 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { HubspotSourceGateway } = require('../../../src/adapters/outbound/hubspot/HubspotSourceGateway.js')
+const { HubspotSourceGateway, resolvePreviousDealStage } = require('../../../src/adapters/outbound/hubspot/HubspotSourceGateway.js')
 
-function makeApiClient({ get = async () => ({ id: 'D-1', properties: {} }), patch = async () => ({}), getDealLineItems = async () => [] } = {}) {
+function makeApiClient({ get = async () => ({ id: 'D-1', properties: {} }), patch = async () => ({}), getDealLineItems = async () => [], getDealStageHistory = async () => [] } = {}) {
   return {
     getDeal: vi.fn(get),
     getDealAssociations: vi.fn(async () => ({ results: [{ toObjectId: 'C-1' }] })),
     getDealLineItems: vi.fn(getDealLineItems),
-    updateDeal: vi.fn(patch)
+    updateDeal: vi.fn(patch),
+    getDealStageHistory: vi.fn(getDealStageHistory)
   }
 }
 
@@ -125,5 +126,44 @@ describe('HubspotSourceGateway', () => {
     const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order' })
     await gw.writeBack('D-1', { estado_presupuesto_odoo: 'cancel', estado_facturacion_odoo: 'no' })
     expect(api.updateDeal).toHaveBeenCalledWith('D-1', { estado_presupuesto_odoo: 'cancel', estado_facturacion_odoo: 'no' })
+  })
+})
+
+describe('resolvePreviousDealStage (Fase 6 — retroceso de etapa por cancelación)', () => {
+  it('returns the first history value different from the current stage', () => {
+    const history = [{ value: 'closedwon' }, { value: 'negotiation' }, { value: 'presented' }]
+    expect(resolvePreviousDealStage(history, 'closedwon')).toBe('negotiation')
+  })
+
+  it('returns null when there is no distinct previous value', () => {
+    expect(resolvePreviousDealStage([{ value: 'closedwon' }], 'closedwon')).toBeNull()
+    expect(resolvePreviousDealStage([], 'closedwon')).toBeNull()
+  })
+})
+
+describe('HubspotSourceGateway.revertDealStage (Fase 6 — retroceso de etapa por cancelación)', () => {
+  it('resolves dealId from sourceId, finds the previous distinct stage, and updates dealstage', async () => {
+    const api = makeApiClient({
+      getDealStageHistory: async () => [{ value: 'closedwon' }, { value: 'negotiation' }]
+    })
+    const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order' })
+    await gw.revertDealStage('D-1:qQ-1')
+    expect(api.getDealStageHistory).toHaveBeenCalledWith('D-1')
+    expect(api.updateDeal).toHaveBeenCalledWith('D-1', { dealstage: 'negotiation' })
+  })
+
+  it('does nothing (soft-fail) when there is no distinct previous stage', async () => {
+    const api = makeApiClient({ getDealStageHistory: async () => [{ value: 'closedwon' }] })
+    const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order' })
+    await gw.revertDealStage('D-1')
+    expect(api.updateDeal).not.toHaveBeenCalled()
+  })
+
+  it('is guarded by echoGuard so a repeated call for the same target stage does not write again', async () => {
+    const api = makeApiClient({ getDealStageHistory: async () => [{ value: 'closedwon' }, { value: 'negotiation' }] })
+    const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order' })
+    await gw.revertDealStage('D-1')
+    await gw.revertDealStage('D-1')
+    expect(api.updateDeal).toHaveBeenCalledTimes(1)
   })
 })

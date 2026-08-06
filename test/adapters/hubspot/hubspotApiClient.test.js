@@ -16,6 +16,28 @@ describe('hubspotApiClient', () => {
     expect(http.get).toHaveBeenCalledWith('/crm/v3/objects/deals/D-1', { params: { properties: 'dealname' } })
   })
 
+  it('getDealStageHistory issues GET with propertiesWithHistory=dealstage and returns the history array (Fase 6)', async () => {
+    const http = makeHttpMock({
+      get: vi.fn(async () => ({
+        data: {
+          id: 'D-1',
+          properties: { dealstage: 'closedwon' },
+          propertiesWithHistory: { dealstage: [{ value: 'closedwon', timestamp: '2026-08-05T00:00:00Z' }, { value: 'negotiation', timestamp: '2026-08-01T00:00:00Z' }] }
+        }
+      }))
+    })
+    const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
+    const history = await api.getDealStageHistory('D-1')
+    expect(history).toEqual([{ value: 'closedwon', timestamp: '2026-08-05T00:00:00Z' }, { value: 'negotiation', timestamp: '2026-08-01T00:00:00Z' }])
+    expect(http.get).toHaveBeenCalledWith('/crm/v3/objects/deals/D-1', { params: { propertiesWithHistory: 'dealstage' } })
+  })
+
+  it('getDealStageHistory returns an empty array when HubSpot reports no history', async () => {
+    const http = makeHttpMock({ get: vi.fn(async () => ({ data: { id: 'D-1', properties: {} } })) })
+    const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
+    expect(await api.getDealStageHistory('D-1')).toEqual([])
+  })
+
   it('updateDeal issues PATCH with body', async () => {
     const http = makeHttpMock({ patch: vi.fn(async () => ({ data: { id: 'D-1', properties: { id_orden_odoo: 'PO-1' } } })) })
     const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
