@@ -1,0 +1,220 @@
+{
+  "startedAt": "2026-08-06T03:46:31.918Z",
+  "finishedAt": "2026-08-06T03:46:39.409Z",
+  "target": {
+    "odooBase": "https://visual-branding-stag.odoo.com",
+    "odooDb": "visualbranding-stag-35631058"
+  },
+  "compuerta": {
+    "requiredProbeIds": [
+      "B1",
+      "B2"
+    ]
+  },
+  "summary": {
+    "total": 5,
+    "pass": 2,
+    "warn": 1,
+    "fail": 2
+  },
+  "results": [
+    {
+      "id": "B1",
+      "status": "fail",
+      "summary": "probe crashed: You are not allowed to access 'Module' (ir.module.module) records.\n\nThis operation is allowed for the following groups:\n\t- Administration/Settings\n\nContact your administrator to request access if necessary.",
+      "durationMs": 6767,
+      "error": {
+        "message": "You are not allowed to access 'Module' (ir.module.module) records.\n\nThis operation is allowed for the following groups:\n\t- Administration/Settings\n\nContact your administrator to request access if necessary.",
+        "code": 200
+      }
+    },
+    {
+      "id": "B2",
+      "status": "fail",
+      "summary": "ir.actions.server has no native 'webhook' action state (found: code, object_create, object_write, multi, email, followers, next_activity, sms) — outbound push would need custom server-action code (usually blocked by safe_eval) or a client-side polling fallback.",
+      "data": {
+        "availableStates": [
+          "code",
+          "object_create",
+          "object_write",
+          "multi",
+          "email",
+          "followers",
+          "next_activity",
+          "sms"
+        ]
+      },
+      "durationMs": 95
+    },
+    {
+      "id": "B3",
+      "status": "warn",
+      "summary": "base.automation lookup failed: You are not allowed to access 'Automated Action' (base.automation) records.\n\nThis operation is allowed for the following groups:\n\t- Administration/Settings\n\nContact your administrator to request access if necessary. — likely means the module isn't installed (consistent with B1).",
+      "data": {
+        "error": "You are not allowed to access 'Automated Action' (base.automation) records.\n\nThis operation is allowed for the following groups:\n\t- Administration/Settings\n\nContact your administrator to request access if necessary."
+      },
+      "durationMs": 221
+    },
+    {
+      "id": "B4",
+      "status": "pass",
+      "summary": "All 7 core payload fields present on sale.order. E-invoicing field candidates: sale.order=4, res.company=7.",
+      "data": {
+        "soFields": {
+          "name": {
+            "type": "char",
+            "string": "Order Reference"
+          },
+          "origin": {
+            "type": "char",
+            "string": "Source Document"
+          },
+          "state": {
+            "type": "selection",
+            "selection": [
+              [
+                "draft",
+                "Quotation"
+              ],
+              [
+                "sent",
+                "Quotation Sent"
+              ],
+              [
+                "sale",
+                "Sales Order"
+              ],
+              [
+                "done",
+                "Locked"
+              ],
+              [
+                "cancel",
+                "Cancelled"
+              ],
+              [
+                "revisions",
+                "Revisions"
+              ]
+            ],
+            "string": "Status"
+          },
+          "partner_id": {
+            "type": "many2one",
+            "string": "Customer"
+          },
+          "partner_invoice_id": {
+            "type": "many2one",
+            "string": "Invoice Address"
+          },
+          "invoice_status": {
+            "type": "selection",
+            "selection": [
+              [
+                "upselling",
+                "Upselling Opportunity"
+              ],
+              [
+                "invoiced",
+                "Fully Invoiced"
+              ],
+              [
+                "to invoice",
+                "To Invoice"
+              ],
+              [
+                "no",
+                "Nothing to Invoice"
+              ]
+            ],
+            "string": "Invoice Status"
+          },
+          "amount_total": {
+            "type": "monetary",
+            "string": "Total"
+          }
+        },
+        "einvoicingCandidates": [
+          "medium_id",
+          "fiscal_position_id",
+          "percentage_intermediary",
+          "intermediary_name"
+        ],
+        "einvoicingCompanyCandidates": [
+          "fiscalyear_last_day",
+          "fiscalyear_last_month",
+          "fiscalyear_lock_date",
+          "account_journal_payment_credit_account_id",
+          "account_fiscal_country_id",
+          "fiscal_position_ids",
+          "dte_certificate_file"
+        ]
+      },
+      "durationMs": 306
+    },
+    {
+      "id": "B5",
+      "status": "pass",
+      "summary": "mrp.production has all 5 fields needed for MO status readback. state values: draft, confirmed, progress, to_close, done, cancel",
+      "data": {
+        "fields": {
+          "name": {
+            "type": "char",
+            "string": "Reference"
+          },
+          "origin": {
+            "type": "char",
+            "string": "Source"
+          },
+          "product_qty": {
+            "type": "float",
+            "string": "Quantity To Produce"
+          },
+          "date_planned_start": {
+            "type": "datetime",
+            "string": "Scheduled Date"
+          },
+          "state": {
+            "type": "selection",
+            "selection": [
+              [
+                "draft",
+                "Draft"
+              ],
+              [
+                "confirmed",
+                "Confirmed"
+              ],
+              [
+                "progress",
+                "In Progress"
+              ],
+              [
+                "to_close",
+                "To Close"
+              ],
+              [
+                "done",
+                "Done"
+              ],
+              [
+                "cancel",
+                "Cancelled"
+              ]
+            ],
+            "string": "State"
+          }
+        },
+        "stateSelection": [
+          "draft",
+          "confirmed",
+          "progress",
+          "to_close",
+          "done",
+          "cancel"
+        ]
+      },
+      "durationMs": 101
+    }
+  ]
+}
