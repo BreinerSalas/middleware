@@ -452,4 +452,17 @@ describe('buildWriteBackPayload (quote flow)', () => {
   it('returns null id_presupuesto_odoo when mapping is null', () => {
     expect(buildWriteBackPayload(null)).toEqual({ id_presupuesto_odoo: null })
   })
+
+  it('includes numero_orden_fabricacion when mapping.metadata carries a manufacturingOrder name', () => {
+    const payload = buildWriteBackPayload({
+      sourceId: 'D-1', targetId: 'SO-1', targetRef: 'S06613',
+      metadata: { manufacturingOrder: { id: 88, name: 'WH/MO/00042' } }
+    })
+    expect(payload).toEqual({ id_presupuesto_odoo: 'S06613', numero_orden_fabricacion: 'WH/MO/00042' })
+  })
+
+  it('omits numero_orden_fabricacion when there is no manufacturingOrder metadata (unchanged shape)', () => {
+    const payload = buildWriteBackPayload({ sourceId: 'D-1', targetId: 'SO-1', targetRef: 'S06613' })
+    expect(payload).not.toHaveProperty('numero_orden_fabricacion')
+  })
 })

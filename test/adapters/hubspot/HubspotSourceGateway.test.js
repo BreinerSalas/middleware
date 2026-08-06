@@ -93,4 +93,20 @@ describe('HubspotSourceGateway', () => {
     await gw.writeBack('D-1', { id_presupuesto_odoo: 'S06613' })
     expect(api.updateDeal).toHaveBeenCalledWith('D-1', { id_presupuesto_odoo: 'S06613' })
   })
+
+  it('writeBack writes numero_orden_fabricacion to the configured MO property (Fase 4)', async () => {
+    const api = makeApiClient({ patch: vi.fn(async () => ({})) })
+    const gw = new HubspotSourceGateway({
+      apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order', propertyManufacturingOrder: 'numero_orden_fabricacion'
+    })
+    await gw.writeBack('D-1', { numero_orden_fabricacion: 'WH/MO/00042' })
+    expect(api.updateDeal).toHaveBeenCalledWith('D-1', { numero_orden_fabricacion: 'WH/MO/00042' })
+  })
+
+  it('defaults propertyManufacturingOrder to numero_orden_fabricacion when not provided', async () => {
+    const api = makeApiClient({ patch: vi.fn(async () => ({})) })
+    const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order' })
+    await gw.writeBack('D-1', { numero_orden_fabricacion: 'WH/MO/00042' })
+    expect(api.updateDeal).toHaveBeenCalledWith('D-1', { numero_orden_fabricacion: 'WH/MO/00042' })
+  })
 })

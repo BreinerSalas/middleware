@@ -4,18 +4,27 @@ const require = createRequire(import.meta.url)
 const { buildQuotePropertyDefinitions } = require('../../src/composition/quotePropertyDefinitions.js')
 
 describe('buildQuotePropertyDefinitions', () => {
-  it('returns two properties: country dropdown + odoo quote id', () => {
+  it('returns three properties: country dropdown + odoo quote id + MO number', () => {
     const defs = buildQuotePropertyDefinitions({
       propertyQuoteCountry: 'pais_de_destino',
-      propertyOdooQuoteId: 'id_presupuesto_odoo'
+      propertyOdooQuoteId: 'id_presupuesto_odoo',
+      propertyManufacturingOrder: 'numero_orden_fabricacion'
     })
-    expect(defs).toHaveLength(2)
+    expect(defs).toHaveLength(3)
     expect(defs[0].name).toBe('pais_de_destino')
     expect(defs[0].type).toBe('enumeration')
     expect(defs[0].fieldType).toBe('select')
     expect(defs[1].name).toBe('id_presupuesto_odoo')
     expect(defs[1].type).toBe('string')
     expect(defs[1].fieldType).toBe('text')
+    expect(defs[2].name).toBe('numero_orden_fabricacion')
+    expect(defs[2].type).toBe('string')
+    expect(defs[2].fieldType).toBe('text')
+  })
+
+  it('defaults the MO number property to numero_orden_fabricacion', () => {
+    const defs = buildQuotePropertyDefinitions({})
+    expect(defs[2].name).toBe('numero_orden_fabricacion')
   })
 
   it('defaults the country property to pais_de_destino', () => {

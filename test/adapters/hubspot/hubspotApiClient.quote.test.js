@@ -23,6 +23,10 @@ describe('hubspotApiClient.quote', () => {
       expect(QUOTE_PROPERTIES).toContain('pais_de_destino')
       expect(QUOTE_PROPERTIES).toContain('id_presupuesto_odoo')
     })
+
+    it('includes the MO number property (Fase 4 write-back)', () => {
+      expect(QUOTE_PROPERTIES).toContain('numero_orden_fabricacion')
+    })
   })
 
   describe('getQuote', () => {
