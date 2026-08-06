@@ -317,4 +317,32 @@ describe('config', () => {
       expect(cfg.productSync.orphanWatchdogMs).toBe(900000)
     })
   })
+
+  describe('saleOrderStatusSync (Fase 6 — docs/plan-cambios-2026-08-05.md bidireccionalidad)', () => {
+    const baseEnv = {
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret'
+    }
+
+    it('defaults to disabled with a 60s tick interval and 30min orphan watchdog', () => {
+      const cfg = load({ env: baseEnv })
+      expect(cfg.saleOrderStatusSync.jobEnabled).toBe(false)
+      expect(cfg.saleOrderStatusSync.tickIntervalMs).toBe(60000)
+      expect(cfg.saleOrderStatusSync.orphanWatchdogMs).toBe(30 * 60 * 1000)
+    })
+
+    it('parses SALE_ORDER_STATUS_SYNC_JOB_ENABLED=true to enable the continuous job loop', () => {
+      const cfg = load({ env: { ...baseEnv, SALE_ORDER_STATUS_SYNC_JOB_ENABLED: 'true' } })
+      expect(cfg.saleOrderStatusSync.jobEnabled).toBe(true)
+    })
+
+    it('parses SALE_ORDER_STATUS_SYNC_TICK_INTERVAL_MS and SALE_ORDER_STATUS_SYNC_ORPHAN_WATCHDOG_MS overrides', () => {
+      const cfg = load({
+        env: { ...baseEnv, SALE_ORDER_STATUS_SYNC_TICK_INTERVAL_MS: '15000', SALE_ORDER_STATUS_SYNC_ORPHAN_WATCHDOG_MS: '900000' }
+      })
+      expect(cfg.saleOrderStatusSync.tickIntervalMs).toBe(15000)
+      expect(cfg.saleOrderStatusSync.orphanWatchdogMs).toBe(900000)
+    })
+  })
 })
