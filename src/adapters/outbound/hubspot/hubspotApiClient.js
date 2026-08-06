@@ -99,6 +99,15 @@ function createHubspotApiClient({
     } catch (err) { throw normalizeHubspotError(err) }
   }
 
+  async function getDealStageHistory(dealId) {
+    try {
+      const data = await requestWithRateLimit('get', `/crm/v3/objects/deals/${dealId}`, {
+        params: { propertiesWithHistory: 'dealstage' }
+      })
+      return (data && data.propertiesWithHistory && data.propertiesWithHistory.dealstage) || []
+    } catch (err) { throw normalizeHubspotError(err) }
+  }
+
   async function getDealAssociations(dealId, toObjectType = ['contact', 'company']) {
     try {
       return await requestWithRateLimit('get', `/crm/v4/objects/deals/${dealId}/associations/${toObjectType.join(',')}`)
@@ -279,7 +288,7 @@ function createHubspotApiClient({
   }
 
   return {
-    getDeal, getDealAssociations, getDealLineItems, updateDeal,
+    getDeal, getDealStageHistory, getDealAssociations, getDealLineItems, updateDeal,
     getLineItemsFor, getQuote, getQuoteLineItems, getDealQuotes, updateQuote,
     searchProductByHsSku, createProduct, updateProduct,
     batchUpsertProducts,

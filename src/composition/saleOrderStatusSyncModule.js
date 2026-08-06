@@ -43,6 +43,9 @@ function createSaleOrderStatusSyncModule({
             estado_presupuesto_odoo: row.state,
             estado_facturacion_odoo: row.invoice_status
           })
+          if (row.state === 'cancel') {
+            await hubspotGateway.revertDealStage(mapping.sourceId)
+          }
           updated += 1
         } catch (err) {
           failed += 1

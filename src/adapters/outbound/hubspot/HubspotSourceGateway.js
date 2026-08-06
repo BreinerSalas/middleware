@@ -79,6 +79,12 @@ async function listEligibleQuotes({ dealId, sourceGateway }) {
   return result
 }
 
+function resolvePreviousDealStage(history, currentStage) {
+  if (!Array.isArray(history)) return null
+  const entry = history.find((h) => h && h.value != null && h.value !== currentStage)
+  return entry ? entry.value : null
+}
+
 function buildDealPropertiesToFetch(opts = {}) {
   const customer = opts.propertyOdooCustomerId || DEFAULT_DEAL_PROPERTY_NAMES.customer
   const order = opts.propertyOdooOrderId || DEFAULT_DEAL_PROPERTY_NAMES.order
@@ -219,10 +225,29 @@ class HubspotSourceGateway {
     }
     if (this.logger) this.logger.info('hubspot.writeBack', { sourceId, dealId, quoteId, properties })
   }
+
+  async revertDealStage(sourceId) {
+    const { dealId } = parseSourceId(sourceId)
+    const history = await this.apiClient.getDealStageHistory(dealId)
+    const currentStage = Array.isArray(history) && history.length > 0 ? history[0].value : null
+    const previousStage = resolvePreviousDealStage(history, currentStage)
+    if (!previousStage) {
+      if (this.logger) this.logger.warn('hubspot.revertDealStage.no_previous_stage', { sourceId, dealId })
+      return
+    }
+    const echoKey = `revert-stage:${dealId}:${previousStage}`
+    if (this.echoGuard.shouldSuppress(echoKey)) {
+      if (this.logger) this.logger.debug('hubspot.revertDealStage suppressed by echo guard', { sourceId, echoKey })
+      return
+    }
+    await this.apiClient.updateDeal(dealId, { dealstage: previousStage })
+    if (this.logger) this.logger.info('hubspot.revertDealStage', { sourceId, dealId, previousStage })
+  }
 }
 
 module.exports = {
   HubspotSourceGateway,
+  resolvePreviousDealStage,
   DEAL_PROPERTIES_TO_FETCH: DEFAULT_DEAL_PROPERTIES_TO_FETCH,
   buildDealPropertiesToFetch,
   buildQuotePropertiesToFetch,
