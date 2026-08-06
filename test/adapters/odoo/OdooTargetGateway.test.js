@@ -503,6 +503,59 @@ describe('OdooTargetGateway', () => {
   })
 })
 
+describe('OdooTargetGateway auto-confirm (Fase 4 — docs/plan-cambios-2026-08-05.md)', () => {
+  it('does not call confirmSalesOrder when autoConfirm is off (default)', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': 17 } })
+    api.confirmSalesOrder = vi.fn(async () => ({ confirmed: true }))
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload })
+    const result = await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    expect(api.confirmSalesOrder).not.toHaveBeenCalled()
+    expect(result.metadata.confirmation).toBeNull()
+  })
+
+  it('confirms a newly-created sale.order when autoConfirm is on and records the outcome', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': 17 }, soCreate: { id: 'SO-NEW', ref: 'S00001', state: 'draft', raw: {} } })
+    api.confirmSalesOrder = vi.fn(async () => ({ confirmed: true }))
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, autoConfirm: true })
+    const result = await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    expect(api.confirmSalesOrder).toHaveBeenCalledWith('SO-NEW')
+    expect(result.metadata.confirmation).toEqual({ status: 'confirmed', reason: null })
+  })
+
+  it('confirms an updated (existing) sale.order too', async () => {
+    const api = makeApi({
+      soSearch: [{ id: 17, name: 'S00017', state: 'draft', countryExpenseId: 78 }],
+      productMap: { 'SKU-1': 17 }
+    })
+    api.confirmSalesOrder = vi.fn(async () => ({ confirmed: true }))
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, autoConfirm: true })
+    const result = await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    expect(api.confirmSalesOrder).toHaveBeenCalledWith('17')
+    expect(result.metadata.confirmation).toEqual({ status: 'confirmed', reason: null })
+  })
+
+  it('records a rejection without throwing when Odoo refuses to confirm (e.g. stock/credit rule)', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': 17 } })
+    api.confirmSalesOrder = vi.fn(async () => { throw new Error('No hay stock suficiente') })
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, autoConfirm: true })
+    const result = await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    expect(result.metadata.confirmation).toEqual({ status: 'rejected', reason: 'No hay stock suficiente' })
+    expect(result.targetId).toBe('SO-NEW')
+  })
+})
+
 describe('OdooTargetGateway country_expense resolution', () => {
   it('resolves country_expense from partner country + operation.costs', async () => {
     const api = makeApi({ productMap: { 'SKU-1': 17 } })

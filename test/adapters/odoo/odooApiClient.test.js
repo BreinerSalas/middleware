@@ -682,6 +682,39 @@ describe('listOperationCosts memoization + TTL', () => {
     ])
   })
 
+  describe('confirmSalesOrder (Fase 4 — docs/plan-cambios-2026-08-05.md auto-confirm)', () => {
+    it('stub mode returns confirmed:true', async () => {
+      const api = createOdooApiClient({ mode: 'stub' })
+      expect(await api.confirmSalesOrder('17')).toEqual({ confirmed: true })
+    })
+
+    it('http mode calls action_confirm on the sale.order', async () => {
+      const post = vi.fn()
+        .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+        .mockResolvedValueOnce({ data: { result: true }, status: 200 })
+      const api = createOdooApiClient({
+        mode: 'http', baseUrl: 'https://odoo.example.com',
+        db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+      })
+      const r = await api.confirmSalesOrder('17')
+      expect(r).toEqual({ confirmed: true })
+      expect(post.mock.calls[1][1].params.args).toEqual([
+        'db', 2, 'k', 'sale.order', 'action_confirm', [[17]], {}
+      ])
+    })
+
+    it('http mode propagates a business rejection (e.g. UserError) as an error', async () => {
+      const post = vi.fn()
+        .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+        .mockResolvedValueOnce({ data: { error: { code: 200, data: { name: 'odoo.exceptions.UserError', message: 'No hay stock suficiente' } } }, status: 200 })
+      const api = createOdooApiClient({
+        mode: 'http', baseUrl: 'https://odoo.example.com',
+        db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+      })
+      await expect(api.confirmSalesOrder('17')).rejects.toThrow(/No hay stock suficiente/)
+    })
+  })
+
   describe('searchProductsChangedSince (Fase 3 — docs/plan-cambios-2026-08-05.md incremental sync)', () => {
     it('stub mode returns an empty array', async () => {
       const api = createOdooApiClient({ mode: 'stub' })
