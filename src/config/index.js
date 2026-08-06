@@ -35,7 +35,13 @@ const OPTIONAL_KEYS = [
   'MAX_RETRY_ATTEMPTS',
   'RETRY_MAX_DELAY_MS',
   'PANEL_TOKEN',
-  'PANEL_TOKEN_HEADER_NAME'
+  'PANEL_TOKEN_HEADER_NAME',
+  'MEDIA_URL_SECRET',
+  'MEDIA_PUBLIC_BASE_URL',
+  'PRODUCT_SYNC_JOB_ENABLED',
+  'PRODUCT_SYNC_TICK_INTERVAL_MS',
+  'PRODUCT_SYNC_ORPHAN_WATCHDOG_MS',
+  'PRODUCT_SYNC_INCLUDE_NO_SKU'
 ]
 
 const {
@@ -117,6 +123,16 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
     panel: {
       token: env.PANEL_TOKEN || '',
       headerName: (env.PANEL_TOKEN_HEADER_NAME || 'x-panel-token').toLowerCase()
+    },
+    media: {
+      urlSecret: env.MEDIA_URL_SECRET || '',
+      publicBaseUrl: (env.MEDIA_PUBLIC_BASE_URL || '').replace(/\/+$/, '')
+    },
+    productSync: {
+      jobEnabled: String(env.PRODUCT_SYNC_JOB_ENABLED || 'false').toLowerCase() === 'true',
+      tickIntervalMs: Number(env.PRODUCT_SYNC_TICK_INTERVAL_MS || 60000),
+      orphanWatchdogMs: Number(env.PRODUCT_SYNC_ORPHAN_WATCHDOG_MS || 30 * 60 * 1000),
+      includeNoSku: String(env.PRODUCT_SYNC_INCLUDE_NO_SKU || 'false').toLowerCase() === 'true'
     }
   }
 }

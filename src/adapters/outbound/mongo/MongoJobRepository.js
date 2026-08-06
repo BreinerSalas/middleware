@@ -126,6 +126,13 @@ class MongoJobRepository {
     return toDomain(doc)
   }
 
+  async existsActive({ kind = null } = {}) {
+    const match = { status: { $in: [JOB_STATUS.PENDING, JOB_STATUS.RETRY_PENDING, JOB_STATUS.PROCESSING] } }
+    if (kind) match.kind = Array.isArray(kind) ? { $in: kind } : kind
+    const doc = await this.model.findOne(match).lean()
+    return !!doc
+  }
+
   async recoverOrphans(now = new Date(), watchdogMs = 5 * 60 * 1000, kind = null) {
     const cutoff = new Date(now.getTime() - watchdogMs)
     const match = { status: JOB_STATUS.PROCESSING, updatedAt: { $lt: cutoff } }
