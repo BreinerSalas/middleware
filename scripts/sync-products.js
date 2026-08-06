@@ -12,6 +12,7 @@ const { createProductSyncModule } = require('../src/composition/productSyncModul
 const { MongoProductMappingRepository } = require('../src/adapters/outbound/mongo/MongoProductMappingRepository')
 const { MongoProductSyncRunRepository } = require('../src/adapters/outbound/mongo/MongoProductSyncRunRepository')
 const { connectMongo, disconnectMongo } = require('../src/adapters/outbound/mongo/connection')
+const { signProductImageToken } = require('../src/core/shared/mediaSignature')
 const { parseArgs, resolveIntervalMs, shouldRunOnce } = require('./sync-products.lib')
 
 async function buildClients(cfg, logger) {
@@ -27,7 +28,35 @@ async function buildClients(cfg, logger) {
     accessToken: cfg.hubspot.accessToken
   })
   const source = new OdooProductSource({ apiClient: odooApi, logger })
-  const gateway = new HubspotProductGateway({ apiClient: hubspotApi, logger })
+
+  // hs_images gets a signed proxy URL only for products Odoo actually has an image
+  // for (see docs/plan-cambios-2026-08-05.md § Fase 1). productIdsWithImage is
+  // refreshed once per tick (see refreshImageIds below) and read synchronously by
+  // imageUrlBuilder, since HubspotProductGateway.buildProperties cannot await Odoo.
+  const mediaEnabled = !!(cfg.media && cfg.media.urlSecret && cfg.media.publicBaseUrl)
+  const productIdsWithImage = new Set()
+  async function refreshImageIds() {
+    if (!mediaEnabled) return
+    try {
+      const ids = await odooApi.searchProductIdsWithImage()
+      productIdsWithImage.clear()
+      for (const id of ids) productIdsWithImage.add(Number(id))
+    } catch (err) {
+      if (logger && typeof logger.warn === 'function') {
+        logger.warn('product-sync.image-ids.refresh_failed', { error: err.message })
+      }
+    }
+  }
+  const imageUrlBuilder = mediaEnabled
+    ? (odooProduct) => {
+        const id = Number(odooProduct && odooProduct.id)
+        if (!productIdsWithImage.has(id)) return null
+        const token = signProductImageToken(id, cfg.media.urlSecret)
+        return `${cfg.media.publicBaseUrl}/media/products/${token}/image`
+      }
+    : null
+
+  const gateway = new HubspotProductGateway({ apiClient: hubspotApi, logger, imageUrlBuilder })
   const mappingRepo = new MongoProductMappingRepository({ logger })
   const runRepo = new MongoProductSyncRunRepository({ logger })
   return {
@@ -35,6 +64,7 @@ async function buildClients(cfg, logger) {
     gateway,
     mappingRepo,
     runRepo,
+    refreshImageIds,
     mod: createProductSyncModule({
       config: cfg,
       odooSource: source,
@@ -57,30 +87,37 @@ async function main() {
 
     if (args.help === true || args.h === true) {
       process.stdout.write([
-        'Usage: node scripts/sync-products.js [--interval=60000] [--limit=N] [--once] [--dry-run] [--include-no-sku]',
+        'Usage: node scripts/sync-products.js [--interval=60000] [--limit=N] [--sample=N] [--once] [--dry-run] [--include-no-sku]',
         '',
         'Flags:',
         '  --interval=MS       repeat runOnce every MS (default: $PRODUCT_SYNC_INTERVAL_MS or 60000)',
         '  --once              run once and exit',
         '  --limit=N           process only first N products from Odoo',
+        '  --sample=N          alias for --limit=N intended for a one-off demo/sample run',
         '  --dry-run           log planned changes, do not write to HubSpot',
         '  --include-no-sku    include products WITHOUT default_code (default: skip; 5848 with SKU vs ~11132 all)',
         '',
         'Env:',
         '  PRODUCT_SYNC_INTERVAL_MS   default interval when --interval omitted',
         '  SMARTFLOW_ENV_FILE         alternate .env path (e.g. .env.staging, .env.client)',
+        '  MEDIA_URL_SECRET / MEDIA_PUBLIC_BASE_URL   when both are set, hs_images is',
+        '                              populated with a signed proxy URL for products Odoo has an image for',
         ''
       ].join('\n'))
       return
     }
 
-  const { mod } = await buildClients(cfg, logger)
+  const { mod, refreshImageIds } = await buildClients(cfg, logger)
   const intervalMs = resolveIntervalMs(args, process.env)
-  const limit = typeof args.limit === 'number' ? args.limit : null
+  const sample = typeof args.sample === 'number' ? args.sample : null
+  const limit = sample != null ? sample : (typeof args.limit === 'number' ? args.limit : null)
   const dryRun = args['dry-run'] === true
   const includeNoSku = args['include-no-sku'] === true || args.includeNoSku === true
 
-  const tick = () => mod.runOnce({ limit, dryRun, includeNoSku })
+  const tick = async () => {
+    await refreshImageIds()
+    return mod.runOnce({ limit, dryRun, includeNoSku })
+  }
 
   if (shouldRunOnce(args) || intervalMs === 0) {
     await tick()

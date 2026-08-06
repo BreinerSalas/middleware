@@ -1,10 +1,11 @@
 'use strict'
 
 class HubspotProductGateway {
-  constructor({ apiClient, logger = null } = {}) {
+  constructor({ apiClient, logger = null, imageUrlBuilder = null } = {}) {
     if (!apiClient) throw new Error('HubspotProductGateway requires apiClient')
     this.apiClient = apiClient
     this.logger = logger
+    this.imageUrlBuilder = imageUrlBuilder
   }
 
   hasValidSku(odooProduct) {
@@ -26,6 +27,12 @@ class HubspotProductGateway {
     }
     if (this.hasValidSku(odooProduct)) {
       props.hs_sku = String(odooProduct.default_code).trim()
+    }
+    if (this.imageUrlBuilder) {
+      const url = this.imageUrlBuilder(odooProduct)
+      if (typeof url === 'string' && url.trim() !== '') {
+        props.hs_images = url.trim()
+      }
     }
     return props
   }

@@ -9,6 +9,7 @@ const { createHubspotSignatureMiddleware } = require('./adapters/inbound/http/hu
 const { createCorrelationMiddleware } = require('./adapters/inbound/http/correlation.middleware')
 const { createHealthRoutes } = require('./adapters/inbound/http/health.routes')
 const { createPanelRoutes } = require('./adapters/inbound/http/panel.routes')
+const { createMediaRoutes } = require('./adapters/inbound/http/media.routes')
 const { MongoPanelRepository } = require('./adapters/outbound/mongo/MongoPanelRepository')
 const { MongoProductPanelRepository } = require('./adapters/outbound/mongo/MongoProductPanelRepository')
 const { hubspotHealthCheck } = require('./adapters/outbound/hubspot/hubspotHealthCheck')
@@ -111,6 +112,19 @@ function createApp({ config, logger = null, dealSyncModule = null, panelReposito
       odoo: () => odooHealthCheck({ mode: config.odoo.mode, baseUrl: config.odoo.baseUrl, timeoutMs: 5000 })
     }
     app.register(createPanelRoutes, { panelRepository: repo, productRepository: productRepo, healthCheck, config })
+  }
+
+  // media: signed proxy for Odoo product images (Odoo serves the real binary only to
+  // authenticated requests; HubSpot/browsers fetch it anonymously through this route)
+  if (config.media && config.media.urlSecret) {
+    const odooApiClient = require('./adapters/outbound/odoo/odooApiClient').createOdooApiClient({
+      mode: config.odoo.mode,
+      baseUrl: config.odoo.baseUrl,
+      db: config.odoo.db,
+      login: config.odoo.login,
+      apiKey: config.odoo.apiKey
+    })
+    app.register(createMediaRoutes, { odooApiClient, mediaConfig: config.media, logger: log })
   }
 
   if (staticRoot) {

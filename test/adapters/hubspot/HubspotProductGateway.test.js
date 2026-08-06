@@ -195,4 +195,30 @@ describe('HubspotProductGateway', () => {
     expect(api.createProduct).toHaveBeenCalledTimes(1)
     expect(r.created).toBe(true)
   })
+
+  it('buildProperties writes hs_images from an injected imageUrlBuilder', () => {
+    const api = makeApi()
+    const imageUrlBuilder = (odooProduct) => `https://mw.example.com/media/products/${odooProduct.id}/image`
+    const gw = new HubspotProductGateway({ apiClient: api, imageUrlBuilder })
+    const props = gw.buildProperties({ id: 16488, name: 'X', default_code: 'X', list_price: 10 })
+    expect(props.hs_images).toBe('https://mw.example.com/media/products/16488/image')
+  })
+
+  it('buildProperties omits hs_images when the builder returns an empty/null value', () => {
+    const api = makeApi()
+    const gw = new HubspotProductGateway({ apiClient: api, imageUrlBuilder: () => null })
+    const props = gw.buildProperties({ id: 7, name: 'X', default_code: 'X', list_price: 10 })
+    expect(props).not.toHaveProperty('hs_images')
+
+    const gw2 = new HubspotProductGateway({ apiClient: api, imageUrlBuilder: () => '   ' })
+    const props2 = gw2.buildProperties({ id: 7, name: 'X', default_code: 'X', list_price: 10 })
+    expect(props2).not.toHaveProperty('hs_images')
+  })
+
+  it('buildProperties omits hs_images entirely when no imageUrlBuilder is injected', () => {
+    const api = makeApi()
+    const gw = new HubspotProductGateway({ apiClient: api })
+    const props = gw.buildProperties({ id: 7, name: 'X', default_code: 'X', list_price: 10 })
+    expect(props).not.toHaveProperty('hs_images')
+  })
 })
