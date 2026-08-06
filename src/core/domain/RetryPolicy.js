@@ -14,6 +14,15 @@ function isRetryableError(err) {
   return false
 }
 
+function isPermanentHttpError(err) {
+  if (!err) return false
+  if (err.transient === true) return false
+  if (err.transient === false) return true
+  const status = Number(err.httpStatus || err.status || (err.response && err.response.status))
+  if (!status) return false
+  return status >= 400 && status < 500 && !RETRYABLE_HTTP_STATUSES.has(status)
+}
+
 function calculateNextRetry({ attempts, baseMs = 1000, maxDelayMs = 300000, jitter = true, now = Date.now() } = {}) {
   const exp = Math.pow(2, Math.max(0, Number(attempts) || 0))
   const raw = baseMs * exp
@@ -28,4 +37,4 @@ function shouldDeadLetter({ attempts, maxAttempts, error }) {
   return false
 }
 
-module.exports = { isRetryableError, calculateNextRetry, shouldDeadLetter, RETRYABLE_HTTP_STATUSES, RETRYABLE_ERROR_CODES }
+module.exports = { isRetryableError, isPermanentHttpError, calculateNextRetry, shouldDeadLetter, RETRYABLE_HTTP_STATUSES, RETRYABLE_ERROR_CODES }

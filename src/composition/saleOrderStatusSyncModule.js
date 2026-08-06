@@ -1,6 +1,7 @@
 'use strict'
 
 const { parseOdooDateUtc, formatOdooDateUtc } = require('../core/shared/odooDate')
+const { isPermanentHttpError } = require('../core/domain/RetryPolicy')
 
 const DEFAULT_OVERLAP_MS = 60 * 1000
 const EPOCH_WATERMARK = '1970-01-01 00:00:00'
@@ -27,6 +28,7 @@ function createSaleOrderStatusSyncModule({
     let updated = 0
     let unmapped = 0
     let failed = 0
+    let permanentlyFailed = 0
     let maxSeenMs = parseOdooDateUtc(watermark)
 
     for await (const page of odooSource.listChangedSince({ writeDateGte: watermark })) {
@@ -48,8 +50,13 @@ function createSaleOrderStatusSyncModule({
           }
           updated += 1
         } catch (err) {
-          failed += 1
-          log('error', 'sale-order-status-sync.item.failed', { odooId: row && row.id, error: err.message })
+          if (isPermanentHttpError(err)) {
+            permanentlyFailed += 1
+            log('warn', 'sale-order-status-sync.item.permanently_failed', { odooId: row && row.id, error: err.message })
+          } else {
+            failed += 1
+            log('error', 'sale-order-status-sync.item.failed', { odooId: row && row.id, error: err.message })
+          }
         }
       }
     }
@@ -60,9 +67,9 @@ function createSaleOrderStatusSyncModule({
       cursorAdvanced = true
     }
 
-    log('info', 'sale-order-status-sync.incremental.done', { cursorKey, updated, unmapped, failed, cursorAdvanced })
+    log('info', 'sale-order-status-sync.incremental.done', { cursorKey, updated, unmapped, failed, permanentlyFailed, cursorAdvanced })
 
-    return { updated, unmapped, failed, cursorAdvanced }
+    return { updated, unmapped, failed, permanentlyFailed, cursorAdvanced }
   }
 
   return { runIncremental }
