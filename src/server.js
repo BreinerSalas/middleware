@@ -26,6 +26,8 @@ const { HubspotSourceGateway } = require('./adapters/outbound/hubspot/HubspotSou
 const { MongoMappingRepository } = require('./adapters/outbound/mongo/MongoMappingRepository')
 const { createEchoGuard } = require('./core/shared/echoGuard')
 const { DEAL_STAGE_CLOSED_WON_ID } = require('./config/constants')
+const { createManufacturingOrderRetrySyncModule } = require('./composition/manufacturingOrderRetrySyncModule')
+const { createManufacturingOrderRetrySyncJobModule } = require('./composition/manufacturingOrderRetrySyncJobModule')
 
 async function start({ config = null } = {}) {
   const cfg = config || load()
@@ -123,12 +125,41 @@ async function start({ config = null } = {}) {
     })
   }
 
+  let manufacturingOrderRetrySyncJobModule = null
+  if (cfg.manufacturingOrderRetrySync && cfg.manufacturingOrderRetrySync.jobEnabled) {
+    const moRetryOdooApi = createOdooApiClient({
+      mode: cfg.odoo.mode, baseUrl: cfg.odoo.baseUrl, db: cfg.odoo.db, login: cfg.odoo.login, apiKey: cfg.odoo.apiKey
+    })
+    const moRetryHubspotApi = createHubspotApiClient({ baseUrl: cfg.hubspot.apiBase, accessToken: cfg.hubspot.accessToken })
+    const moRetryHubspotGateway = new HubspotSourceGateway({
+      apiClient: moRetryHubspotApi,
+      propertyManufacturingOrder: cfg.hubspot.propertyManufacturingOrder,
+      echoGuard: createEchoGuard({ ttlMs: cfg.manufacturingOrderRetrySync.tickIntervalMs + 5000 }),
+      logger
+    })
+    const manufacturingOrderRetrySyncModule = createManufacturingOrderRetrySyncModule({
+      mappingRepository: new MongoMappingRepository(),
+      odooApiClient: moRetryOdooApi,
+      hubspotGateway: moRetryHubspotGateway,
+      logger
+    })
+    manufacturingOrderRetrySyncJobModule = createManufacturingOrderRetrySyncJobModule({
+      config: cfg,
+      logger,
+      jobRepository: new MongoJobRepository({ logger }),
+      manufacturingOrderRetrySyncModule,
+      tickIntervalMs: cfg.manufacturingOrderRetrySync.tickIntervalMs,
+      orphanWatchdogMs: cfg.manufacturingOrderRetrySync.orphanWatchdogMs
+    })
+  }
+
   const staticRoot = path.resolve(__dirname, 'panel')
   const app = createApp({ config: cfg, logger, dealSyncModule, staticRoot })
 
   await dealSyncModule.startWorker()
   if (productSyncJobModule) await productSyncJobModule.startWorker()
   if (saleOrderStatusSyncJobModule) await saleOrderStatusSyncJobModule.startWorker()
+  if (manufacturingOrderRetrySyncJobModule) await manufacturingOrderRetrySyncJobModule.startWorker()
   await app.listen({ port: cfg.server.port, host: '0.0.0.0' })
   logger.info('server.started', { port: cfg.server.port })
 
@@ -138,13 +169,14 @@ async function start({ config = null } = {}) {
     try { await dealSyncModule.stopWorker() } catch (_) { /* noop */ }
     if (productSyncJobModule) { try { await productSyncJobModule.stopWorker() } catch (_) { /* noop */ } }
     if (saleOrderStatusSyncJobModule) { try { await saleOrderStatusSyncJobModule.stopWorker() } catch (_) { /* noop */ } }
+    if (manufacturingOrderRetrySyncJobModule) { try { await manufacturingOrderRetrySyncJobModule.stopWorker() } catch (_) { /* noop */ } }
     try { await disconnectMongo({ logger }) } catch (_) { /* noop */ }
     process.exit(0)
   }
   process.on('SIGINT', () => shutdown('SIGINT'))
   process.on('SIGTERM', () => shutdown('SIGTERM'))
 
-  return { app, logger, config: cfg, dealSyncModule, productSyncJobModule, saleOrderStatusSyncJobModule }
+  return { app, logger, config: cfg, dealSyncModule, productSyncJobModule, saleOrderStatusSyncJobModule, manufacturingOrderRetrySyncJobModule }
 }
 
 if (require.main === module) {
