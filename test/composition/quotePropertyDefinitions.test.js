@@ -4,13 +4,15 @@ const require = createRequire(import.meta.url)
 const { buildQuotePropertyDefinitions } = require('../../src/composition/quotePropertyDefinitions.js')
 
 describe('buildQuotePropertyDefinitions', () => {
-  it('returns three properties: country dropdown + odoo quote id + MO number', () => {
+  it('returns five properties: country dropdown + odoo quote id + MO number + estado + facturacion', () => {
     const defs = buildQuotePropertyDefinitions({
       propertyQuoteCountry: 'pais_de_destino',
       propertyOdooQuoteId: 'id_presupuesto_odoo',
-      propertyManufacturingOrder: 'numero_orden_fabricacion'
+      propertyManufacturingOrder: 'numero_orden_fabricacion',
+      propertyQuoteState: 'estado_presupuesto_odoo',
+      propertyQuoteInvoiceStatus: 'estado_facturacion_odoo'
     })
-    expect(defs).toHaveLength(3)
+    expect(defs).toHaveLength(5)
     expect(defs[0].name).toBe('pais_de_destino')
     expect(defs[0].type).toBe('enumeration')
     expect(defs[0].fieldType).toBe('select')
@@ -20,11 +22,23 @@ describe('buildQuotePropertyDefinitions', () => {
     expect(defs[2].name).toBe('numero_orden_fabricacion')
     expect(defs[2].type).toBe('string')
     expect(defs[2].fieldType).toBe('text')
+    expect(defs[3].name).toBe('estado_presupuesto_odoo')
+    expect(defs[3].type).toBe('string')
+    expect(defs[3].fieldType).toBe('text')
+    expect(defs[4].name).toBe('estado_facturacion_odoo')
+    expect(defs[4].type).toBe('string')
+    expect(defs[4].fieldType).toBe('text')
   })
 
   it('defaults the MO number property to numero_orden_fabricacion', () => {
     const defs = buildQuotePropertyDefinitions({})
     expect(defs[2].name).toBe('numero_orden_fabricacion')
+  })
+
+  it('defaults the quote state / invoice status properties (Fase 6)', () => {
+    const defs = buildQuotePropertyDefinitions({})
+    expect(defs[3].name).toBe('estado_presupuesto_odoo')
+    expect(defs[4].name).toBe('estado_facturacion_odoo')
   })
 
   it('defaults the country property to pais_de_destino', () => {

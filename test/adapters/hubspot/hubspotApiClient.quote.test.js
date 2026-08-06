@@ -27,6 +27,11 @@ describe('hubspotApiClient.quote', () => {
     it('includes the MO number property (Fase 4 write-back)', () => {
       expect(QUOTE_PROPERTIES).toContain('numero_orden_fabricacion')
     })
+
+    it('includes the sale.order state / invoice status properties (Fase 6 write-back)', () => {
+      expect(QUOTE_PROPERTIES).toContain('estado_presupuesto_odoo')
+      expect(QUOTE_PROPERTIES).toContain('estado_facturacion_odoo')
+    })
   })
 
   describe('getQuote', () => {

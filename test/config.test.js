@@ -275,6 +275,18 @@ describe('config', () => {
       const cfg = load({ env: { ...baseEnv, HS_PROPERTY_MANUFACTURING_ORDER: 'numero_mo_custom' } })
       expect(cfg.hubspot.propertyManufacturingOrder).toBe('numero_mo_custom')
     })
+
+    it('defaults cfg.hubspot.propertyQuoteState/propertyQuoteInvoiceStatus (Fase 6)', () => {
+      const cfg = load({ env: baseEnv })
+      expect(cfg.hubspot.propertyQuoteState).toBe('estado_presupuesto_odoo')
+      expect(cfg.hubspot.propertyQuoteInvoiceStatus).toBe('estado_facturacion_odoo')
+    })
+
+    it('parses HS_PROPERTY_QUOTE_STATE/HS_PROPERTY_QUOTE_INVOICE_STATUS overrides (Fase 6)', () => {
+      const cfg = load({ env: { ...baseEnv, HS_PROPERTY_QUOTE_STATE: 'estado_custom', HS_PROPERTY_QUOTE_INVOICE_STATUS: 'facturacion_custom' } })
+      expect(cfg.hubspot.propertyQuoteState).toBe('estado_custom')
+      expect(cfg.hubspot.propertyQuoteInvoiceStatus).toBe('facturacion_custom')
+    })
   })
 
   describe('productSync (Fase 3 — docs/plan-cambios-2026-08-05.md continuous job loop)', () => {

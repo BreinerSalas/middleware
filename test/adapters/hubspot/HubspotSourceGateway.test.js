@@ -109,4 +109,21 @@ describe('HubspotSourceGateway', () => {
     await gw.writeBack('D-1', { numero_orden_fabricacion: 'WH/MO/00042' })
     expect(api.updateDeal).toHaveBeenCalledWith('D-1', { numero_orden_fabricacion: 'WH/MO/00042' })
   })
+
+  it('writeBack writes estado_presupuesto_odoo and estado_facturacion_odoo to the configured properties (Fase 6)', async () => {
+    const api = makeApiClient({ patch: vi.fn(async () => ({})) })
+    const gw = new HubspotSourceGateway({
+      apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order',
+      propertyQuoteState: 'estado_presupuesto_odoo', propertyQuoteInvoiceStatus: 'estado_facturacion_odoo'
+    })
+    await gw.writeBack('D-1', { estado_presupuesto_odoo: 'cancel', estado_facturacion_odoo: 'no' })
+    expect(api.updateDeal).toHaveBeenCalledWith('D-1', { estado_presupuesto_odoo: 'cancel', estado_facturacion_odoo: 'no' })
+  })
+
+  it('defaults propertyQuoteState/propertyQuoteInvoiceStatus when not provided (Fase 6)', async () => {
+    const api = makeApiClient({ patch: vi.fn(async () => ({})) })
+    const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order' })
+    await gw.writeBack('D-1', { estado_presupuesto_odoo: 'cancel', estado_facturacion_odoo: 'no' })
+    expect(api.updateDeal).toHaveBeenCalledWith('D-1', { estado_presupuesto_odoo: 'cancel', estado_facturacion_odoo: 'no' })
+  })
 })
