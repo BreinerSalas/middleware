@@ -160,14 +160,14 @@ describe('odooApiClient hardening (Fase 2 — docs/plan-cambios-2026-08-05.md)',
       const post = vi.fn()
         .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
         .mockResolvedValueOnce({ data: { result: [16488] }, status: 200 })
-        .mockResolvedValueOnce({ data: { result: 999 }, status: 200 })
+        .mockResolvedValueOnce({ data: { result: true }, status: 200 })
       const api = createOdooApiClient({
         mode: 'http', baseUrl: 'https://odoo.example.com',
         db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post },
         readTimeoutMs: 30000, writeTimeoutMs: 10000
       })
       await api.searchProductIdsWithImage()
-      await api.createSalesOrder({ partner_id: 1, order_line: [] })
+      await api.updateSalesOrder(3, { name: 'x' })
 
       const readCallOpts = post.mock.calls[1][2]
       expect(readCallOpts).toMatchObject({ timeoutMs: 30000 })
