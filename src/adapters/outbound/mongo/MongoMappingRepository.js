@@ -32,6 +32,13 @@ class MongoMappingRepository {
     return toDomain(doc)
   }
 
+  async findPendingManufacturingOrder({ limit = 50 } = {}) {
+    const docs = await this.model
+      .find({ 'metadata.confirmation.status': 'confirmed', 'metadata.manufacturingOrder': null })
+      .limit(limit)
+    return docs.map(toDomain)
+  }
+
   async upsert(mapping) {
     const existing = await this.model.findOne({ sourceId: mapping.sourceId }).lean()
     const mergedMetadata = { ...((existing && existing.metadata) || {}), ...(mapping.metadata || {}) }
