@@ -99,7 +99,7 @@ describe('OdooTargetGateway', () => {
     expect(result.metadata.countryExpense.id).toBe(78)
   })
 
-  it('upsert reuses existing SO via search and updates it without order_line', async () => {
+  it('upsert reuses existing SO via search and updates it, replacing order_line with the current HubSpot lines (Fase 6 — ping-pong)', async () => {
     const api = makeApi({
       soSearch: [{ id: 17, name: 'S00017', state: 'draft', countryExpenseId: 78 }],
       productMap: { 'SKU-1': 17 }
@@ -108,7 +108,7 @@ describe('OdooTargetGateway', () => {
     const result = await gw.upsert({
       existingTargetId: null,
       record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
-      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 3, price: 9.5, name: 'X' }] }
     })
     expect(api.createSalesOrder).not.toHaveBeenCalled()
     expect(api.updateSalesOrder).toHaveBeenCalledWith(17, expect.objectContaining({
@@ -116,7 +116,8 @@ describe('OdooTargetGateway', () => {
       partner_id: 42
     }))
     const updatePayload = api.updateSalesOrder.mock.calls[0][1]
-    expect(updatePayload).not.toHaveProperty('order_line')
+    expect(updatePayload.order_line[0]).toEqual([5, 0, 0])
+    expect(updatePayload.order_line[1]).toEqual([0, 0, expect.objectContaining({ product_id: 17, product_uom_qty: 3, price_unit: 9.5 })])
     expect(updatePayload).not.toHaveProperty('country_expense')
     expect(result.targetId).toBe('17')
     expect(result.salesOrderId).toBe('17')
@@ -617,6 +618,51 @@ describe('OdooTargetGateway auto-confirm (Fase 4 — docs/plan-cambios-2026-08-0
     })
     expect(result.metadata.manufacturingOrder).toBeNull()
     expect(result.targetId).toBe('SO-NEW')
+  })
+})
+
+describe('OdooTargetGateway revive cancelled sale.order (Fase 6 — ping-pong cancelar/corregir en HubSpot/cerrar-ganado)', () => {
+  it('revives (action_draft) a cancelled existing SO before updating/confirming it', async () => {
+    const api = makeApi({
+      soSearch: [{ id: 17, name: 'S00017', state: 'cancel', countryExpenseId: 78 }],
+      productMap: { 'SKU-1': 17 }
+    })
+    api.reviveSalesOrderToDraft = vi.fn(async () => ({ state: 'draft' }))
+    api.confirmSalesOrder = vi.fn(async () => ({ confirmed: true }))
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, autoConfirm: true })
+    await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    expect(api.reviveSalesOrderToDraft).toHaveBeenCalledWith(17)
+    expect(api.reviveSalesOrderToDraft.mock.invocationCallOrder[0])
+      .toBeLessThan(api.updateSalesOrder.mock.invocationCallOrder[0])
+    expect(api.confirmSalesOrder).toHaveBeenCalledWith('17')
+  })
+
+  it('does not call reviveSalesOrderToDraft when the existing SO is not cancelled', async () => {
+    const api = makeApi({
+      soSearch: [{ id: 17, name: 'S00017', state: 'sale', countryExpenseId: 78 }],
+      productMap: { 'SKU-1': 17 }
+    })
+    api.reviveSalesOrderToDraft = vi.fn(async () => ({ state: 'draft' }))
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload })
+    await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    expect(api.reviveSalesOrderToDraft).not.toHaveBeenCalled()
+  })
+
+  it('does not call reviveSalesOrderToDraft when creating a brand-new SO', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': 17 } })
+    api.reviveSalesOrderToDraft = vi.fn(async () => ({ state: 'draft' }))
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload })
+    await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    expect(api.reviveSalesOrderToDraft).not.toHaveBeenCalled()
   })
 })
 
