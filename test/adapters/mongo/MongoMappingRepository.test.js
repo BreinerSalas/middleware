@@ -44,4 +44,17 @@ describe('MongoMappingRepository', () => {
     const got = await repo.findBySourceId('D-1')
     expect(got.metadata).toEqual({ a: 1, b: 2 })
   })
+
+  it('findByTargetId returns the mapping owning that targetId', async () => {
+    const repo = new MongoMappingRepository()
+    await repo.upsert({ sourceId: 'D-1:qQ-1', targetId: '501', targetRef: 'S00501', payloadHash: 'h', metadata: {} })
+    const got = await repo.findByTargetId('501')
+    expect(got.sourceId).toBe('D-1:qQ-1')
+    expect(got.targetRef).toBe('S00501')
+  })
+
+  it('findByTargetId returns null when missing', async () => {
+    const repo = new MongoMappingRepository()
+    expect(await repo.findByTargetId('nope')).toBeNull()
+  })
 })
