@@ -715,6 +715,28 @@ describe('listOperationCosts memoization + TTL', () => {
     })
   })
 
+  describe('reviveSalesOrderToDraft (Fase 6 — ping-pong cancelar/corregir/cerrar-ganado)', () => {
+    it('stub mode returns state draft', async () => {
+      const api = createOdooApiClient({ mode: 'stub' })
+      expect(await api.reviveSalesOrderToDraft('17')).toEqual({ state: 'draft' })
+    })
+
+    it('http mode calls action_draft on the sale.order', async () => {
+      const post = vi.fn()
+        .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+        .mockResolvedValueOnce({ data: { result: true }, status: 200 })
+      const api = createOdooApiClient({
+        mode: 'http', baseUrl: 'https://odoo.example.com',
+        db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+      })
+      const r = await api.reviveSalesOrderToDraft('17')
+      expect(r).toEqual({ state: 'draft' })
+      expect(post.mock.calls[1][1].params.args).toEqual([
+        'db', 2, 'k', 'sale.order', 'action_draft', [[17]], {}
+      ])
+    })
+  })
+
   describe('findManufacturingOrderBySaleOrderName (Fase 4 — docs/plan-cambios-2026-08-05.md MO write-back)', () => {
     it('stub mode returns null', async () => {
       const api = createOdooApiClient({ mode: 'stub' })
