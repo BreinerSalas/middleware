@@ -146,7 +146,7 @@ describe('HubspotSourceGateway.revertDealStage (Fase 6 — retroceso de etapa po
     const api = makeApiClient({
       getDealStageHistory: async () => [{ value: 'closedwon' }, { value: 'negotiation' }]
     })
-    const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order' })
+    const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order', closedWonStageId: 'closedwon' })
     await gw.revertDealStage('D-1:qQ-1')
     expect(api.getDealStageHistory).toHaveBeenCalledWith('D-1')
     expect(api.updateDeal).toHaveBeenCalledWith('D-1', { dealstage: 'negotiation' })
@@ -154,16 +154,30 @@ describe('HubspotSourceGateway.revertDealStage (Fase 6 — retroceso de etapa po
 
   it('does nothing (soft-fail) when there is no distinct previous stage', async () => {
     const api = makeApiClient({ getDealStageHistory: async () => [{ value: 'closedwon' }] })
-    const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order' })
+    const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order', closedWonStageId: 'closedwon' })
     await gw.revertDealStage('D-1')
     expect(api.updateDeal).not.toHaveBeenCalled()
   })
 
   it('is guarded by echoGuard so a repeated call for the same target stage does not write again', async () => {
     const api = makeApiClient({ getDealStageHistory: async () => [{ value: 'closedwon' }, { value: 'negotiation' }] })
-    const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order' })
+    const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order', closedWonStageId: 'closedwon' })
     await gw.revertDealStage('D-1')
     await gw.revertDealStage('D-1')
     expect(api.updateDeal).toHaveBeenCalledTimes(1)
+  })
+
+  it('is idempotent: does nothing once the deal already moved away from closed-won (evita el ping-pong entre etapas en ticks repetidos)', async () => {
+    const api = makeApiClient({ getDealStageHistory: async () => [{ value: 'negotiation' }, { value: 'closedwon' }] })
+    const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order', closedWonStageId: 'closedwon' })
+    await gw.revertDealStage('D-1')
+    expect(api.updateDeal).not.toHaveBeenCalled()
+  })
+
+  it('defaults closedWonStageId to the real Cierre Ganado stage id when not provided', async () => {
+    const api = makeApiClient({ getDealStageHistory: async () => [{ value: '1409249445' }, { value: 'negotiation' }] })
+    const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order' })
+    await gw.revertDealStage('D-1')
+    expect(api.updateDeal).toHaveBeenCalledWith('D-1', { dealstage: 'negotiation' })
   })
 })
