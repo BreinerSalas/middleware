@@ -4,7 +4,7 @@ const { Schema, model } = require('mongoose')
 
 const MappingSchema = new Schema({
   sourceId: { type: String, required: true, unique: true, index: true },
-  targetId: { type: String, default: null },
+  targetId: { type: String, default: null, index: true },
   targetRef: { type: String, default: null },
   payloadHash: { type: String, default: null },
   lastSyncedAt: { type: Date, default: () => new Date() },

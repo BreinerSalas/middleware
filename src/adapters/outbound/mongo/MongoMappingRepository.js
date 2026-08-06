@@ -27,6 +27,11 @@ class MongoMappingRepository {
     return toDomain(doc)
   }
 
+  async findByTargetId(targetId) {
+    const doc = await this.model.findOne({ targetId })
+    return toDomain(doc)
+  }
+
   async upsert(mapping) {
     const existing = await this.model.findOne({ sourceId: mapping.sourceId }).lean()
     const mergedMetadata = { ...((existing && existing.metadata) || {}), ...(mapping.metadata || {}) }
