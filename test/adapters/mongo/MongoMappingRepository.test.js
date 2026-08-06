@@ -57,4 +57,22 @@ describe('MongoMappingRepository', () => {
     const repo = new MongoMappingRepository()
     expect(await repo.findByTargetId('nope')).toBeNull()
   })
+
+  it('findPendingManufacturingOrder returns mappings confirmed in Odoo but without a MO yet (Fase 6)', async () => {
+    const repo = new MongoMappingRepository()
+    await repo.upsert({
+      sourceId: 'D-1:qQ-1', targetId: '501', targetRef: 'S00501', payloadHash: 'h',
+      metadata: { confirmation: { status: 'confirmed', reason: null }, manufacturingOrder: null }
+    })
+    await repo.upsert({
+      sourceId: 'D-2:qQ-2', targetId: '502', targetRef: 'S00502', payloadHash: 'h',
+      metadata: { confirmation: { status: 'confirmed', reason: null }, manufacturingOrder: { id: 9, name: 'WH/MO/00009' } }
+    })
+    await repo.upsert({
+      sourceId: 'D-3:qQ-3', targetId: '503', targetRef: 'S00503', payloadHash: 'h',
+      metadata: { confirmation: { status: 'rejected', reason: 'no stock' }, manufacturingOrder: null }
+    })
+    const pending = await repo.findPendingManufacturingOrder({})
+    expect(pending.map((m) => m.sourceId)).toEqual(['D-1:qQ-1'])
+  })
 })
