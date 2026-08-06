@@ -79,6 +79,12 @@ function buildSaleOrderUpdatePayload({ saleOrder, existing } = {}) {
   if (saleOrder.note && !exp.note) {
     payload.note = saleOrder.note
   }
+  if (Array.isArray(saleOrder.order_line)) {
+    // [5, 0, 0] = Odoo "unlink all" o2m command — reemplaza las líneas por completo con
+    // las de HubSpot en cada re-sync (ver plan Fase 6: ventas corrige cantidades en HubSpot
+    // y el ciclo cancelar/corregir/cerrar-ganado necesita que lleguen a Odoo).
+    payload.order_line = [[5, 0, 0], ...saleOrder.order_line]
+  }
   return payload
 }
 
@@ -430,13 +436,19 @@ class OdooTargetGateway {
   async upsertSalesOrder({ payload, correlationId }) {
     const existing = await this.resolveExistingSalesOrder({ payload, correlationId })
     if (existing) {
+      let state = existing.state || null
+      if (state === 'cancel') {
+        await this.apiClient.reviveSalesOrderToDraft(existing.id)
+        if (this.logger) this.logger.info('odoo.upsert.salesOrder.revived', { salesOrderId: existing.id, correlationId })
+        state = 'draft'
+      }
       const updatePayload = buildSaleOrderUpdatePayload({ saleOrder: payload.saleOrder, existing })
       const updated = await this.apiClient.updateSalesOrder(existing.id, updatePayload)
       if (this.logger) this.logger.info('odoo.upsert.salesOrder.update', { salesOrderId: existing.id, correlationId })
       return {
         id: String(existing.id),
         name: existing.name || null,
-        state: existing.state || null,
+        state,
         created: false,
         payload: updatePayload
       }
