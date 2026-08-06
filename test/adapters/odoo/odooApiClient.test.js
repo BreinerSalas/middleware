@@ -715,6 +715,39 @@ describe('listOperationCosts memoization + TTL', () => {
     })
   })
 
+  describe('findManufacturingOrderBySaleOrderName (Fase 4 — docs/plan-cambios-2026-08-05.md MO write-back)', () => {
+    it('stub mode returns null', async () => {
+      const api = createOdooApiClient({ mode: 'stub' })
+      expect(await api.findManufacturingOrderBySaleOrderName('S00017')).toBeNull()
+    })
+
+    it('http mode searches mrp.production by origin=soName and returns the first match', async () => {
+      const post = vi.fn()
+        .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+        .mockResolvedValueOnce({ data: { result: [{ id: 88, name: 'WH/MO/00042' }] }, status: 200 })
+      const api = createOdooApiClient({
+        mode: 'http', baseUrl: 'https://odoo.example.com',
+        db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+      })
+      const r = await api.findManufacturingOrderBySaleOrderName('S00017')
+      expect(r).toEqual({ id: 88, name: 'WH/MO/00042' })
+      expect(post.mock.calls[1][1].params.args).toEqual([
+        'db', 2, 'k', 'mrp.production', 'search_read', [[['origin', '=', 'S00017']]], { fields: ['id', 'name'] }
+      ])
+    })
+
+    it('http mode returns null when no MO matches yet', async () => {
+      const post = vi.fn()
+        .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+        .mockResolvedValueOnce({ data: { result: [] }, status: 200 })
+      const api = createOdooApiClient({
+        mode: 'http', baseUrl: 'https://odoo.example.com',
+        db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+      })
+      expect(await api.findManufacturingOrderBySaleOrderName('S99999')).toBeNull()
+    })
+  })
+
   describe('searchProductsChangedSince (Fase 3 — docs/plan-cambios-2026-08-05.md incremental sync)', () => {
     it('stub mode returns an empty array', async () => {
       const api = createOdooApiClient({ mode: 'stub' })

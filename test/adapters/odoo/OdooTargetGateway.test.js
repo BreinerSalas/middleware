@@ -554,6 +554,70 @@ describe('OdooTargetGateway auto-confirm (Fase 4 — docs/plan-cambios-2026-08-0
     expect(result.metadata.confirmation).toEqual({ status: 'rejected', reason: 'No hay stock suficiente' })
     expect(result.targetId).toBe('SO-NEW')
   })
+
+  it('looks up the manufacturing order by sale.order name after a successful confirm', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': 17 }, soCreate: { id: 'SO-NEW', ref: 'S00001', state: 'draft', raw: {} } })
+    api.confirmSalesOrder = vi.fn(async () => ({ confirmed: true }))
+    api.findManufacturingOrderBySaleOrderName = vi.fn(async () => ({ id: 88, name: 'WH/MO/00042' }))
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, autoConfirm: true })
+    const result = await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    expect(api.findManufacturingOrderBySaleOrderName).toHaveBeenCalledWith('S00001')
+    expect(result.metadata.manufacturingOrder).toEqual({ id: 88, name: 'WH/MO/00042' })
+  })
+
+  it('does not look up the MO when confirmation was rejected', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': 17 } })
+    api.confirmSalesOrder = vi.fn(async () => { throw new Error('rejected') })
+    api.findManufacturingOrderBySaleOrderName = vi.fn(async () => ({ id: 88, name: 'WH/MO/00042' }))
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, autoConfirm: true })
+    const result = await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    expect(api.findManufacturingOrderBySaleOrderName).not.toHaveBeenCalled()
+    expect(result.metadata.manufacturingOrder).toBeNull()
+  })
+
+  it('does not look up the MO when autoConfirm is off', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': 17 } })
+    api.findManufacturingOrderBySaleOrderName = vi.fn(async () => ({ id: 88, name: 'WH/MO/00042' }))
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload })
+    const result = await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    expect(api.findManufacturingOrderBySaleOrderName).not.toHaveBeenCalled()
+    expect(result.metadata.manufacturingOrder).toBeNull()
+  })
+
+  it('the MO not existing yet (null) does not fail the upsert', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': 17 }, soCreate: { id: 'SO-NEW', ref: 'S00001', state: 'draft', raw: {} } })
+    api.confirmSalesOrder = vi.fn(async () => ({ confirmed: true }))
+    api.findManufacturingOrderBySaleOrderName = vi.fn(async () => null)
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, autoConfirm: true })
+    const result = await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    expect(result.metadata.manufacturingOrder).toBeNull()
+    expect(result.targetId).toBe('SO-NEW')
+  })
+
+  it('a failed MO lookup does not fail the upsert (soft failure, logged)', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': 17 }, soCreate: { id: 'SO-NEW', ref: 'S00001', state: 'draft', raw: {} } })
+    api.confirmSalesOrder = vi.fn(async () => ({ confirmed: true }))
+    api.findManufacturingOrderBySaleOrderName = vi.fn(async () => { throw new Error('boom') })
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, autoConfirm: true })
+    const result = await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    expect(result.metadata.manufacturingOrder).toBeNull()
+    expect(result.targetId).toBe('SO-NEW')
+  })
 })
 
 describe('OdooTargetGateway country_expense resolution', () => {
