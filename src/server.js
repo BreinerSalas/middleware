@@ -10,6 +10,15 @@ const { createHubspotApiClient } = require('./adapters/outbound/hubspot/hubspotA
 const { provisionProperties } = require('./composition/provisionProperties')
 const { buildDealPropertyDefinitions } = require('./composition/dealPropertyDefinitions')
 const { buildQuotePropertyDefinitions } = require('./composition/quotePropertyDefinitions')
+const { createOdooApiClient } = require('./adapters/outbound/odoo/odooApiClient')
+const { OdooProductSource } = require('./adapters/outbound/odoo/OdooProductSource')
+const { HubspotProductGateway } = require('./adapters/outbound/hubspot/HubspotProductGateway')
+const { createProductSyncModule } = require('./composition/productSyncModule')
+const { createProductSyncJobModule } = require('./composition/productSyncJobModule')
+const { MongoJobRepository } = require('./adapters/outbound/mongo/MongoJobRepository')
+const { MongoProductMappingRepository } = require('./adapters/outbound/mongo/MongoProductMappingRepository')
+const { MongoProductSyncRunRepository } = require('./adapters/outbound/mongo/MongoProductSyncRunRepository')
+const { MongoSyncCursorRepository } = require('./adapters/outbound/mongo/MongoSyncCursorRepository')
 
 async function start({ config = null } = {}) {
   const cfg = config || load()
@@ -39,10 +48,38 @@ async function start({ config = null } = {}) {
     logger.warn('hubspot.provision.bootstrap.failed', { error: err.message })
   }
 
+  let productSyncJobModule = null
+  if (cfg.productSync && cfg.productSync.jobEnabled) {
+    const odooApi = createOdooApiClient({
+      mode: cfg.odoo.mode, baseUrl: cfg.odoo.baseUrl, db: cfg.odoo.db, login: cfg.odoo.login, apiKey: cfg.odoo.apiKey
+    })
+    const productHubspotApi = createHubspotApiClient({ baseUrl: cfg.hubspot.apiBase, accessToken: cfg.hubspot.accessToken })
+    const productSyncModule = createProductSyncModule({
+      config: cfg,
+      odooSource: new OdooProductSource({ apiClient: odooApi, logger }),
+      hubspotGateway: new HubspotProductGateway({ apiClient: productHubspotApi, logger }),
+      mappingRepo: new MongoProductMappingRepository({ logger }),
+      runRepo: new MongoProductSyncRunRepository({ logger }),
+      cursorRepo: new MongoSyncCursorRepository(),
+      logger,
+      concurrency: 10
+    })
+    productSyncJobModule = createProductSyncJobModule({
+      config: cfg,
+      logger,
+      jobRepository: new MongoJobRepository({ logger }),
+      productSyncModule,
+      includeNoSku: cfg.productSync.includeNoSku,
+      tickIntervalMs: cfg.productSync.tickIntervalMs,
+      orphanWatchdogMs: cfg.productSync.orphanWatchdogMs
+    })
+  }
+
   const staticRoot = path.resolve(__dirname, 'panel')
   const app = createApp({ config: cfg, logger, dealSyncModule, staticRoot })
 
   await dealSyncModule.startWorker()
+  if (productSyncJobModule) await productSyncJobModule.startWorker()
   await app.listen({ port: cfg.server.port, host: '0.0.0.0' })
   logger.info('server.started', { port: cfg.server.port })
 
@@ -50,13 +87,14 @@ async function start({ config = null } = {}) {
     logger.info('server.shutdown', { signal })
     try { await app.close() } catch (_) { /* noop */ }
     try { await dealSyncModule.stopWorker() } catch (_) { /* noop */ }
+    if (productSyncJobModule) { try { await productSyncJobModule.stopWorker() } catch (_) { /* noop */ } }
     try { await disconnectMongo({ logger }) } catch (_) { /* noop */ }
     process.exit(0)
   }
   process.on('SIGINT', () => shutdown('SIGINT'))
   process.on('SIGTERM', () => shutdown('SIGTERM'))
 
-  return { app, logger, config: cfg, dealSyncModule }
+  return { app, logger, config: cfg, dealSyncModule, productSyncJobModule }
 }
 
 if (require.main === module) {
