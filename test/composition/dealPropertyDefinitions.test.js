@@ -4,16 +4,27 @@ const require = createRequire(import.meta.url)
 const { buildDealPropertyDefinitions } = require('../../src/composition/dealPropertyDefinitions.js')
 
 describe('buildDealPropertyDefinitions', () => {
-  it('returns three entries with names sourced from config', () => {
+  it('returns six entries with names sourced from config', () => {
     const defs = buildDealPropertyDefinitions({
       propertyOdooOrderId: 'id_orden_odoo',
       propertyOdooCustomerId: 'id_cliente_odoo',
-      propertyOdooQuoteId: 'id_presupuesto_odoo'
+      propertyOdooQuoteId: 'id_presupuesto_odoo',
+      propertyQuoteState: 'estado_presupuesto_odoo',
+      propertyQuoteInvoiceStatus: 'estado_facturacion_odoo',
+      propertyManufacturingOrder: 'numero_orden_fabricacion'
     })
-    expect(defs).toHaveLength(3)
+    expect(defs).toHaveLength(6)
     expect(defs.map((d) => d.name)).toEqual([
-      'id_orden_odoo', 'id_cliente_odoo', 'id_presupuesto_odoo'
+      'id_orden_odoo', 'id_cliente_odoo', 'id_presupuesto_odoo',
+      'estado_presupuesto_odoo', 'estado_facturacion_odoo', 'numero_orden_fabricacion'
     ])
+  })
+
+  it('defaults the fallback-mode properties (Fase 6 — deals sin cotización elegible)', () => {
+    const defs = buildDealPropertyDefinitions({})
+    expect(defs[3].name).toBe('estado_presupuesto_odoo')
+    expect(defs[4].name).toBe('estado_facturacion_odoo')
+    expect(defs[5].name).toBe('numero_orden_fabricacion')
   })
 
   it('every entry uses string + text + dealinformation group', () => {
