@@ -619,4 +619,106 @@ describe('listOperationCosts memoization + TTL', () => {
     const r = await api.listOperationCosts()
     expect(r[0].id).toBe(71)
   })
+
+  it('stub mode readProductImage returns null', async () => {
+    const api = createOdooApiClient({ mode: 'stub' })
+    expect(await api.readProductImage(123)).toBeNull()
+  })
+
+  it('stub mode searchProductIdsWithImage returns an empty array', async () => {
+    const api = createOdooApiClient({ mode: 'stub' })
+    expect(await api.searchProductIdsWithImage()).toEqual([])
+  })
+
+  it('http mode readProductImage reads image_512 + write_date via product.product.read', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({ data: { result: [{ image_512: 'ZmFrZWJ5dGVz', write_date: '2026-08-05 10:00:00' }] }, status: 200 })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+    })
+    const r = await api.readProductImage(16488)
+    expect(r).toEqual({ base64: 'ZmFrZWJ5dGVz', writeDate: '2026-08-05 10:00:00' })
+    expect(post.mock.calls[1][1].params.args).toEqual([
+      'db', 2, 'k', 'product.product', 'read', [[16488]], { fields: ['image_512', 'write_date'] }
+    ])
+  })
+
+  it('http mode readProductImage returns null when the product has no image', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({ data: { result: [{ image_512: false, write_date: '2026-08-05 10:00:00' }] }, status: 200 })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+    })
+    expect(await api.readProductImage(16488)).toBeNull()
+  })
+
+  it('http mode readProductImage returns null when the record does not exist', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({ data: { result: [] }, status: 200 })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+    })
+    expect(await api.readProductImage(999999)).toBeNull()
+  })
+
+  it('http mode searchProductIdsWithImage traverses product_tmpl_id.image_1920 (stored field), not the computed variant field', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({ data: { result: [16488, 17989, 19602] }, status: 200 })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+    })
+    const ids = await api.searchProductIdsWithImage()
+    expect(ids).toEqual([16488, 17989, 19602])
+    expect(post.mock.calls[1][1].params.args).toEqual([
+      'db', 2, 'k', 'product.product', 'search', [[['product_tmpl_id.image_1920', '!=', false]]], {}
+    ])
+  })
+
+  describe('searchProductsChangedSince (Fase 3 — docs/plan-cambios-2026-08-05.md incremental sync)', () => {
+    it('stub mode returns an empty array', async () => {
+      const api = createOdooApiClient({ mode: 'stub' })
+      expect(await api.searchProductsChangedSince({ writeDateGte: '2026-08-01 00:00:00' })).toEqual([])
+    })
+
+    it('http mode ANDs the default_code filter with an OR of write_date/template write_date by default', async () => {
+      const post = vi.fn()
+        .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+        .mockResolvedValueOnce({ data: { result: [{ id: 1, name: 'A', default_code: 'X', list_price: 10, write_date: '2026-08-05 09:00:00', active: true }] }, status: 200 })
+      const api = createOdooApiClient({
+        mode: 'http', baseUrl: 'https://odoo.example.com',
+        db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+      })
+      const rows = await api.searchProductsChangedSince({ writeDateGte: '2026-08-01 00:00:00', offset: 20, limit: 50 })
+      expect(rows).toEqual([{ id: 1, name: 'A', default_code: 'X', list_price: 10, write_date: '2026-08-05 09:00:00', active: true }])
+      expect(post.mock.calls[1][1].params.args).toEqual([
+        'db', 2, 'k', 'product.product', 'search_read',
+        [['&', ['default_code', '!=', false], '|', ['write_date', '>', '2026-08-01 00:00:00'], ['product_tmpl_id.write_date', '>', '2026-08-01 00:00:00']]],
+        { fields: ['id', 'name', 'default_code', 'list_price', 'write_date', 'active'], offset: 20, limit: 50 }
+      ])
+    })
+
+    it('http mode omits the default_code filter when includeNoSku is true', async () => {
+      const post = vi.fn()
+        .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+        .mockResolvedValueOnce({ data: { result: [] }, status: 200 })
+      const api = createOdooApiClient({
+        mode: 'http', baseUrl: 'https://odoo.example.com',
+        db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+      })
+      await api.searchProductsChangedSince({ writeDateGte: '2026-08-01 00:00:00', includeNoSku: true })
+      expect(post.mock.calls[1][1].params.args).toEqual([
+        'db', 2, 'k', 'product.product', 'search_read',
+        [['|', ['write_date', '>', '2026-08-01 00:00:00'], ['product_tmpl_id.write_date', '>', '2026-08-01 00:00:00']]],
+        { fields: ['id', 'name', 'default_code', 'list_price', 'write_date', 'active'], offset: 0, limit: 100 }
+      ])
+    })
+  })
 })
