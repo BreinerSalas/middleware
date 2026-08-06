@@ -96,6 +96,9 @@ function createOdooApiClient({
       async searchProductsChangedSince(_opts) {
         return []
       },
+      async searchSalesOrdersChangedSince(_opts) {
+        return []
+      },
       async confirmSalesOrder(_id) {
         return { confirmed: true }
       },
@@ -481,6 +484,11 @@ function createOdooApiClient({
       return executeKw('product.product', 'search_read',
         [domain],
         { fields: ['id', 'name', 'default_code', 'list_price', 'write_date', 'active'], offset, limit })
+    },
+    async searchSalesOrdersChangedSince({ writeDateGte, offset = 0, limit = 100 } = {}) {
+      return executeKw('sale.order', 'search_read',
+        [[['write_date', '>', writeDateGte]]],
+        { fields: ['id', 'name', 'state', 'invoice_status', 'write_date'], offset, limit })
     },
     async confirmSalesOrder(id) {
       await executeKw('sale.order', 'action_confirm', [[Number(id)]], {})
