@@ -248,6 +248,10 @@ class OdooTargetGateway {
       ? await this.confirmSalesOrder(soResult.id, correlationId)
       : null
 
+    const manufacturingOrder = (confirmation && confirmation.status === 'confirmed' && soResult.name)
+      ? await this.findManufacturingOrder(soResult.name, correlationId)
+      : null
+
     return {
       targetId: String(soResult.id),
       targetRef: soResult.name || null,
@@ -265,8 +269,21 @@ class OdooTargetGateway {
           matches: countryExpense.matches,
           ambiguous: countryExpense.ambiguous
         },
-        confirmation
+        confirmation,
+        manufacturingOrder
       }
+    }
+  }
+
+  async findManufacturingOrder(salesOrderName, correlationId) {
+    try {
+      const mo = await this.apiClient.findManufacturingOrderBySaleOrderName(salesOrderName)
+      return mo || null
+    } catch (err) {
+      if (this.logger) {
+        this.logger.warn('odoo.upsert.manufacturingOrder.lookup_failed', { salesOrderName, error: err.message, correlationId })
+      }
+      return null
     }
   }
 

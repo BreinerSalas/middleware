@@ -98,6 +98,9 @@ function createOdooApiClient({
       },
       async confirmSalesOrder(_id) {
         return { confirmed: true }
+      },
+      async findManufacturingOrderBySaleOrderName(_soName) {
+        return null
       }
     }
   }
@@ -482,6 +485,13 @@ function createOdooApiClient({
     async confirmSalesOrder(id) {
       await executeKw('sale.order', 'action_confirm', [[Number(id)]], {})
       return { confirmed: true }
+    },
+    async findManufacturingOrderBySaleOrderName(soName) {
+      const result = await executeKw('mrp.production', 'search_read',
+        [[['origin', '=', String(soName)]]],
+        { fields: ['id', 'name'] })
+      const row = Array.isArray(result) && result.length > 0 ? result[0] : null
+      return row ? { id: Number(row.id), name: row.name || null } : null
     }
   }
 }
