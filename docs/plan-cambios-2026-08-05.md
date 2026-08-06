@@ -333,7 +333,18 @@ cliente sin verificarlas.**
 
 ---
 
-## Fase 4 — Auto-confirmación → orden de fabricación
+## Fase 4 — Auto-confirmación → orden de fabricación  ✅ ENTREGADO (2026-08-05, vía TDD)
+
+Implementado en tres ciclos RED/GREEN — ver evidencia en
+[docs/testing/2026-08-05-auto-confirm.tdd.md](testing/2026-08-05-auto-confirm.tdd.md).
+
+**Desviación deliberada del diseño original**: el rechazo de `action_confirm` (stock, crédito,
+reglas de fabricación) **no** se modela como `SkipSyncError` — el `sale.order` ya se creó/
+actualizó correctamente en ese punto, así que marcar el job entero como `SKIPPED` habría sido
+incorrecto (el upsert sí tuvo éxito). En su lugar, el rechazo queda registrado en
+`result.metadata.confirmation = {status:'rejected', reason}`, se loguea como warning, y el job
+se completa normalmente. Es visible (no falla en silencio) sin tergiversar el resultado real
+del sync.
 
 Tras el `upsertSalesOrder` exitoso
 ([OdooTargetGateway.js:394](../src/adapters/outbound/odoo/OdooTargetGateway.js#L394)), invocar
@@ -394,7 +405,20 @@ Cualquier propiedad nueva de cotización exige editar también esa lista.
 
 ---
 
-## Fase 6 — Spike de bidireccionalidad
+## Fase 6 — Spike de bidireccionalidad — ✅ SPIKE + NÚCLEO ENTREGADO (2026-08-06, vía TDD)
+
+> **Spike (ejecutado contra Odoo real)**: confirmado que **no existe webhook saliente nativo**
+> en esta instancia (`ir.actions.server` no tiene `state='webhook'`; ver
+> `docs/testing/2026-08-06-bidirectional-readiness.json`). La vía viable es **polling por
+> `write_date`**, reutilizando la maquinaria de Fase 3.
+>
+> **Núcleo construido** (estado del presupuesto + retroceso de etapa por cancelación): ver
+> [docs/testing/2026-08-06-sale-order-status-sync.tdd.md](testing/2026-08-06-sale-order-status-sync.tdd.md).
+> Cubre `sale.order.state`/`invoice_status` → propiedades de la cotización de HubSpot, y el
+> retroceso automático del deal a su etapa anterior cuando el presupuesto se cancela para
+> editarse. **No cubierto todavía**: facturación electrónica granular (pendiente probe de
+> `account.move`), retry de búsqueda de MO vía `mrp.production`, productos/contactos (no se
+> identificó brecha real).
 
 Objetivo: **decidir con datos, no diseñar todavía.**
 
