@@ -22,6 +22,9 @@ const { MongoSyncCursorRepository } = require('./adapters/outbound/mongo/MongoSy
 const { OdooSaleOrderSource } = require('./adapters/outbound/odoo/OdooSaleOrderSource')
 const { createSaleOrderStatusSyncModule } = require('./composition/saleOrderStatusSyncModule')
 const { createSaleOrderStatusSyncJobModule } = require('./composition/saleOrderStatusSyncJobModule')
+const { HubspotSourceGateway } = require('./adapters/outbound/hubspot/HubspotSourceGateway')
+const { MongoMappingRepository } = require('./adapters/outbound/mongo/MongoMappingRepository')
+const { createEchoGuard } = require('./core/shared/echoGuard')
 
 async function start({ config = null } = {}) {
   const cfg = config || load()
@@ -83,10 +86,28 @@ async function start({ config = null } = {}) {
     const odooApi = createOdooApiClient({
       mode: cfg.odoo.mode, baseUrl: cfg.odoo.baseUrl, db: cfg.odoo.db, login: cfg.odoo.login, apiKey: cfg.odoo.apiKey
     })
+    const saleOrderHubspotApi = createHubspotApiClient({ baseUrl: cfg.hubspot.apiBase, accessToken: cfg.hubspot.accessToken })
+    const saleOrderHubspotGateway = new HubspotSourceGateway({
+      apiClient: saleOrderHubspotApi,
+      propertyOdooCustomerId: cfg.hubspot.propertyOdooCustomerId,
+      propertyOdooOrderId: cfg.hubspot.propertyOdooOrderId,
+      propertyOdooQuoteId: cfg.hubspot.propertyOdooQuoteId,
+      propertyQuoteOdooQuoteId: cfg.hubspot.propertyQuoteOdooQuoteId,
+      propertyQuoteCountry: cfg.hubspot.propertyQuoteCountry,
+      propertyManufacturingOrder: cfg.hubspot.propertyManufacturingOrder,
+      propertyQuoteState: cfg.hubspot.propertyQuoteState,
+      propertyQuoteInvoiceStatus: cfg.hubspot.propertyQuoteInvoiceStatus,
+      quoteEligibleStatuses: cfg.hubspot.quoteEligibleStatuses,
+      // TTL propio, aislado del echoGuard del flujo principal (deal->Odoo) — ancho
+      // al intervalo del tick para no repetir una llamada real a HubSpot con el
+      // mismo valor mientras no haya un cambio nuevo en Odoo.
+      echoGuard: createEchoGuard({ ttlMs: cfg.saleOrderStatusSync.tickIntervalMs + 5000 }),
+      logger
+    })
     const saleOrderStatusSyncModule = createSaleOrderStatusSyncModule({
       odooSource: new OdooSaleOrderSource({ apiClient: odooApi, logger }),
-      mappingRepository: dealSyncModule._internals.mappingRepository,
-      hubspotGateway: dealSyncModule._internals.sourceGateway,
+      mappingRepository: new MongoMappingRepository(),
+      hubspotGateway: saleOrderHubspotGateway,
       cursorRepo: new MongoSyncCursorRepository(),
       logger
     })
