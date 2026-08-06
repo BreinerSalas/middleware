@@ -345,4 +345,32 @@ describe('config', () => {
       expect(cfg.saleOrderStatusSync.orphanWatchdogMs).toBe(900000)
     })
   })
+
+  describe('manufacturingOrderRetrySync (Fase 6 — reintento de MO tardía)', () => {
+    const baseEnv = {
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret'
+    }
+
+    it('defaults to disabled with a 60s tick interval and 30min orphan watchdog', () => {
+      const cfg = load({ env: baseEnv })
+      expect(cfg.manufacturingOrderRetrySync.jobEnabled).toBe(false)
+      expect(cfg.manufacturingOrderRetrySync.tickIntervalMs).toBe(60000)
+      expect(cfg.manufacturingOrderRetrySync.orphanWatchdogMs).toBe(30 * 60 * 1000)
+    })
+
+    it('parses MANUFACTURING_ORDER_RETRY_SYNC_JOB_ENABLED=true to enable the continuous job loop', () => {
+      const cfg = load({ env: { ...baseEnv, MANUFACTURING_ORDER_RETRY_SYNC_JOB_ENABLED: 'true' } })
+      expect(cfg.manufacturingOrderRetrySync.jobEnabled).toBe(true)
+    })
+
+    it('parses MANUFACTURING_ORDER_RETRY_SYNC_TICK_INTERVAL_MS and _ORPHAN_WATCHDOG_MS overrides', () => {
+      const cfg = load({
+        env: { ...baseEnv, MANUFACTURING_ORDER_RETRY_SYNC_TICK_INTERVAL_MS: '15000', MANUFACTURING_ORDER_RETRY_SYNC_ORPHAN_WATCHDOG_MS: '900000' }
+      })
+      expect(cfg.manufacturingOrderRetrySync.tickIntervalMs).toBe(15000)
+      expect(cfg.manufacturingOrderRetrySync.orphanWatchdogMs).toBe(900000)
+    })
+  })
 })
