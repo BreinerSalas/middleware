@@ -19,7 +19,7 @@ function makeHubspot({ existingOptions = null } = {}) {
 describe('buildOptions', () => {
   it('always prepends a "Sin definir" placeholder', () => {
     const opts = buildOptions({ countries: {}, countriesWithOpCosts: new Set(), usedIsos: ['GT'] })
-    expect(opts[0]).toEqual({ label: 'Sin definir', value: '' })
+    expect(opts[0]).toEqual({ label: 'Sin definir', value: 'sin_definir' })
   })
 
   it('appends ISO codes with the country name when available', () => {
@@ -29,7 +29,7 @@ describe('buildOptions', () => {
       usedIsos: ['CR', 'GT']
     })
     expect(opts).toEqual([
-      { label: 'Sin definir', value: '' },
+      { label: 'Sin definir', value: 'sin_definir' },
       { label: 'CR — Costa Rica', value: 'CR' },
       { label: 'GT — Guatemala', value: 'GT' }
     ])
@@ -42,7 +42,7 @@ describe('buildOptions', () => {
       usedIsos: ['MX']
     })
     expect(opts).toEqual([
-      { label: 'Sin definir', value: '' },
+      { label: 'Sin definir', value: 'sin_definir' },
       { label: 'MX', value: 'MX' }
     ])
   })
@@ -104,7 +104,7 @@ describe('applyOptions — dry-run', () => {
     const r = await applyOptions({
       hubspot,
       propertyName: 'pais_de_destino',
-      options: [{ label: 'Sin definir', value: '' }, { label: 'GT — Guatemala', value: 'GT' }],
+      options: [{ label: 'Sin definir', value: 'sin_definir' }, { label: 'GT — Guatemala', value: 'GT' }],
       currentProperty: { options: [] },
       dryRun: true
     })
@@ -117,7 +117,7 @@ describe('applyOptions — dry-run', () => {
     const r = await applyOptions({
       hubspot,
       propertyName: 'pais_de_destino',
-      options: [{ label: 'Sin definir', value: '' }, { label: 'GT — Guatemala', value: 'GT' }],
+      options: [{ label: 'Sin definir', value: 'sin_definir' }, { label: 'GT — Guatemala', value: 'GT' }],
       currentProperty: { label: 'Pais', groupName: 'quoteinformation', options: [] },
       dryRun: false
     })
@@ -125,7 +125,7 @@ describe('applyOptions — dry-run', () => {
     const call = hubspot._update.mock.calls[0]
     expect(call[0]).toBe('quotes')
     expect(call[1]).toBe('pais_de_destino')
-    expect(call[2].options).toEqual([{ label: 'Sin definir', value: '' }, { label: 'GT — Guatemala', value: 'GT' }])
+    expect(call[2].options).toEqual([{ label: 'Sin definir', value: 'sin_definir' }, { label: 'GT — Guatemala', value: 'GT' }])
   })
 
   it('refuses to write when the property lookup failed (would silently revert label/groupName)', async () => {
@@ -133,7 +133,7 @@ describe('applyOptions — dry-run', () => {
     await expect(applyOptions({
       hubspot,
       propertyName: 'pais_de_destino',
-      options: [{ label: 'Sin definir', value: '' }],
+      options: [{ label: 'Sin definir', value: 'sin_definir' }],
       currentProperty: null,
       propertyLookupFailed: true,
       dryRun: false
@@ -146,7 +146,7 @@ describe('applyOptions — dry-run', () => {
     await expect(applyOptions({
       hubspot,
       propertyName: 'pais_de_destino',
-      options: [{ label: 'Sin definir', value: '' }],
+      options: [{ label: 'Sin definir', value: 'sin_definir' }],
       currentProperty: null,
       dryRun: false
     })).rejects.toThrow(/refusing to write/)

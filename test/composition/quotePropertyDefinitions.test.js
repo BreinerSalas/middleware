@@ -28,8 +28,11 @@ describe('buildQuotePropertyDefinitions', () => {
     expect(defs[1].name).toBe('id_presupuesto_odoo')
   })
 
-  it('seeds the country dropdown with a "Sin definir" placeholder', () => {
+  it('seeds the country dropdown with a "Sin definir" placeholder using a non-blank value', () => {
+    // HubSpot rejects enumeration options with value: '' ("cannot have
+    // options with blank values") on both create and update.
     const defs = buildQuotePropertyDefinitions({})
-    expect(defs[0].options).toEqual([{ label: 'Sin definir', value: '' }])
+    expect(defs[0].options).toEqual([{ label: 'Sin definir', value: 'sin_definir' }])
+    expect(defs[0].options[0].value).not.toBe('')
   })
 })

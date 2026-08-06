@@ -29,7 +29,10 @@ const ISO_CODES = ['CR', 'GT', 'HN', 'SV', 'NI', 'PA', 'MX']
 
 function buildOptions({ countries, countriesWithOpCosts, usedIsos }) {
   const seen = new Set()
-  const options = [{ label: 'Sin definir', value: '' }]
+  // HubSpot rejects enumeration options with a blank ('') value on both create
+  // and update ("cannot have options with blank values") — a real, non-empty
+  // sentinel is required even for the "no answer yet" placeholder.
+  const options = [{ label: 'Sin definir', value: 'sin_definir' }]
   for (const iso of usedIsos) {
     if (seen.has(iso)) continue
     seen.add(iso)

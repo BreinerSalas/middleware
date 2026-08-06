@@ -15,8 +15,13 @@ function buildQuotePropertyDefinitions(cfgHubspot = {}) {
       fieldType: 'select',
       groupName: 'quoteinformation',
       description: 'Código ISO-2 del país de la cotización (CR, GT, HN, SV, NI, PA, MX). El dropdown se sincroniza desde Odoo.',
+      // HubSpot rejects enumeration options with a blank ('') value at create
+      // and update time ("cannot have options with blank values"). A property
+      // with no answer picked already renders blank in the UI without needing
+      // an explicit placeholder option, so this uses a real, non-empty
+      // sentinel value instead of ''.
       options: [
-        { label: 'Sin definir', value: '' }
+        { label: 'Sin definir', value: 'sin_definir' }
       ]
     },
     {
