@@ -1,0 +1,189 @@
+{
+  "startedAt": "2026-08-03T22:23:27.181Z",
+  "finishedAt": "2026-08-03T22:23:30.077Z",
+  "target": {
+    "odooBase": "https://visual-branding-stag.odoo.com",
+    "odooDb": "visualbranding-stag-35631058",
+    "hubspotBase": "https://api.hubapi.com"
+  },
+  "args": {
+    "dealId": null,
+    "quoteId": "51547652",
+    "countryProp": "pais_de_destino",
+    "quoteProperty": "id_presupuesto_odoo"
+  },
+  "summary": {
+    "total": 6,
+    "pass": 3,
+    "warn": 0,
+    "fail": 1,
+    "skip": 2
+  },
+  "results": [
+    {
+      "id": "Q1",
+      "status": "skip",
+      "summary": "no --deal provided; cannot list quotes. Re-run with --deal=<id> from a real deal with at least one published quote.",
+      "data": {
+        "needsArg": "deal"
+      },
+      "durationMs": 1
+    },
+    {
+      "id": "Q2",
+      "status": "pass",
+      "summary": "quotes object exposes 195 properties; sample: hs_acceptance_method, hs_accepted_date, hs_all_accessible_team_ids, hs_all_assigned_business_unit_ids, hs_all_associated_deal_owner_ids",
+      "data": {
+        "count": 195,
+        "sample": [
+          {
+            "name": "hs_acceptance_method",
+            "label": "Acceptance method",
+            "type": "enumeration",
+            "fieldType": "select",
+            "readOnlyValue": false
+          },
+          {
+            "name": "hs_accepted_date",
+            "label": "Accepted date",
+            "type": "datetime",
+            "fieldType": "date",
+            "readOnlyValue": true
+          },
+          {
+            "name": "hs_all_accessible_team_ids",
+            "label": "All teams",
+            "type": "enumeration",
+            "fieldType": "select",
+            "readOnlyValue": true
+          },
+          {
+            "name": "hs_all_assigned_business_unit_ids",
+            "label": "Business units",
+            "type": "enumeration",
+            "fieldType": "checkbox",
+            "readOnlyValue": false
+          },
+          {
+            "name": "hs_all_associated_deal_owner_ids",
+            "label": "All Associated Deal Owner IDs",
+            "type": "enumeration",
+            "fieldType": "select",
+            "readOnlyValue": true
+          }
+        ]
+      },
+      "durationMs": 553
+    },
+    {
+      "id": "Q3",
+      "status": "fail",
+      "summary": "GET quote 51547652 before PATCH failed: 404 Request failed with status code 404",
+      "data": {
+        "httpStatus": 404
+      },
+      "durationMs": 392
+    },
+    {
+      "id": "Q4",
+      "status": "skip",
+      "summary": "no --deal provided; cannot enumerate quote line items. Re-run with --deal=<id>.",
+      "data": {
+        "needsArg": "deal"
+      },
+      "durationMs": 0
+    },
+    {
+      "id": "Q5",
+      "status": "pass",
+      "summary": "all 7 target countries have operation.costs configured. Dropdown will be: CR, GT, HN, SV, NI, PA, MX",
+      "data": {
+        "rows": [
+          {
+            "code": "CR",
+            "hasCountry": true,
+            "countryId": 50,
+            "name": "Costa Rica",
+            "hasOperationCost": true
+          },
+          {
+            "code": "GT",
+            "hasCountry": true,
+            "countryId": 90,
+            "name": "Guatemala",
+            "hasOperationCost": true
+          },
+          {
+            "code": "HN",
+            "hasCountry": true,
+            "countryId": 96,
+            "name": "Honduras",
+            "hasOperationCost": true
+          },
+          {
+            "code": "SV",
+            "hasCountry": true,
+            "countryId": 209,
+            "name": "El Salvador",
+            "hasOperationCost": true
+          },
+          {
+            "code": "NI",
+            "hasCountry": true,
+            "countryId": 164,
+            "name": "Nicaragua",
+            "hasOperationCost": true
+          },
+          {
+            "code": "PA",
+            "hasCountry": true,
+            "countryId": 172,
+            "name": "Panama",
+            "hasOperationCost": true
+          },
+          {
+            "code": "MX",
+            "hasCountry": true,
+            "countryId": 156,
+            "name": "Mexico",
+            "hasOperationCost": true
+          }
+        ],
+        "usable": [
+          "CR",
+          "GT",
+          "HN",
+          "SV",
+          "NI",
+          "PA",
+          "MX"
+        ],
+        "unresolved": []
+      },
+      "durationMs": 1035
+    },
+    {
+      "id": "Q6",
+      "status": "pass",
+      "summary": "all four quote scopes are present on the token.",
+      "data": {
+        "results": [
+          {
+            "scope": "crm.objects.quotes.read",
+            "status": "ok"
+          },
+          {
+            "scope": "crm.objects.deals.write",
+            "status": "ok"
+          },
+          {
+            "scope": "crm.schemas.quotes.read",
+            "status": "ok"
+          }
+        ],
+        "missing": []
+      },
+      "durationMs": 910
+    }
+  ]
+}

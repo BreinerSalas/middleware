@@ -1,0 +1,413 @@
+{
+  "startedAt": "2026-08-04T17:20:13.756Z",
+  "finishedAt": "2026-08-04T17:20:21.125Z",
+  "target": {
+    "odooBase": "https://visual-branding-stag.odoo.com",
+    "odooDb": "visualbranding-stag-35631058",
+    "hubspotBase": "https://api.hubapi.com"
+  },
+  "args": {
+    "dealId": null,
+    "quoteId": null,
+    "countryProp": "pais_de_destino",
+    "syncStatusProp": "estado_sync_odoo"
+  },
+  "compuerta": {
+    "requiredProbeIds": [
+      "X1",
+      "X2",
+      "X3",
+      "X7",
+      "X9",
+      "X11"
+    ],
+    "warnToleratedProbeIds": [
+      "X5",
+      "X6"
+    ]
+  },
+  "summary": {
+    "total": 11,
+    "pass": 5,
+    "warn": 3,
+    "fail": 1,
+    "skip": 2,
+    "toleratedFailures": 0
+  },
+  "results": [
+    {
+      "id": "X1",
+      "status": "pass",
+      "summary": "portal companyCurrency=USD; hs_currency is string/text with 0 active options ()",
+      "data": {
+        "portalId": 51547652,
+        "companyCurrency": "USD",
+        "hsCurrencyProperty": {
+          "name": "hs_currency",
+          "label": "Currency",
+          "type": "string",
+          "fieldType": "text",
+          "optionCount": 0,
+          "activeOptions": [],
+          "options": []
+        }
+      },
+      "durationMs": 930
+    },
+    {
+      "id": "X2",
+      "status": "fail",
+      "summary": "no res.partner matches name ilike 'visual%m%xico'. Confirm the intermediary exists with the expected naming before continuing.",
+      "data": {
+        "matchCount": 0,
+        "partners": []
+      },
+      "durationMs": 1109
+    },
+    {
+      "id": "X3",
+      "status": "pass",
+      "summary": "no res.company name matches México (1 companies total). visual México is a res.partner — partner_id is the right lever.",
+      "data": {
+        "companyCount": 1,
+        "mexicoCompanies": [],
+        "currentUser": {
+          "id": 9,
+          "name": "Ada Galdamez",
+          "login": "ada.galdamez@visualbranding.net",
+          "companyId": {
+            "id": 1,
+            "name": "VISUAL BRANDING S.A. de C.V."
+          },
+          "companyIds": [
+            1
+          ]
+        },
+        "userError": null
+      },
+      "durationMs": 642
+    },
+    {
+      "id": "X4",
+      "status": "pass",
+      "summary": "MX resolves to res.country id=156; operation.costs has 1 Mexico bucket(s); partner chain length=0; naive-override misroute risk=no",
+      "data": {
+        "mxCountry": {
+          "id": 156,
+          "name": "Mexico",
+          "code": "MX"
+        },
+        "operationCostsMx": [
+          {
+            "countryId": 156,
+            "countryName": "Mexico",
+            "count": 5
+          }
+        ],
+        "parentChain": [],
+        "naiveOverrideMisrouteRisk": false
+      },
+      "durationMs": 392
+    },
+    {
+      "id": "X5",
+      "status": "warn",
+      "summary": "1 pricelists; 0 inactive; 1 cross-company (no company_id); MXN pricelists: 0",
+      "data": {
+        "total": 1,
+        "inactive": 0,
+        "crossCompany": 1,
+        "hasMxn": false,
+        "byCurrency": {
+          "USD": [
+            {
+              "id": 1,
+              "name": "Public Pricelist",
+              "currencyId": {
+                "id": 2,
+                "name": "USD"
+              },
+              "companyId": null,
+              "active": true
+            }
+          ]
+        },
+        "sample": [
+          {
+            "id": 1,
+            "name": "Public Pricelist",
+            "currencyId": {
+              "id": 2,
+              "name": "USD"
+            },
+            "companyId": null,
+            "active": true
+          }
+        ]
+      },
+      "durationMs": 96
+    },
+    {
+      "id": "X6",
+      "status": "warn",
+      "summary": "currencies present; archived=[CRC,GTQ,HNL,NIO,MXN,PAB]; coarse-rounding (≥1)=[∅]. Active fine-rounding currencies safe to use.",
+      "data": {
+        "present": [
+          {
+            "code": "USD",
+            "present": true,
+            "id": 2,
+            "active": true,
+            "rounding": 0.0001,
+            "symbol": "$"
+          },
+          {
+            "code": "CRC",
+            "present": true,
+            "id": 39,
+            "active": false,
+            "rounding": 0.01,
+            "symbol": "₡"
+          },
+          {
+            "code": "GTQ",
+            "present": true,
+            "id": 163,
+            "active": false,
+            "rounding": 0.01,
+            "symbol": "Q"
+          },
+          {
+            "code": "HNL",
+            "present": true,
+            "id": 44,
+            "active": false,
+            "rounding": 0.01,
+            "symbol": "L"
+          },
+          {
+            "code": "NIO",
+            "present": true,
+            "id": 119,
+            "active": false,
+            "rounding": 0.01,
+            "symbol": "C$"
+          },
+          {
+            "code": "MXN",
+            "present": true,
+            "id": 33,
+            "active": false,
+            "rounding": 0.01,
+            "symbol": "$"
+          },
+          {
+            "code": "PAB",
+            "present": true,
+            "id": 16,
+            "active": false,
+            "rounding": 0.01,
+            "symbol": "B/."
+          }
+        ],
+        "missing": [],
+        "archived": [
+          "CRC",
+          "GTQ",
+          "HNL",
+          "NIO",
+          "MXN",
+          "PAB"
+        ],
+        "coarseRounding": []
+      },
+      "durationMs": 110
+    },
+    {
+      "id": "X7",
+      "status": "skip",
+      "summary": "no --deal provided; cannot cross-check sale.order currency with quote hs_currency. Re-run with --deal=<id> from a deal with hs:% origins.",
+      "data": {
+        "needsArg": "deal"
+      },
+      "durationMs": 0
+    },
+    {
+      "id": "X8",
+      "status": "warn",
+      "summary": "pricelist_id on sale.order is REQUIRED (many2one); 3 required field(s) across sale.order/sale.order.line; odoo ∅",
+      "data": {
+        "saleOrder": {
+          "pricelist_id": {
+            "type": "many2one",
+            "help": "If you change the pricelist, only newly added lines will be affected.",
+            "readonly": true,
+            "required": true,
+            "string": "Pricelist"
+          },
+          "currency_id": {
+            "type": "many2one",
+            "readonly": true,
+            "required": false,
+            "string": "Currency"
+          },
+          "company_id": {
+            "type": "many2one",
+            "readonly": false,
+            "required": true,
+            "string": "Company"
+          }
+        },
+        "saleOrderLine": {
+          "price_unit": {
+            "type": "float",
+            "digits": [
+              16,
+              4
+            ],
+            "readonly": false,
+            "required": true
+          },
+          "tax_id": {
+            "type": "many2many",
+            "readonly": false,
+            "required": false
+          },
+          "discount": {
+            "type": "float",
+            "digits": [
+              16,
+              2
+            ],
+            "readonly": false,
+            "required": false
+          }
+        },
+        "requiredFields": [
+          "sale.order.pricelist_id",
+          "sale.order.company_id",
+          "sale.order.line.price_unit"
+        ],
+        "version": null
+      },
+      "durationMs": 295
+    },
+    {
+      "id": "X9",
+      "status": "pass",
+      "summary": "A/B/D created (1), read-back OK, update arm skipped, cleanup unlinked=1 remaining=0.",
+      "data": {
+        "tags": {
+          "A": "probe:mx:1785864017333:A",
+          "B": "probe:mx:1785864017333:B",
+          "D": "probe:mx:1785864017333:D"
+        },
+        "created": [
+          {
+            "tag": "probe:mx:1785864017333:A",
+            "id": 6620
+          }
+        ],
+        "readback": [
+          {
+            "id": 6620,
+            "tag": "probe:mx:1785864017333:A",
+            "partnerId": 11741,
+            "pricelistId": {
+              "id": 1,
+              "name": "Public Pricelist (USD)"
+            },
+            "currencyId": {
+              "id": 2,
+              "name": "USD"
+            },
+            "amountTotal": 1234.56,
+            "amountTax": 0,
+            "lineIds": [
+              20134
+            ]
+          }
+        ],
+        "lineSnapshots": [
+          {
+            "orderId": 6620,
+            "tag": "probe:mx:1785864017333:A",
+            "lines": [
+              {
+                "id": 20134,
+                "priceUnit": 1234.56,
+                "discount": 0,
+                "taxIds": [],
+                "priceSubtotal": 1234.56
+              }
+            ]
+          }
+        ],
+        "updateProbe": null,
+        "cleanup": {
+          "unlinked": 1,
+          "remaining": 0
+        },
+        "crash": null,
+        "chosenPricelists": {
+          "A": {
+            "id": 1,
+            "name": "Public Pricelist",
+            "currency": "USD"
+          },
+          "B": null
+        },
+        "partnerD": null
+      },
+      "durationMs": 2454
+    },
+    {
+      "id": "X10",
+      "status": "skip",
+      "summary": "preflight confirms property does not exist (good); no --quote provided to PATCH. Re-run with --quote=<id> to exercise the enumeration write path.",
+      "data": {
+        "needsArg": "quote",
+        "preflight": {
+          "httpStatus": 404,
+          "alreadyExists": false
+        }
+      },
+      "durationMs": 429
+    },
+    {
+      "id": "X11",
+      "status": "pass",
+      "summary": "lowest remaining=185/190 over 10000ms window (3 samples); headroom=97.4%",
+      "data": {
+        "samples": [
+          {
+            "name": "account-info",
+            "httpStatus": 200,
+            "remaining": 187,
+            "max": 190,
+            "intervalMs": 10000
+          },
+          {
+            "name": "properties-quotes-list",
+            "httpStatus": 200,
+            "remaining": 186,
+            "max": 190,
+            "intervalMs": 10000
+          },
+          {
+            "name": "properties-deals-list",
+            "httpStatus": 200,
+            "remaining": 185,
+            "max": 190,
+            "intervalMs": 10000
+          }
+        ],
+        "lowestRemaining": 185,
+        "maxSeen": 190,
+        "intervalMs": 10000,
+        "headroomRatio": 0.9736842105263158
+      },
+      "durationMs": 911
+    }
+  ]
+}

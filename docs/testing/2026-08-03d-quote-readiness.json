@@ -1,0 +1,234 @@
+{
+  "startedAt": "2026-08-03T22:37:23.709Z",
+  "finishedAt": "2026-08-03T22:37:28.119Z",
+  "target": {
+    "odooBase": "https://visual-branding-stag.odoo.com",
+    "odooDb": "visualbranding-stag-35631058",
+    "hubspotBase": "https://api.hubapi.com"
+  },
+  "args": {
+    "dealId": "63433753485",
+    "quoteId": null,
+    "countryProp": "pais_de_destino",
+    "quoteProperty": "id_presupuesto_odoo"
+  },
+  "summary": {
+    "total": 6,
+    "pass": 4,
+    "warn": 1,
+    "fail": 0,
+    "skip": 1
+  },
+  "results": [
+    {
+      "id": "Q1",
+      "status": "pass",
+      "summary": "1 quotes found; unique hs_status=[APPROVAL_NOT_NEEDED]; recommended default for HS_QUOTE_ELIGIBLE_STATUSES=[APPROVAL_NOT_NEEDED]",
+      "data": {
+        "dealId": "63433753485",
+        "count": 1,
+        "quotes": [
+          {
+            "id": "41928567406",
+            "status": "APPROVAL_NOT_NEEDED",
+            "title": "testquotes",
+            "currency": "USD",
+            "amount": "2498.00",
+            "country": null
+          }
+        ],
+        "uniqueStatuses": [
+          "APPROVAL_NOT_NEEDED"
+        ],
+        "eligibleDefaults": [
+          "APPROVAL_NOT_NEEDED",
+          "APPROVED"
+        ],
+        "recommendedDefault": "APPROVAL_NOT_NEEDED"
+      },
+      "durationMs": 707
+    },
+    {
+      "id": "Q2",
+      "status": "pass",
+      "summary": "quotes object exposes 195 properties; sample: hs_acceptance_method, hs_accepted_date, hs_all_accessible_team_ids, hs_all_assigned_business_unit_ids, hs_all_associated_deal_owner_ids",
+      "data": {
+        "count": 195,
+        "sample": [
+          {
+            "name": "hs_acceptance_method",
+            "label": "Acceptance method",
+            "type": "enumeration",
+            "fieldType": "select",
+            "readOnlyValue": false
+          },
+          {
+            "name": "hs_accepted_date",
+            "label": "Accepted date",
+            "type": "datetime",
+            "fieldType": "date",
+            "readOnlyValue": true
+          },
+          {
+            "name": "hs_all_accessible_team_ids",
+            "label": "All teams",
+            "type": "enumeration",
+            "fieldType": "select",
+            "readOnlyValue": true
+          },
+          {
+            "name": "hs_all_assigned_business_unit_ids",
+            "label": "Business units",
+            "type": "enumeration",
+            "fieldType": "checkbox",
+            "readOnlyValue": false
+          },
+          {
+            "name": "hs_all_associated_deal_owner_ids",
+            "label": "All Associated Deal Owner IDs",
+            "type": "enumeration",
+            "fieldType": "select",
+            "readOnlyValue": true
+          }
+        ]
+      },
+      "durationMs": 414
+    },
+    {
+      "id": "Q3",
+      "status": "skip",
+      "summary": "no --quote provided; cannot test PATCH on a published quote. Re-run with --quote=<id> from a test quote you can mutate.",
+      "data": {
+        "needsArg": "quote"
+      },
+      "durationMs": 0
+    },
+    {
+      "id": "Q4",
+      "status": "warn",
+      "summary": "all 2 quotes share the same line items — fan-out would be redundant; confirm this is intentional.",
+      "data": {
+        "dealId": "63433753485",
+        "rows": [
+          {
+            "quoteId": "41928567406",
+            "lineItemCount": 1,
+            "lineItems": [
+              {
+                "id": "57708684589",
+                "hs_sku": null,
+                "name": "WALMART QUAD - CON PUSHERS",
+                "quantity": 1
+              }
+            ]
+          },
+          {
+            "quoteId": "41928567406",
+            "lineItemCount": 1,
+            "lineItems": [
+              {
+                "id": "57708684589",
+                "hs_sku": null,
+                "name": "WALMART QUAD - CON PUSHERS",
+                "quantity": 1
+              }
+            ]
+          }
+        ]
+      },
+      "durationMs": 1631
+    },
+    {
+      "id": "Q5",
+      "status": "pass",
+      "summary": "all 7 target countries have operation.costs configured. Dropdown will be: CR, GT, HN, SV, NI, PA, MX",
+      "data": {
+        "rows": [
+          {
+            "code": "CR",
+            "hasCountry": true,
+            "countryId": 50,
+            "name": "Costa Rica",
+            "hasOperationCost": true
+          },
+          {
+            "code": "GT",
+            "hasCountry": true,
+            "countryId": 90,
+            "name": "Guatemala",
+            "hasOperationCost": true
+          },
+          {
+            "code": "HN",
+            "hasCountry": true,
+            "countryId": 96,
+            "name": "Honduras",
+            "hasOperationCost": true
+          },
+          {
+            "code": "SV",
+            "hasCountry": true,
+            "countryId": 209,
+            "name": "El Salvador",
+            "hasOperationCost": true
+          },
+          {
+            "code": "NI",
+            "hasCountry": true,
+            "countryId": 164,
+            "name": "Nicaragua",
+            "hasOperationCost": true
+          },
+          {
+            "code": "PA",
+            "hasCountry": true,
+            "countryId": 172,
+            "name": "Panama",
+            "hasOperationCost": true
+          },
+          {
+            "code": "MX",
+            "hasCountry": true,
+            "countryId": 156,
+            "name": "Mexico",
+            "hasOperationCost": true
+          }
+        ],
+        "usable": [
+          "CR",
+          "GT",
+          "HN",
+          "SV",
+          "NI",
+          "PA",
+          "MX"
+        ],
+        "unresolved": []
+      },
+      "durationMs": 962
+    },
+    {
+      "id": "Q6",
+      "status": "pass",
+      "summary": "all four quote scopes are present on the token.",
+      "data": {
+        "results": [
+          {
+            "scope": "crm.objects.quotes.read",
+            "status": "ok"
+          },
+          {
+            "scope": "crm.objects.deals.write",
+            "status": "ok"
+          },
+          {
+            "scope": "crm.schemas.quotes.read",
+            "status": "ok"
+          }
+        ],
+        "missing": []
+      },
+      "durationMs": 695
+    }
+  ]
+}

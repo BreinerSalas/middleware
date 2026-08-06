@@ -1,0 +1,314 @@
+{
+  "startedAt": "2026-08-05T22:48:57.216Z",
+  "finishedAt": "2026-08-05T22:49:03.180Z",
+  "target": {
+    "odooBase": "https://visual-branding-stag.odoo.com",
+    "odooDb": "visualbranding-stag-35631058",
+    "hubspotBase": "https://api.hubapi.com"
+  },
+  "args": {
+    "provision": false
+  },
+  "compuerta": {
+    "requiredProbeIds": [
+      "I1",
+      "I3",
+      "I5",
+      "I6"
+    ],
+    "warnToleratedProbeIds": []
+  },
+  "summary": {
+    "total": 9,
+    "pass": 7,
+    "warn": 1,
+    "fail": 1,
+    "skip": 0
+  },
+  "results": [
+    {
+      "id": "I1",
+      "status": "pass",
+      "summary": "product.template exposes image_1920 as a STORED field (5 image field(s)); product.product exposes 10 image field(s), second field = image_variant_1920. ⚠️ product.product.image_1920 is a COMPUTED, non-stored field — domain search on it is unreliable (matches everything); always filter via product.template.image_1920 and map to product.product via product_tmpl_id.",
+      "data": {
+        "templateImageFields": [
+          {
+            "name": "image_1920",
+            "type": "binary",
+            "string": "Image",
+            "store": true
+          },
+          {
+            "name": "image_1024",
+            "type": "binary",
+            "string": "Image 1024",
+            "store": true
+          },
+          {
+            "name": "image_512",
+            "type": "binary",
+            "string": "Image 512",
+            "store": true
+          },
+          {
+            "name": "image_256",
+            "type": "binary",
+            "string": "Image 256",
+            "store": true
+          },
+          {
+            "name": "image_128",
+            "type": "binary",
+            "string": "Image 128",
+            "store": true
+          }
+        ],
+        "productImageFields": [
+          {
+            "name": "image_variant_1920",
+            "type": "binary",
+            "string": "Variant Image",
+            "store": true
+          },
+          {
+            "name": "image_variant_1024",
+            "type": "binary",
+            "string": "Variant Image 1024",
+            "store": true
+          },
+          {
+            "name": "image_variant_512",
+            "type": "binary",
+            "string": "Variant Image 512",
+            "store": true
+          },
+          {
+            "name": "image_variant_256",
+            "type": "binary",
+            "string": "Variant Image 256",
+            "store": true
+          },
+          {
+            "name": "image_variant_128",
+            "type": "binary",
+            "string": "Variant Image 128",
+            "store": true
+          },
+          {
+            "name": "image_1920",
+            "type": "binary",
+            "string": "Image",
+            "store": false
+          },
+          {
+            "name": "image_1024",
+            "type": "binary",
+            "string": "Image 1024",
+            "store": false
+          },
+          {
+            "name": "image_512",
+            "type": "binary",
+            "string": "Image 512",
+            "store": false
+          },
+          {
+            "name": "image_256",
+            "type": "binary",
+            "string": "Image 256",
+            "store": false
+          },
+          {
+            "name": "image_128",
+            "type": "binary",
+            "string": "Image 128",
+            "store": false
+          }
+        ],
+        "productImage1920IsComputed": true
+      },
+      "durationMs": 999
+    },
+    {
+      "id": "I2",
+      "status": "pass",
+      "summary": "product.template: 6487/11529 with image; product.product: 6487/11529 whose template has an image (derived via product_tmpl_id join — a direct domain on product.product.image_1920 is unreliable, see I1)",
+      "data": {
+        "template": {
+          "withImage": 6487,
+          "total": 11529
+        },
+        "product": {
+          "withImage": 6487,
+          "total": 11529
+        }
+      },
+      "durationMs": 1167
+    },
+    {
+      "id": "I3",
+      "status": "fail",
+      "summary": "anonymous GET returns HTTP 200 for every sampled id but ALL return the identical 20039-byte payload — including the no-image baseline. This is Odoo's placeholder image, not the real product photo; the 200 status is a false positive. Anonymous access does NOT serve real images on this instance — Approach A is ruled out, build Approach B (middleware proxy).",
+      "data": {
+        "samples": [
+          {
+            "id": 16488,
+            "url": "https://visual-branding-stag.odoo.com/web/image/product.product/16488/image_1920",
+            "status": 200,
+            "contentType": "image/png",
+            "contentLength": 20039,
+            "location": null
+          },
+          {
+            "id": 17989,
+            "url": "https://visual-branding-stag.odoo.com/web/image/product.product/17989/image_1920",
+            "status": 200,
+            "contentType": "image/png",
+            "contentLength": 20039,
+            "location": null
+          },
+          {
+            "id": 19602,
+            "url": "https://visual-branding-stag.odoo.com/web/image/product.product/19602/image_1920",
+            "status": 200,
+            "contentType": "image/png",
+            "contentLength": 20039,
+            "location": null
+          },
+          {
+            "id": 19632,
+            "url": "https://visual-branding-stag.odoo.com/web/image/product.product/19632/image_1920",
+            "status": 200,
+            "contentType": "image/png",
+            "contentLength": 20039,
+            "location": null
+          },
+          {
+            "id": 19601,
+            "url": "https://visual-branding-stag.odoo.com/web/image/product.product/19601/image_1920",
+            "status": 200,
+            "contentType": "image/png",
+            "contentLength": 20039,
+            "location": null
+          }
+        ],
+        "baseline": {
+          "id": 15955,
+          "url": "https://visual-branding-stag.odoo.com/web/image/product.product/15955/image_1920",
+          "status": 200,
+          "contentType": "image/png",
+          "contentLength": 20039,
+          "location": null
+        }
+      },
+      "durationMs": 987
+    },
+    {
+      "id": "I4",
+      "status": "warn",
+      "summary": "product.template has no website_published field on this instance (eCommerce/website module likely not installed) — cannot explain an I3 failure via ACL/publish state.",
+      "data": {
+        "hasField": false
+      },
+      "durationMs": 89
+    },
+    {
+      "id": "I5",
+      "status": "pass",
+      "summary": "product read/schema scopes are present on the token.",
+      "data": {
+        "results": [
+          {
+            "scope": "crm.objects.products.read",
+            "status": "ok"
+          },
+          {
+            "scope": "crm.schemas.products.read",
+            "status": "ok"
+          }
+        ],
+        "missing": []
+      },
+      "durationMs": 884
+    },
+    {
+      "id": "I6",
+      "status": "pass",
+      "summary": "hs_images exists (type=string/text) — still verify the quote template actually renders it before assuming a URL-only property is enough. 0 file-type propert(y/ies) also present: ∅",
+      "data": {
+        "hsImages": {
+          "updatedAt": "2024-09-05T17:14:04.747Z",
+          "createdAt": "2020-11-23T22:16:29.502Z",
+          "name": "hs_images",
+          "label": "Image Url",
+          "type": "string",
+          "fieldType": "text",
+          "description": "Product images.",
+          "groupName": "productinformation",
+          "options": [],
+          "displayOrder": -1,
+          "calculated": false,
+          "externalOptions": false,
+          "hasUniqueValue": false,
+          "hidden": false,
+          "hubspotDefined": true,
+          "showCurrencySymbol": false,
+          "modificationMetadata": {
+            "archivable": true,
+            "readOnlyDefinition": true,
+            "readOnlyValue": false
+          },
+          "formField": false,
+          "dataSensitivity": "non_sensitive"
+        },
+        "fileProps": [],
+        "propertyCount": 64
+      },
+      "durationMs": 244
+    },
+    {
+      "id": "I7",
+      "status": "pass",
+      "summary": "url_imagen_odoo does not exist yet (expected). Re-run with --provision to create it.",
+      "data": {
+        "exists": false,
+        "provisioned": false
+      },
+      "durationMs": 239
+    },
+    {
+      "id": "I8",
+      "status": "pass",
+      "summary": "sampled 10 image_1920 (p50=194KB, max=334KB) and image_512 (p50=62KB) — projected total at ~11,400 products using image_512: ~687MB",
+      "data": {
+        "sampleCount": 10,
+        "image1920": {
+          "p50": 198207,
+          "max": 341889,
+          "avg": 183605
+        },
+        "image512": {
+          "p50": 63231,
+          "max": 193428,
+          "avg": 78115
+        },
+        "projectedTotalMbAt512": 687
+      },
+      "durationMs": 1167
+    },
+    {
+      "id": "I9",
+      "status": "pass",
+      "summary": "write_date available; 1 product(s) changed in the last 7 days — incremental sync is viable on this field.",
+      "data": {
+        "hasWriteDate": true,
+        "recentCount": 1,
+        "mostRecent": {
+          "id": 15805,
+          "write_date": "2026-07-30 21:12:09"
+        }
+      },
+      "durationMs": 187
+    }
+  ]
+}
