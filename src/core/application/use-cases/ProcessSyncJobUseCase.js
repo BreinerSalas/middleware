@@ -31,7 +31,9 @@ class ProcessSyncJobUseCase {
       baseMs: retryPolicy.baseMs ?? 1000,
       maxDelayMs: retryPolicy.maxDelayMs ?? 300000,
       jitter: retryPolicy.jitter ?? true,
-      isRetryable: retryPolicy.isRetryable ?? isRetryableError
+      isRetryable: retryPolicy.isRetryable ?? isRetryableError,
+      hashPayload: retryPolicy.hashPayload,
+      buildWriteBackPayload: retryPolicy.buildWriteBackPayload
     }
   }
 
