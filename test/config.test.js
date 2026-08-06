@@ -249,6 +249,34 @@ describe('config', () => {
     })
   })
 
+  describe('auto-confirm + MO write-back (Fase 4 — docs/plan-cambios-2026-08-05.md)', () => {
+    const baseEnv = {
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret'
+    }
+
+    it('defaults cfg.odoo.autoConfirmQuotes to false', () => {
+      const cfg = load({ env: baseEnv })
+      expect(cfg.odoo.autoConfirmQuotes).toBe(false)
+    })
+
+    it('parses ODOO_AUTO_CONFIRM_QUOTES=true', () => {
+      const cfg = load({ env: { ...baseEnv, ODOO_AUTO_CONFIRM_QUOTES: 'true' } })
+      expect(cfg.odoo.autoConfirmQuotes).toBe(true)
+    })
+
+    it('defaults cfg.hubspot.propertyManufacturingOrder to numero_orden_fabricacion', () => {
+      const cfg = load({ env: baseEnv })
+      expect(cfg.hubspot.propertyManufacturingOrder).toBe('numero_orden_fabricacion')
+    })
+
+    it('parses HS_PROPERTY_MANUFACTURING_ORDER override', () => {
+      const cfg = load({ env: { ...baseEnv, HS_PROPERTY_MANUFACTURING_ORDER: 'numero_mo_custom' } })
+      expect(cfg.hubspot.propertyManufacturingOrder).toBe('numero_mo_custom')
+    })
+  })
+
   describe('productSync (Fase 3 — docs/plan-cambios-2026-08-05.md continuous job loop)', () => {
     const baseEnv = {
       MONGODB_URI: 'mongodb://localhost:27017/x',
