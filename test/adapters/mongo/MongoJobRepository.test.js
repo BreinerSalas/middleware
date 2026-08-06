@@ -110,4 +110,48 @@ describe('MongoJobRepository', () => {
     const after = await repo.findById(j._id)
     expect(after.status).toBe(JOB_STATUS.PENDING)
   })
+
+  describe('kind isolation (Fase 3 — docs/plan-cambios-2026-08-05.md)', () => {
+    it('findClaimable only returns jobs matching a single kind filter', async () => {
+      await repo.create({ sourceId: 'D-1', kind: 'deal', status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8, payload: null, dedupeKey: null })
+      await repo.create({ sourceId: 'P-1', kind: 'product_sync', status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8, payload: null, dedupeKey: null })
+
+      const claimed = await repo.findClaimable({ limit: 10, kind: 'product_sync' })
+      expect(claimed.map((j) => j.sourceId)).toEqual(['P-1'])
+    })
+
+    it('findClaimable accepts an array of kinds', async () => {
+      await repo.create({ sourceId: 'D-1', kind: 'deal', status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8, payload: null, dedupeKey: null })
+      await repo.create({ sourceId: 'Q-1', kind: 'quote', status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8, payload: null, dedupeKey: null })
+      await repo.create({ sourceId: 'P-1', kind: 'product_sync', status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8, payload: null, dedupeKey: null })
+
+      const claimed = await repo.findClaimable({ limit: 10, kind: ['deal', 'quote'] })
+      expect(claimed.map((j) => j.sourceId).sort()).toEqual(['D-1', 'Q-1'])
+    })
+
+    it('findClaimable with no kind filter behaves as before (any kind eligible)', async () => {
+      await repo.create({ sourceId: 'D-1', kind: 'deal', status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8, payload: null, dedupeKey: null })
+      await repo.create({ sourceId: 'P-1', kind: 'product_sync', status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8, payload: null, dedupeKey: null })
+
+      const claimed = await repo.findClaimable({ limit: 10 })
+      expect(claimed.map((j) => j.sourceId).sort()).toEqual(['D-1', 'P-1'])
+    })
+
+    it('recoverOrphans only recovers jobs matching the given kind', async () => {
+      const dealJob = await repo.create({ sourceId: 'D-1', kind: 'deal', status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8, payload: null, dedupeKey: null })
+      const productJob = await repo.create({ sourceId: 'P-1', kind: 'product_sync', status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8, payload: null, dedupeKey: null })
+      await repo.findClaimable({ limit: 10 })
+
+      const { JobModel } = require('../../../src/adapters/outbound/mongo/schemas/job.schema.js')
+      await JobModel.updateMany(
+        { _id: { $in: [dealJob._id, productJob._id] } },
+        { $set: { updatedAt: new Date(Date.now() - 10 * 60 * 1000) } }
+      )
+
+      const recovered = await repo.recoverOrphans(new Date(), 60_000, 'product_sync')
+      expect(recovered).toBe(1)
+      expect((await repo.findById(productJob._id)).status).toBe(JOB_STATUS.PENDING)
+      expect((await repo.findById(dealJob._id)).status).toBe(JOB_STATUS.PROCESSING)
+    })
+  })
 })

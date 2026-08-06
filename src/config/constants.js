@@ -19,7 +19,8 @@ const ENTITIES = Object.freeze({
 
 const JOB_KIND = Object.freeze({
   DEAL: 'deal',
-  QUOTE: 'quote'
+  QUOTE: 'quote',
+  PRODUCT_SYNC: 'product_sync'
 })
 
 const DEAL_STAGE_CLOSED_WON_ID = '1409249445'

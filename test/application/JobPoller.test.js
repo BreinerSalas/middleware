@@ -92,6 +92,46 @@ describe('JobPoller', () => {
     expect(repo._recoverReturn).toBe(3)
   })
 
+  it('passes its configured kind through to findClaimable on every tick', async () => {
+    const seenKinds = []
+    const repo = {
+      async recoverOrphans() { return 0 },
+      async findClaimable({ kind }) { seenKinds.push(kind); return [] }
+    }
+    const poller = new JobPoller({
+      jobRepository: repo,
+      processFn: async () => {},
+      concurrency: 1,
+      pollIntervalMs: 60_000,
+      kind: 'product_sync',
+      setIntervalFn: () => null,
+      clearIntervalFn: () => null
+    })
+    await poller.tick()
+    expect(seenKinds).toEqual(['product_sync'])
+  })
+
+  it('passes its configured kind and orphanWatchdogMs through to recoverOrphans on start', async () => {
+    const calls = []
+    const repo = {
+      async recoverOrphans(now, watchdogMs, kind) { calls.push({ watchdogMs, kind }); return 0 },
+      async findClaimable() { return [] }
+    }
+    const poller = new JobPoller({
+      jobRepository: repo,
+      processFn: async () => {},
+      concurrency: 1,
+      pollIntervalMs: 60_000,
+      kind: 'product_sync',
+      orphanWatchdogMs: 30 * 60_000,
+      setIntervalFn: () => null,
+      clearIntervalFn: () => null
+    })
+    await poller.start()
+    await poller.stop()
+    expect(calls).toEqual([{ watchdogMs: 30 * 60_000, kind: 'product_sync' }])
+  })
+
   it('respects concurrency: never runs more than N in parallel', async () => {
     const jobs = Array.from({ length: 6 }, (_, i) => ({ _id: String(i + 1), sourceId: `D-${i + 1}`, status: JOB_STATUS.PENDING, attempts: 0 }))
     const repo = makeJobRepo({ claimable: jobs })
