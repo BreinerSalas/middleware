@@ -22,7 +22,7 @@ const {
   createMustBeInPipeline,
   createMustHaveQuoteCountry
 } = require('./validators')
-const { JOB_KIND } = require('../config/constants')
+const { JOB_KIND, DEAL_STAGE_CLOSED_WON_ID } = require('../config/constants')
 
 function buildWriteBackPayload(mapping) {
   const payload = {
@@ -72,6 +72,7 @@ function createDealSyncModule({
     propertyManufacturingOrder: config.hubspot.propertyManufacturingOrder,
     propertyQuoteState: config.hubspot.propertyQuoteState,
     propertyQuoteInvoiceStatus: config.hubspot.propertyQuoteInvoiceStatus,
+    closedWonStageId: DEAL_STAGE_CLOSED_WON_ID,
     quoteEligibleStatuses: config.hubspot.quoteEligibleStatuses,
     echoGuard,
     logger

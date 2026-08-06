@@ -20,6 +20,8 @@ const DEFAULT_QUOTE_PROPERTY_NAMES = {
 
 const DEFAULT_QUOTE_ELIGIBLE_STATUSES = ['APPROVAL_NOT_NEEDED', 'APPROVED']
 
+const DEFAULT_CLOSED_WON_STAGE_ID = '1409249445'
+
 function parseSourceId(sourceId) {
   if (sourceId == null) return { dealId: null, quoteId: null }
   const s = String(sourceId)
@@ -114,6 +116,7 @@ class HubspotSourceGateway {
     propertyManufacturingOrder,
     propertyQuoteState,
     propertyQuoteInvoiceStatus,
+    closedWonStageId,
     quoteEligibleStatuses,
     echoGuard = null,
     logger = null
@@ -126,6 +129,7 @@ class HubspotSourceGateway {
     this.propertyManufacturingOrder = propertyManufacturingOrder || 'numero_orden_fabricacion'
     this.propertyQuoteState = propertyQuoteState || 'estado_presupuesto_odoo'
     this.propertyQuoteInvoiceStatus = propertyQuoteInvoiceStatus || 'estado_facturacion_odoo'
+    this.closedWonStageId = closedWonStageId || DEFAULT_CLOSED_WON_STAGE_ID
     // The deal and the quote objects can have this property under different
     // internal names; default to the deal's when not given explicitly (matches
     // config/index.js's own fallback for HS_PROPERTY_QUOTE_ODOO_QUOTE_ID).
@@ -230,6 +234,13 @@ class HubspotSourceGateway {
     const { dealId } = parseSourceId(sourceId)
     const history = await this.apiClient.getDealStageHistory(dealId)
     const currentStage = Array.isArray(history) && history.length > 0 ? history[0].value : null
+    if (currentStage !== this.closedWonStageId) {
+      // Ya se revirtió en un tick anterior (o nunca estuvo en cierre-ganado) —
+      // sin este corte, cada tick volvería a mirar "la etapa distinta más
+      // reciente" y encontraría cierre-ganado de nuevo, empujando el deal de
+      // vuelta ahí en un ping-pong infinito mientras el sale.order siga cancelado.
+      return
+    }
     const previousStage = resolvePreviousDealStage(history, currentStage)
     if (!previousStage) {
       if (this.logger) this.logger.warn('hubspot.revertDealStage.no_previous_stage', { sourceId, dealId })
