@@ -139,6 +139,11 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       tickIntervalMs: Number(env.PRODUCT_SYNC_TICK_INTERVAL_MS || 60000),
       orphanWatchdogMs: Number(env.PRODUCT_SYNC_ORPHAN_WATCHDOG_MS || 30 * 60 * 1000),
       includeNoSku: String(env.PRODUCT_SYNC_INCLUDE_NO_SKU || 'false').toLowerCase() === 'true'
+    },
+    saleOrderStatusSync: {
+      jobEnabled: String(env.SALE_ORDER_STATUS_SYNC_JOB_ENABLED || 'false').toLowerCase() === 'true',
+      tickIntervalMs: Number(env.SALE_ORDER_STATUS_SYNC_TICK_INTERVAL_MS || 60000),
+      orphanWatchdogMs: Number(env.SALE_ORDER_STATUS_SYNC_ORPHAN_WATCHDOG_MS || 30 * 60 * 1000)
     }
   }
 }

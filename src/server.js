@@ -19,6 +19,9 @@ const { MongoJobRepository } = require('./adapters/outbound/mongo/MongoJobReposi
 const { MongoProductMappingRepository } = require('./adapters/outbound/mongo/MongoProductMappingRepository')
 const { MongoProductSyncRunRepository } = require('./adapters/outbound/mongo/MongoProductSyncRunRepository')
 const { MongoSyncCursorRepository } = require('./adapters/outbound/mongo/MongoSyncCursorRepository')
+const { OdooSaleOrderSource } = require('./adapters/outbound/odoo/OdooSaleOrderSource')
+const { createSaleOrderStatusSyncModule } = require('./composition/saleOrderStatusSyncModule')
+const { createSaleOrderStatusSyncJobModule } = require('./composition/saleOrderStatusSyncJobModule')
 
 async function start({ config = null } = {}) {
   const cfg = config || load()
@@ -75,11 +78,34 @@ async function start({ config = null } = {}) {
     })
   }
 
+  let saleOrderStatusSyncJobModule = null
+  if (cfg.saleOrderStatusSync && cfg.saleOrderStatusSync.jobEnabled) {
+    const odooApi = createOdooApiClient({
+      mode: cfg.odoo.mode, baseUrl: cfg.odoo.baseUrl, db: cfg.odoo.db, login: cfg.odoo.login, apiKey: cfg.odoo.apiKey
+    })
+    const saleOrderStatusSyncModule = createSaleOrderStatusSyncModule({
+      odooSource: new OdooSaleOrderSource({ apiClient: odooApi, logger }),
+      mappingRepository: dealSyncModule._internals.mappingRepository,
+      hubspotGateway: dealSyncModule._internals.sourceGateway,
+      cursorRepo: new MongoSyncCursorRepository(),
+      logger
+    })
+    saleOrderStatusSyncJobModule = createSaleOrderStatusSyncJobModule({
+      config: cfg,
+      logger,
+      jobRepository: new MongoJobRepository({ logger }),
+      saleOrderStatusSyncModule,
+      tickIntervalMs: cfg.saleOrderStatusSync.tickIntervalMs,
+      orphanWatchdogMs: cfg.saleOrderStatusSync.orphanWatchdogMs
+    })
+  }
+
   const staticRoot = path.resolve(__dirname, 'panel')
   const app = createApp({ config: cfg, logger, dealSyncModule, staticRoot })
 
   await dealSyncModule.startWorker()
   if (productSyncJobModule) await productSyncJobModule.startWorker()
+  if (saleOrderStatusSyncJobModule) await saleOrderStatusSyncJobModule.startWorker()
   await app.listen({ port: cfg.server.port, host: '0.0.0.0' })
   logger.info('server.started', { port: cfg.server.port })
 
@@ -88,13 +114,14 @@ async function start({ config = null } = {}) {
     try { await app.close() } catch (_) { /* noop */ }
     try { await dealSyncModule.stopWorker() } catch (_) { /* noop */ }
     if (productSyncJobModule) { try { await productSyncJobModule.stopWorker() } catch (_) { /* noop */ } }
+    if (saleOrderStatusSyncJobModule) { try { await saleOrderStatusSyncJobModule.stopWorker() } catch (_) { /* noop */ } }
     try { await disconnectMongo({ logger }) } catch (_) { /* noop */ }
     process.exit(0)
   }
   process.on('SIGINT', () => shutdown('SIGINT'))
   process.on('SIGTERM', () => shutdown('SIGTERM'))
 
-  return { app, logger, config: cfg, dealSyncModule, productSyncJobModule }
+  return { app, logger, config: cfg, dealSyncModule, productSyncJobModule, saleOrderStatusSyncJobModule }
 }
 
 if (require.main === module) {
