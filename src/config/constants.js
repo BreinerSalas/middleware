@@ -21,7 +21,8 @@ const JOB_KIND = Object.freeze({
   DEAL: 'deal',
   QUOTE: 'quote',
   PRODUCT_SYNC: 'product_sync',
-  SALE_ORDER_STATUS_SYNC: 'sale_order_status_sync'
+  SALE_ORDER_STATUS_SYNC: 'sale_order_status_sync',
+  MANUFACTURING_ORDER_RETRY_SYNC: 'manufacturing_order_retry_sync'
 })
 
 const DEAL_STAGE_CLOSED_WON_ID = '1409249445'
