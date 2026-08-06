@@ -25,9 +25,14 @@ const {
 const { JOB_KIND } = require('../config/constants')
 
 function buildWriteBackPayload(mapping) {
-  return {
+  const payload = {
     id_presupuesto_odoo: mapping && mapping.targetRef ? mapping.targetRef : null
   }
+  const moName = mapping && mapping.metadata && mapping.metadata.manufacturingOrder
+    ? mapping.metadata.manufacturingOrder.name
+    : null
+  if (moName) payload.numero_orden_fabricacion = moName
+  return payload
 }
 
 function createDealSyncModule({
@@ -64,6 +69,7 @@ function createDealSyncModule({
     propertyOdooQuoteId: config.hubspot.propertyOdooQuoteId,
     propertyQuoteOdooQuoteId: config.hubspot.propertyQuoteOdooQuoteId,
     propertyQuoteCountry: config.hubspot.propertyQuoteCountry,
+    propertyManufacturingOrder: config.hubspot.propertyManufacturingOrder,
     quoteEligibleStatuses: config.hubspot.quoteEligibleStatuses,
     echoGuard,
     logger

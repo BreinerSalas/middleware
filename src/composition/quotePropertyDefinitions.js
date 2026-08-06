@@ -3,6 +3,7 @@
 function buildQuotePropertyDefinitions(cfgHubspot = {}) {
   const countryProperty = cfgHubspot.propertyQuoteCountry || 'pais_de_destino'
   const quoteIdProperty = cfgHubspot.propertyOdooQuoteId || 'id_presupuesto_odoo'
+  const manufacturingOrderProperty = cfgHubspot.propertyManufacturingOrder || 'numero_orden_fabricacion'
   // Build the dropdown options from the configured list. The actual options
   // are populated/refreshed by scripts/sync-quote-country-options.js — here
   // we just declare the schema with a single placeholder so the property
@@ -31,6 +32,14 @@ function buildQuotePropertyDefinitions(cfgHubspot = {}) {
       fieldType: 'text',
       groupName: 'quoteinformation',
       description: 'Nombre del presupuesto (sale.order.name, ej. S06613) creado en Odoo a partir de esta cotización. El middleware lo escribe en writeback.'
+    },
+    {
+      name: manufacturingOrderProperty,
+      label: 'Número de orden de fabricación',
+      type: 'string',
+      fieldType: 'text',
+      groupName: 'quoteinformation',
+      description: 'Nombre de la mrp.production (ej. WH/MO/00042) generada por Odoo al confirmar el presupuesto. El middleware lo escribe en writeback cuando la auto-confirmación está activa.'
     }
   ]
 }

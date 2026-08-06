@@ -105,6 +105,7 @@ class HubspotSourceGateway {
     propertyOdooQuoteId,
     propertyQuoteOdooQuoteId,
     propertyQuoteCountry,
+    propertyManufacturingOrder,
     quoteEligibleStatuses,
     echoGuard = null,
     logger = null
@@ -114,6 +115,7 @@ class HubspotSourceGateway {
     this.propertyOdooCustomerId = propertyOdooCustomerId || DEFAULT_DEAL_PROPERTY_NAMES.customer
     this.propertyOdooOrderId = propertyOdooOrderId || DEFAULT_DEAL_PROPERTY_NAMES.order
     this.propertyOdooQuoteId = propertyOdooQuoteId || DEFAULT_DEAL_PROPERTY_NAMES.quote
+    this.propertyManufacturingOrder = propertyManufacturingOrder || 'numero_orden_fabricacion'
     // The deal and the quote objects can have this property under different
     // internal names; default to the deal's when not given explicitly (matches
     // config/index.js's own fallback for HS_PROPERTY_QUOTE_ODOO_QUOTE_ID).
@@ -190,6 +192,9 @@ class HubspotSourceGateway {
     if (payload.id_cliente_odoo != null) properties[this.propertyOdooCustomerId] = payload.id_cliente_odoo
     if (payload.id_presupuesto_odoo != null) {
       properties[quoteId ? this.propertyQuoteOdooQuoteId : this.propertyOdooQuoteId] = payload.id_presupuesto_odoo
+    }
+    if (payload.numero_orden_fabricacion != null) {
+      properties[this.propertyManufacturingOrder] = payload.numero_orden_fabricacion
     }
     if (Object.keys(properties).length === 0) return
     const echoKey = `${sourceId}:${JSON.stringify(properties)}`
