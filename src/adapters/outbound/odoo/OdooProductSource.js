@@ -26,13 +26,26 @@ class OdooProductSource {
       if (count === 0) break
       out.push(...page)
       totalFetched += count
+      if (limit != null && totalFetched >= limit) break
       if (count < this.pageSize) break
-      if (limit != null && totalFetched >= limit) {
-        return out.slice(0, limit)
-      }
       offset += this.pageSize
     }
-    return out
+    return limit != null ? out.slice(0, limit) : out
+  }
+
+  async *listChangedSince({ writeDateGte, includeNoSku = false } = {}) {
+    if (!writeDateGte) throw new Error('OdooProductSource.listChangedSince requires writeDateGte')
+    let offset = 0
+    while (true) {
+      const page = await this.apiClient.searchProductsChangedSince({
+        writeDateGte, offset, limit: this.pageSize, includeNoSku
+      })
+      const count = Array.isArray(page) ? page.length : 0
+      if (count === 0) return
+      yield page
+      if (count < this.pageSize) return
+      offset += this.pageSize
+    }
   }
 }
 

@@ -92,6 +92,9 @@ function createOdooApiClient({
       },
       async searchProductIdsWithImage() {
         return []
+      },
+      async searchProductsChangedSince(_opts) {
+        return []
       }
     }
   }
@@ -462,6 +465,16 @@ function createOdooApiClient({
     async searchProductIdsWithImage() {
       const result = await executeKw('product.product', 'search', [[['product_tmpl_id.image_1920', '!=', false]]], {})
       return Array.isArray(result) ? result.map(Number) : []
+    },
+    // name/list_price live on product.template, so editing them moves the template's
+    // write_date, not the variant's — the OR clause is required or those deltas would be
+    // silently missed (docs/plan-cambios-2026-08-05.md § Fase 3).
+    async searchProductsChangedSince({ writeDateGte, offset = 0, limit = 100, includeNoSku = false } = {}) {
+      const writeDateOr = ['|', ['write_date', '>', writeDateGte], ['product_tmpl_id.write_date', '>', writeDateGte]]
+      const domain = includeNoSku ? writeDateOr : ['&', ['default_code', '!=', false], ...writeDateOr]
+      return executeKw('product.product', 'search_read',
+        [domain],
+        { fields: ['id', 'name', 'default_code', 'list_price', 'write_date', 'active'], offset, limit })
     }
   }
 }
