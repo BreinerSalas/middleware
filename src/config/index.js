@@ -18,12 +18,14 @@ const OPTIONAL_KEYS = [
   'HS_PROPERTY_QUOTE_COUNTRY',
   'HS_PROPERTY_QUOTE_ODOO_QUOTE_ID',
   'HS_QUOTE_ELIGIBLE_STATUSES',
+  'HS_PROPERTY_MANUFACTURING_ORDER',
   'ODOO_CLIENT_MODE',
   'ODOO_BASE_URL',
   'ODOO_DB',
   'ODOO_LOGIN',
   'ODOO_API_KEY',
   'ODOO_DEFAULT_CUSTOMER_ID',
+  'ODOO_AUTO_CONFIRM_QUOTES',
   'HS_ALLOWED_STAGE_IDS',
   'HS_ALLOWED_PIPELINE_IDS',
   'HS_REJECT_UNKNOWN_PIPELINE',
@@ -90,7 +92,8 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       propertyOdooQuoteId: env.HS_PROPERTY_ODOO_QUOTE_ID || 'id_presupuesto_odoo',
       propertyQuoteCountry: env.HS_PROPERTY_QUOTE_COUNTRY || 'pais_de_destino',
       propertyQuoteOdooQuoteId: env.HS_PROPERTY_QUOTE_ODOO_QUOTE_ID || env.HS_PROPERTY_ODOO_QUOTE_ID || 'id_presupuesto_odoo',
-      quoteEligibleStatuses: quoteEligibleStatuses.length > 0 ? quoteEligibleStatuses : ['APPROVAL_NOT_NEEDED', 'APPROVED']
+      quoteEligibleStatuses: quoteEligibleStatuses.length > 0 ? quoteEligibleStatuses : ['APPROVAL_NOT_NEEDED', 'APPROVED'],
+      propertyManufacturingOrder: env.HS_PROPERTY_MANUFACTURING_ORDER || 'numero_orden_fabricacion'
     },
     odoo: {
       mode: (env.ODOO_CLIENT_MODE || 'stub').toLowerCase(),
@@ -98,7 +101,8 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       db: env.ODOO_DB || '',
       login: env.ODOO_LOGIN || '',
       apiKey: env.ODOO_API_KEY || '',
-      defaultCustomerId: env.ODOO_DEFAULT_CUSTOMER_ID || ''
+      defaultCustomerId: env.ODOO_DEFAULT_CUSTOMER_ID || '',
+      autoConfirmQuotes: String(env.ODOO_AUTO_CONFIRM_QUOTES || 'false').toLowerCase() === 'true'
     },
     deals: {
       allowedStageIds: stageIds.length > 0 ? stageIds : [DEAL_STAGE_CLOSED_WON_ID],

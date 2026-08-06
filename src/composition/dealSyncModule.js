@@ -82,6 +82,7 @@ function createDealSyncModule({
     // En modo stub el cliente devuelve {} en todo lookup, asi que product_id es
     // siempre null; exigir match ahi convertiria cada corrida local en SKIPPED.
     requireProductMatch: config.odoo.mode === 'http',
+    autoConfirm: config.odoo.autoConfirmQuotes === true,
     logger
   })
 

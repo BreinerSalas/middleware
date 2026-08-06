@@ -178,7 +178,7 @@ async function pickCountryExpenseRecord({ countryId, countryName, apiClient, log
 }
 
 class OdooTargetGateway {
-  constructor({ apiClient, hashPayload, logger = null, defaultCustomerId = '', requireProductMatch = true, propertyQuoteCountry = 'pais_de_destino' } = {}) {
+  constructor({ apiClient, hashPayload, logger = null, defaultCustomerId = '', requireProductMatch = true, propertyQuoteCountry = 'pais_de_destino', autoConfirm = false } = {}) {
     if (!apiClient) throw new Error('OdooTargetGateway requires apiClient')
     if (typeof hashPayload !== 'function') throw new Error('OdooTargetGateway requires hashPayload')
     this.apiClient = apiClient
@@ -187,6 +187,7 @@ class OdooTargetGateway {
     this.defaultCustomerId = defaultCustomerId ? String(defaultCustomerId) : ''
     this.requireProductMatch = requireProductMatch !== false
     this.propertyQuoteCountry = propertyQuoteCountry || 'pais_de_destino'
+    this.autoConfirm = autoConfirm === true
   }
 
   async upsert({ existingTargetId = null, record, references = {}, correlationId = null } = {}) {
@@ -243,6 +244,10 @@ class OdooTargetGateway {
 
     const soResult = await this.upsertSalesOrder({ payload, correlationId })
 
+    const confirmation = this.autoConfirm
+      ? await this.confirmSalesOrder(soResult.id, correlationId)
+      : null
+
     return {
       targetId: String(soResult.id),
       targetRef: soResult.name || null,
@@ -259,8 +264,22 @@ class OdooTargetGateway {
           reason: countryExpense.reason,
           matches: countryExpense.matches,
           ambiguous: countryExpense.ambiguous
-        }
+        },
+        confirmation
       }
+    }
+  }
+
+  async confirmSalesOrder(salesOrderId, correlationId) {
+    try {
+      await this.apiClient.confirmSalesOrder(salesOrderId)
+      if (this.logger) this.logger.info('odoo.upsert.salesOrder.confirmed', { salesOrderId, correlationId })
+      return { status: 'confirmed', reason: null }
+    } catch (err) {
+      if (this.logger) {
+        this.logger.warn('odoo.upsert.salesOrder.confirm_rejected', { salesOrderId, error: err.message, correlationId })
+      }
+      return { status: 'rejected', reason: err.message }
     }
   }
 
