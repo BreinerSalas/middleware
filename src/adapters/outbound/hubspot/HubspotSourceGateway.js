@@ -207,8 +207,8 @@ class HubspotSourceGateway {
     if (payload.id_presupuesto_odoo != null) {
       properties[quoteId ? this.propertyQuoteOdooQuoteId : this.propertyOdooQuoteId] = payload.id_presupuesto_odoo
     }
-    if (payload.numero_orden_fabricacion != null) {
-      properties[this.propertyManufacturingOrder] = payload.numero_orden_fabricacion
+    if (payload.numero_orden_fabricacion !== undefined) {
+      properties[this.propertyManufacturingOrder] = payload.numero_orden_fabricacion === null ? '' : payload.numero_orden_fabricacion
     }
     if (payload.estado_presupuesto_odoo != null) {
       properties[this.propertyQuoteState] = payload.estado_presupuesto_odoo

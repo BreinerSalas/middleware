@@ -41,10 +41,12 @@ function createSaleOrderStatusSyncModule({
             unmapped += 1
             continue
           }
-          await hubspotGateway.writeBack(mapping.sourceId, {
+          const writeBackPayload = {
             estado_presupuesto_odoo: row.state,
             estado_facturacion_odoo: row.invoice_status
-          })
+          }
+          if (row.state === 'cancel') writeBackPayload.numero_orden_fabricacion = null
+          await hubspotGateway.writeBack(mapping.sourceId, writeBackPayload)
           if (row.state === 'cancel') {
             await hubspotGateway.revertDealStage(mapping.sourceId)
           }
