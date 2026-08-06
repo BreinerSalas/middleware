@@ -144,6 +144,11 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       jobEnabled: String(env.SALE_ORDER_STATUS_SYNC_JOB_ENABLED || 'false').toLowerCase() === 'true',
       tickIntervalMs: Number(env.SALE_ORDER_STATUS_SYNC_TICK_INTERVAL_MS || 60000),
       orphanWatchdogMs: Number(env.SALE_ORDER_STATUS_SYNC_ORPHAN_WATCHDOG_MS || 30 * 60 * 1000)
+    },
+    manufacturingOrderRetrySync: {
+      jobEnabled: String(env.MANUFACTURING_ORDER_RETRY_SYNC_JOB_ENABLED || 'false').toLowerCase() === 'true',
+      tickIntervalMs: Number(env.MANUFACTURING_ORDER_RETRY_SYNC_TICK_INTERVAL_MS || 60000),
+      orphanWatchdogMs: Number(env.MANUFACTURING_ORDER_RETRY_SYNC_ORPHAN_WATCHDOG_MS || 30 * 60 * 1000)
     }
   }
 }
