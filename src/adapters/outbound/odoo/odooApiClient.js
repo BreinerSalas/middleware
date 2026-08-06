@@ -102,6 +102,9 @@ function createOdooApiClient({
       async confirmSalesOrder(_id) {
         return { confirmed: true }
       },
+      async reviveSalesOrderToDraft(_id) {
+        return { state: 'draft' }
+      },
       async findManufacturingOrderBySaleOrderName(_soName) {
         return null
       }
@@ -493,6 +496,10 @@ function createOdooApiClient({
     async confirmSalesOrder(id) {
       await executeKw('sale.order', 'action_confirm', [[Number(id)]], {})
       return { confirmed: true }
+    },
+    async reviveSalesOrderToDraft(id) {
+      await executeKw('sale.order', 'action_draft', [[Number(id)]], {})
+      return { state: 'draft' }
     },
     async findManufacturingOrderBySaleOrderName(soName) {
       const result = await executeKw('mrp.production', 'search_read',
