@@ -70,6 +70,8 @@ function createDealSyncModule({
     propertyQuoteOdooQuoteId: config.hubspot.propertyQuoteOdooQuoteId,
     propertyQuoteCountry: config.hubspot.propertyQuoteCountry,
     propertyManufacturingOrder: config.hubspot.propertyManufacturingOrder,
+    propertyQuoteState: config.hubspot.propertyQuoteState,
+    propertyQuoteInvoiceStatus: config.hubspot.propertyQuoteInvoiceStatus,
     quoteEligibleStatuses: config.hubspot.quoteEligibleStatuses,
     echoGuard,
     logger

@@ -93,7 +93,9 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       propertyQuoteCountry: env.HS_PROPERTY_QUOTE_COUNTRY || 'pais_de_destino',
       propertyQuoteOdooQuoteId: env.HS_PROPERTY_QUOTE_ODOO_QUOTE_ID || env.HS_PROPERTY_ODOO_QUOTE_ID || 'id_presupuesto_odoo',
       quoteEligibleStatuses: quoteEligibleStatuses.length > 0 ? quoteEligibleStatuses : ['APPROVAL_NOT_NEEDED', 'APPROVED'],
-      propertyManufacturingOrder: env.HS_PROPERTY_MANUFACTURING_ORDER || 'numero_orden_fabricacion'
+      propertyManufacturingOrder: env.HS_PROPERTY_MANUFACTURING_ORDER || 'numero_orden_fabricacion',
+      propertyQuoteState: env.HS_PROPERTY_QUOTE_STATE || 'estado_presupuesto_odoo',
+      propertyQuoteInvoiceStatus: env.HS_PROPERTY_QUOTE_INVOICE_STATUS || 'estado_facturacion_odoo'
     },
     odoo: {
       mode: (env.ODOO_CLIENT_MODE || 'stub').toLowerCase(),

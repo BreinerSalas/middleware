@@ -12,7 +12,9 @@ const QUOTE_PROPERTIES = [
   'hs_quote_amount',
   'pais_de_destino',
   'id_presupuesto_odoo',
-  'numero_orden_fabricacion'
+  'numero_orden_fabricacion',
+  'estado_presupuesto_odoo',
+  'estado_facturacion_odoo'
 ]
 
 function createAxiosHttpClient({ baseUrl, accessToken, timeoutMs = 10000 } = {}) {
