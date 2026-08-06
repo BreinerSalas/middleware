@@ -2,6 +2,22 @@
 
 const axios = require('axios')
 const { normalizeProductName } = require('./productNameKey')
+const { createRateLimiter } = require('../../../core/shared/rateLimiter')
+
+const WRITE_OPS = new Set(['create', 'write', 'unlink'])
+// Odoo delivers RPC errors inside an HTTP 200 body, so httpStatus/err.code from axios
+// never distinguish a transient failure from a real business error. Classify by the
+// Odoo-side exception name instead — matched against docs/plan-cambios-2026-08-05.md § Fase 2.
+const TRANSIENT_ERROR_NAME_RE = /SessionExpiredException|SerializationFailure|DeadlockDetected|TimeoutError|OperationalError/i
+const FATAL_ERROR_NAME_RE = /ValidationError|UserError|IntegrityError|AccessError/i
+
+function classifyOdooError(errorData) {
+  const name = errorData && errorData.name ? String(errorData.name) : ''
+  if (!name) return undefined
+  if (TRANSIENT_ERROR_NAME_RE.test(name)) return true
+  if (FATAL_ERROR_NAME_RE.test(name)) return false
+  return undefined
+}
 
 function createOdooApiClient({
   mode = 'stub',
@@ -10,9 +26,13 @@ function createOdooApiClient({
   login = '',
   apiKey = '',
   timeoutMs = 10000,
+  readTimeoutMs = 30000,
+  writeTimeoutMs = 10000,
   transport = null,
   operationCostsTtlMs = 600000,
-  now = () => Date.now()
+  now = () => Date.now(),
+  rateLimiter = null,
+  retry = {}
 } = {}) {
   const normalizedMode = String(mode || 'stub').toLowerCase()
   if (normalizedMode === 'stub') {
@@ -66,6 +86,12 @@ function createOdooApiClient({
       },
       async searchCountryIdsByCodes(_codes) {
         return {}
+      },
+      async readProductImage(_odooId) {
+        return null
+      },
+      async searchProductIdsWithImage() {
+        return []
       }
     }
   }
@@ -82,26 +108,29 @@ function createOdooApiClient({
   }
 
   const defaultTransport = {
-    async post(url, body) {
+    async post(url, body, opts = {}) {
       const res = await axios.post(url, body, {
         baseURL: baseUrl,
-        timeout: timeoutMs,
+        timeout: (opts && opts.timeoutMs) || timeoutMs,
         headers: { 'Content-Type': 'application/json' }
       })
       return { data: res.data, status: res.status }
     }
   }
   const t = transport || defaultTransport
+  const limiter = rateLimiter || createRateLimiter({ rps: 5, burst: 10 })
 
-  async function rpcCall(service, method, args) {
+  async function rpcCall(service, method, args, opts = {}) {
+    await limiter.take()
     const body = { jsonrpc: '2.0', method: 'call', params: { service, method, args }, id: Date.now() }
-    const res = await t.post('/jsonrpc', body)
+    const res = await t.post('/jsonrpc', body, opts)
     if (res.data && res.data.error) {
       const msg = (res.data.error.data && res.data.error.data.message) || res.data.error.message || 'Odoo RPC error'
       const e = new Error(msg)
       e.httpStatus = res.status
       e.code = res.data.error.code
       e.cause = res.data.error
+      e.transient = classifyOdooError(res.data.error.data)
       throw e
     }
     return res.data && res.data.result
@@ -111,21 +140,48 @@ function createOdooApiClient({
   function ensureUid() {
     if (!uidPromise) {
       uidPromise = (async () => {
-        const result = await rpcCall('common', 'authenticate', [db, login, apiKey, {}])
-        if (!result) {
-          const e = new Error(`Odoo authenticate failed for db=${db} login=${login}`)
-          e.code = 'ODOO_AUTH_FAILED'
-          throw e
+        try {
+          const result = await rpcCall('common', 'authenticate', [db, login, apiKey, {}], { timeoutMs: readTimeoutMs })
+          if (!result) {
+            const e = new Error(`Odoo authenticate failed for db=${db} login=${login}`)
+            e.code = 'ODOO_AUTH_FAILED'
+            throw e
+          }
+          return result
+        } catch (err) {
+          // Never cache a rejected auth attempt — a single transient failure would
+          // otherwise brick this client until the process restarts (see Fase 2).
+          uidPromise = null
+          throw err
         }
-        return result
       })()
     }
     return uidPromise
   }
 
-  async function executeKw(modelName, opName, opArgs, kwargs = {}) {
+  const _retryMaxRetries = Number.isFinite(retry.maxRetries) ? retry.maxRetries : 3
+  const _retryBaseMs = Number.isFinite(retry.baseMs) ? retry.baseMs : 500
+  const _retryMaxDelayMs = Number.isFinite(retry.maxDelayMs) ? retry.maxDelayMs : 5000
+  const _sleep = retry.sleepFn || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
+
+  async function executeKwOnce(modelName, opName, opArgs, kwargs) {
     const uid = await ensureUid()
-    return rpcCall('object', 'execute_kw', [db, uid, apiKey, modelName, opName, opArgs, kwargs])
+    const opTimeoutMs = WRITE_OPS.has(opName) ? writeTimeoutMs : readTimeoutMs
+    return rpcCall('object', 'execute_kw', [db, uid, apiKey, modelName, opName, opArgs, kwargs], { timeoutMs: opTimeoutMs })
+  }
+
+  async function executeKw(modelName, opName, opArgs, kwargs = {}) {
+    let attempt = 0
+    for (;;) {
+      try {
+        return await executeKwOnce(modelName, opName, opArgs, kwargs)
+      } catch (err) {
+        if (err.transient !== true || attempt >= _retryMaxRetries) throw err
+        attempt += 1
+        const delayMs = Math.min(_retryBaseMs * Math.pow(2, attempt - 1), _retryMaxDelayMs)
+        await _sleep(delayMs)
+      }
+    }
   }
 
   let ocPromise = null
@@ -391,6 +447,21 @@ function createOdooApiClient({
     async updateManufacturingOrder(targetId, payload) {
       const result = await executeKw('mrp.production', 'write', [[Number(targetId)], payload])
       return { id: String(targetId), ref: null, state: 'confirmed', raw: payload, rpcResult: result }
+    },
+    async readProductImage(odooId) {
+      const id = Number(odooId)
+      if (!Number.isFinite(id)) return null
+      const rows = await executeKw('product.product', 'read', [[id]], { fields: ['image_512', 'write_date'] })
+      const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : null
+      if (!row || !row.image_512) return null
+      return { base64: row.image_512, writeDate: row.write_date || null }
+    },
+    // product.product.image_1920/image_512 are computed, non-stored fields (falls back to the
+    // template's image when the variant has none) — a domain on them directly matches every
+    // record. Traverse the many2one to the template's stored image field instead.
+    async searchProductIdsWithImage() {
+      const result = await executeKw('product.product', 'search', [[['product_tmpl_id.image_1920', '!=', false]]], {})
+      return Array.isArray(result) ? result.map(Number) : []
     }
   }
 }
