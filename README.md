@@ -10,6 +10,11 @@ Incluye un panel de administración/depuración (HTML + JS plano, sin paso de bu
 
 ## Arquitectura
 
+> 📐 El mapa detallado y actualizado del código —capas, índice de archivos, los cuatro
+> flujos, modelo de datos, dónde tocar qué, y qué parte del motor es reutilizable como
+> toolkit— está en **[ARQUITECTURA.md](ARQUITECTURA.md)**. El diagrama de abajo es un
+> resumen histórico y no refleja los nombres de archivo actuales.
+
 ```
                          ┌─────────────────────────────────┐
    HubSpot Private App ─► │ POST /webhooks/hubspot          │
