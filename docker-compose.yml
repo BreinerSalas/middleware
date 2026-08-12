@@ -24,6 +24,10 @@ services:
     environment:
       NODE_ENV: production
       PORT: ${PORT:-3007}
+    # Permite que MONGODB_URI/ODOO_BASE_URL en .env usen host.docker.internal
+    # para llegar a servicios que corren en la máquina host (fuera de Docker).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${PORT:-3007}:3007"
     healthcheck:
