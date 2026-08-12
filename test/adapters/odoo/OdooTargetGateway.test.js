@@ -664,6 +664,59 @@ describe('OdooTargetGateway revive cancelled sale.order (Fase 6 — ping-pong ca
     })
     expect(api.reviveSalesOrderToDraft).not.toHaveBeenCalled()
   })
+
+  it('cancels orphaned manufacturing orders (by SO name) before reviving a cancelled SO', async () => {
+    const api = makeApi({
+      soSearch: [{ id: 17, name: 'S00017', state: 'cancel', countryExpenseId: 78 }],
+      productMap: { 'SKU-1': 17 }
+    })
+    api.reviveSalesOrderToDraft = vi.fn(async () => ({ state: 'draft' }))
+    api.cancelManufacturingOrdersBySaleOrderName = vi.fn(async () => ({ cancelledIds: [73, 74] }))
+    api.confirmSalesOrder = vi.fn(async () => ({ confirmed: true }))
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, autoConfirm: true })
+    await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    expect(api.cancelManufacturingOrdersBySaleOrderName).toHaveBeenCalledWith('S00017')
+    expect(api.cancelManufacturingOrdersBySaleOrderName.mock.invocationCallOrder[0])
+      .toBeLessThan(api.reviveSalesOrderToDraft.mock.invocationCallOrder[0])
+  })
+
+  it('does not cancel manufacturing orders when the existing SO is not cancelled', async () => {
+    const api = makeApi({
+      soSearch: [{ id: 17, name: 'S00017', state: 'sale', countryExpenseId: 78 }],
+      productMap: { 'SKU-1': 17 }
+    })
+    api.cancelManufacturingOrdersBySaleOrderName = vi.fn(async () => ({ cancelledIds: [] }))
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload })
+    await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    expect(api.cancelManufacturingOrdersBySaleOrderName).not.toHaveBeenCalled()
+  })
+
+  it('a failed manufacturing-order cancellation does not block reviving/updating the SO (soft failure, logged)', async () => {
+    const api = makeApi({
+      soSearch: [{ id: 17, name: 'S00017', state: 'cancel', countryExpenseId: 78 }],
+      productMap: { 'SKU-1': 17 }
+    })
+    api.reviveSalesOrderToDraft = vi.fn(async () => ({ state: 'draft' }))
+    api.cancelManufacturingOrdersBySaleOrderName = vi.fn(async () => { throw new Error('boom') })
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, logger })
+    const result = await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    expect(api.reviveSalesOrderToDraft).toHaveBeenCalledWith(17)
+    expect(result.targetId).toBe('17')
+    expect(logger.warn).toHaveBeenCalledWith(
+      'odoo.upsert.manufacturingOrder.cancel_orphans_failed',
+      expect.objectContaining({ salesOrderName: 'S00017', error: 'boom' })
+    )
+  })
 })
 
 describe('OdooTargetGateway country_expense resolution', () => {

@@ -743,7 +743,7 @@ describe('listOperationCosts memoization + TTL', () => {
       expect(await api.findManufacturingOrderBySaleOrderName('S00017')).toBeNull()
     })
 
-    it('http mode searches mrp.production by origin=soName and returns the first match', async () => {
+    it('http mode searches mrp.production by origin=soName, excludes cancelled MOs and returns the most recent match', async () => {
       const post = vi.fn()
         .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
         .mockResolvedValueOnce({ data: { result: [{ id: 88, name: 'WH/MO/00042' }] }, status: 200 })
@@ -754,7 +754,9 @@ describe('listOperationCosts memoization + TTL', () => {
       const r = await api.findManufacturingOrderBySaleOrderName('S00017')
       expect(r).toEqual({ id: 88, name: 'WH/MO/00042' })
       expect(post.mock.calls[1][1].params.args).toEqual([
-        'db', 2, 'k', 'mrp.production', 'search_read', [[['origin', '=', 'S00017']]], { fields: ['id', 'name'] }
+        'db', 2, 'k', 'mrp.production', 'search_read',
+        [[['origin', '=', 'S00017'], ['state', '!=', 'cancel']]],
+        { fields: ['id', 'name'], order: 'id desc', limit: 1 }
       ])
     })
 
@@ -767,6 +769,47 @@ describe('listOperationCosts memoization + TTL', () => {
         db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
       })
       expect(await api.findManufacturingOrderBySaleOrderName('S99999')).toBeNull()
+    })
+  })
+
+  describe('cancelManufacturingOrdersBySaleOrderName (bugfix — MOs huérfanas al revivir SO cancelada)', () => {
+    it('stub mode returns an empty cancelledIds list', async () => {
+      const api = createOdooApiClient({ mode: 'stub' })
+      expect(await api.cancelManufacturingOrdersBySaleOrderName('S06629')).toEqual({ cancelledIds: [] })
+    })
+
+    it('http mode finds open MOs by origin and cancels them via action_cancel', async () => {
+      const post = vi.fn()
+        .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+        .mockResolvedValueOnce({ data: { result: [{ id: 73 }, { id: 74 }] }, status: 200 })
+        .mockResolvedValueOnce({ data: { result: true }, status: 200 })
+      const api = createOdooApiClient({
+        mode: 'http', baseUrl: 'https://odoo.example.com',
+        db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+      })
+      const r = await api.cancelManufacturingOrdersBySaleOrderName('S06629')
+      expect(r).toEqual({ cancelledIds: [73, 74] })
+      expect(post.mock.calls[1][1].params.args).toEqual([
+        'db', 2, 'k', 'mrp.production', 'search_read',
+        [[['origin', '=', 'S06629'], ['state', 'not in', ['cancel', 'done']]]],
+        { fields: ['id'] }
+      ])
+      expect(post.mock.calls[2][1].params.args).toEqual([
+        'db', 2, 'k', 'mrp.production', 'action_cancel', [[73, 74]], {}
+      ])
+    })
+
+    it('http mode does not call action_cancel when there is nothing open to cancel', async () => {
+      const post = vi.fn()
+        .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+        .mockResolvedValueOnce({ data: { result: [] }, status: 200 })
+      const api = createOdooApiClient({
+        mode: 'http', baseUrl: 'https://odoo.example.com',
+        db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+      })
+      const r = await api.cancelManufacturingOrdersBySaleOrderName('S06629')
+      expect(r).toEqual({ cancelledIds: [] })
+      expect(post).toHaveBeenCalledTimes(2)
     })
   })
 
