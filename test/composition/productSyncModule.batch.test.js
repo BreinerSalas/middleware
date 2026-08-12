@@ -177,6 +177,49 @@ describe('productSyncModule - batch flow', () => {
     expect(out.filter((r) => r.failed).length).toBe(0)
   })
 
+  it('propagates gateway skipped {sourceId, reason} entries into results as skipped:true', async () => {
+    const odooSource = makeSource({ count: 2, listAll: async () => [p(1, 'A-1'), p(2, 'A-2')] })
+    const gateway = makeGateway({
+      batchUpsertBySkus: vi.fn(async () => ({
+        results: [{ id: 'B-1', properties: { hs_sku: 'A-1' }, new: true }],
+        errors: [],
+        skipped: [{ sourceId: 2, reason: 'duplicate_in_hubspot' }]
+      }))
+    })
+    const logger = makeLogger()
+    const m = createProductSyncModule({
+      config: {}, odooSource, hubspotGateway: gateway, logger
+    })
+    const out = await m.runOnce({})
+    const skippedEntry = out.find((r) => r.sourceId === 2)
+    expect(skippedEntry).toMatchObject({ sourceId: 2, sku: 'A-2', skipped: true, reason: 'duplicate_in_hubspot' })
+  })
+
+  it('does not double-count: a sourceId reported in batchSummary.skipped never also appears as assumed:"updated"', async () => {
+    const odooSource = makeSource({ count: 2, listAll: async () => [p(1, 'A-1'), p(2, 'A-2')] })
+    const gateway = makeGateway({
+      batchUpsertBySkus: vi.fn(async () => ({
+        // Neither item appears in results/errors — only in skipped (e.g. fallback classified
+        // the whole chunk's items). Without the fix, the "assumed updated" loop would ALSO
+        // push an entry for these same sourceIds.
+        results: [],
+        errors: [],
+        skipped: [
+          { sourceId: 1, reason: 'invalid_property_value' },
+          { sourceId: 2, reason: 'duplicate_in_hubspot' }
+        ]
+      }))
+    })
+    const logger = makeLogger()
+    const m = createProductSyncModule({
+      config: {}, odooSource, hubspotGateway: gateway, logger
+    })
+    const out = await m.runOnce({})
+    expect(out.filter((r) => r.assumed === 'updated')).toHaveLength(0)
+    expect(out.filter((r) => r.skipped)).toHaveLength(2)
+    expect(out).toHaveLength(2)
+  })
+
   it('chunkError from batch upsert is marked for the whole chunk', async () => {
     const odooSource = makeSource({ count: 2, listAll: async () => [p(1, 'A-1'), p(2, 'A-2')] })
     const gateway = makeGateway({
