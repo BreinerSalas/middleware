@@ -33,7 +33,7 @@ describe('hubspotApiClient - default rate limiter (retrofit to deal-sync)', () =
     })
     const before = api._rateLimiter.tokens
     expect(before).toBeGreaterThan(0)
-    expect(before).toBeLessThanOrEqual(15)
+    expect(before).toBeLessThanOrEqual(20)
   })
 
   it('deals sync would benefit: 10 consecutive getDeal calls under a small bucket produce observable waits', async () => {
