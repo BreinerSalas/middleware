@@ -107,6 +107,9 @@ function createOdooApiClient({
       },
       async findManufacturingOrderBySaleOrderName(_soName) {
         return null
+      },
+      async cancelManufacturingOrdersBySaleOrderName(_soName) {
+        return { cancelledIds: [] }
       }
     }
   }
@@ -503,10 +506,22 @@ function createOdooApiClient({
     },
     async findManufacturingOrderBySaleOrderName(soName) {
       const result = await executeKw('mrp.production', 'search_read',
-        [[['origin', '=', String(soName)]]],
-        { fields: ['id', 'name'] })
+        [[['origin', '=', String(soName)], ['state', '!=', 'cancel']]],
+        { fields: ['id', 'name'], order: 'id desc', limit: 1 })
       const row = Array.isArray(result) && result.length > 0 ? result[0] : null
       return row ? { id: Number(row.id), name: row.name || null } : null
+    },
+    // Cancela las MOs huérfanas que Odoo genera al reconfirmar una SO revivida desde
+    // 'cancel': ni action_draft ni el confirm posterior tocan la MO vieja, así que sin
+    // esto se acumula una MO en borrador por cada ciclo cancelar/revivir/reconfirmar.
+    async cancelManufacturingOrdersBySaleOrderName(soName) {
+      const result = await executeKw('mrp.production', 'search_read',
+        [[['origin', '=', String(soName)], ['state', 'not in', ['cancel', 'done']]]],
+        { fields: ['id'] })
+      const ids = Array.isArray(result) ? result.map((row) => Number(row.id)) : []
+      if (ids.length === 0) return { cancelledIds: [] }
+      await executeKw('mrp.production', 'action_cancel', [ids], {})
+      return { cancelledIds: ids }
     }
   }
 }

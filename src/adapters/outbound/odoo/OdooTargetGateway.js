@@ -281,6 +281,16 @@ class OdooTargetGateway {
     }
   }
 
+  async cancelOrphanManufacturingOrders(salesOrderName, correlationId) {
+    try {
+      await this.apiClient.cancelManufacturingOrdersBySaleOrderName(salesOrderName)
+    } catch (err) {
+      if (this.logger) {
+        this.logger.warn('odoo.upsert.manufacturingOrder.cancel_orphans_failed', { salesOrderName, error: err.message, correlationId })
+      }
+    }
+  }
+
   async findManufacturingOrder(salesOrderName, correlationId) {
     try {
       const mo = await this.apiClient.findManufacturingOrderBySaleOrderName(salesOrderName)
@@ -438,6 +448,7 @@ class OdooTargetGateway {
     if (existing) {
       let state = existing.state || null
       if (state === 'cancel') {
+        await this.cancelOrphanManufacturingOrders(existing.name, correlationId)
         await this.apiClient.reviveSalesOrderToDraft(existing.id)
         if (this.logger) this.logger.info('odoo.upsert.salesOrder.revived', { salesOrderId: existing.id, correlationId })
         state = 'draft'
