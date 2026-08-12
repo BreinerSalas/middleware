@@ -277,6 +277,60 @@ function createHubspotApiClient({
     } catch (err) { throw normalizeHubspotError(err) }
   }
 
+  async function searchContactByProperty(propertyName, value) {
+    if (value == null || String(value).length === 0) return null
+    let data
+    try {
+      data = await requestWithRateLimit('post', '/crm/v3/objects/contacts/search', {
+        filterGroups: [{ filters: [{ propertyName, operator: 'EQ', value: String(value) }] }],
+        properties: [propertyName, 'firstname', 'lastname', 'email'],
+        limit: 1
+      })
+    } catch (err) { throw normalizeHubspotError(err) }
+    const items = (data && data.results) || []
+    return items[0] || null
+  }
+
+  async function createContact(properties) {
+    try {
+      return await requestWithRateLimit('post', '/crm/v3/objects/contacts', { properties })
+    } catch (err) { throw normalizeHubspotError(err) }
+  }
+
+  async function updateContact(contactId, properties) {
+    try {
+      return await requestWithRateLimit('patch', `/crm/v3/objects/contacts/${contactId}`, { properties })
+    } catch (err) { throw normalizeHubspotError(err) }
+  }
+
+  async function batchUpsertContacts({ inputs = [], idProperty = 'id_contacto_odoo' } = {}) {
+    const taggedInputs = inputs.map((it) => ({ ...it, idProperty: it.idProperty || idProperty }))
+    let data
+    try {
+      data = await requestWithRateLimit('post', '/crm/v3/objects/contacts/batch/upsert', {
+        inputs: taggedInputs
+      })
+    } catch (err) { throw normalizeHubspotError(err) }
+    const rawResults = (data && data.results) || []
+    const results = []
+    const errors = []
+    for (const item of rawResults) {
+      if (item && item.status === 'error') {
+        const ctx = item.context || {}
+        const idFromCtx = (ctx.id && Array.isArray(ctx.id) && ctx.id[0]) || ctx.input || null
+        errors.push({
+          id: idFromCtx,
+          message: item.message || (item.errors && item.errors[0] && item.errors[0].message) || 'unknown',
+          category: item.category || null,
+          raw: item
+        })
+      } else if (item && item.id) {
+        results.push(item)
+      }
+    }
+    return { results, errors, numErrors: typeof data.numErrors === 'number' ? data.numErrors : errors.length }
+  }
+
   async function ensureCustomProperty(objectType, name, body) {
     try {
       await getCustomProperty(objectType, name)
@@ -296,6 +350,7 @@ function createHubspotApiClient({
     searchProductByHsSku, createProduct, updateProduct,
     batchUpsertProducts,
     searchProducts,
+    searchContactByProperty, createContact, updateContact, batchUpsertContacts,
     getCustomProperty, createCustomProperty, updateCustomProperty, ensureCustomProperty,
     _http: http,
     _rateLimiter: rl
