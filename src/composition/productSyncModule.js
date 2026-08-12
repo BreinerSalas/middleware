@@ -70,8 +70,8 @@ function createProductSyncModule({
       log('error', 'product-sync.chunk.failed', { items: odooProducts.length, error: err.message })
       return results
     }
-    const sentMap = new Map()
-    for (const p of odooProducts) sentMap.set(this ? null : null, p)
+    const idToProduct = new Map()
+    for (const p of odooProducts) idToProduct.set(String(p.id), p)
     const skuToOdooIds = new Map()
     for (const p of odooProducts) {
       const sku = String(p.default_code || '').trim()
@@ -80,6 +80,7 @@ function createProductSyncModule({
       skuToOdooIds.get(sku).push(p.id)
     }
     const seenInBatch = new Set()
+    const seenSourceIds = new Set()
     for (const item of batchSummary.results || []) {
       const sku = item.properties && item.properties.hs_sku
       if (sku) seenInBatch.add(sku)
@@ -94,22 +95,46 @@ function createProductSyncModule({
           action: isNew ? 'created' : 'updated',
           hubspotId: item.id
         })
+        seenSourceIds.add(String(odooIds[0]))
       }
       for (let i = 1; i < odooIds.length; i += 1) {
         results.push({ sourceId: odooIds[i], sku, skipped: true, reason: 'duplicate_sku_in_odoo' })
+        seenSourceIds.add(String(odooIds[i]))
       }
     }
     for (const errItem of batchSummary.errors || []) {
       log('error', 'product-sync.item.failed', { sku: errItem.id, error: errItem.message, category: errItem.category })
       const odooIds = skuToOdooIds.get(errItem.id) || []
-      for (const oid of odooIds) results.push({ sourceId: oid, sku: errItem.id, failed: true, error: errItem.message })
+      for (const oid of odooIds) {
+        results.push({ sourceId: oid, sku: errItem.id, failed: true, error: errItem.message })
+        seenSourceIds.add(String(oid))
+      }
+    }
+    // Consume the gateway's richer skipped list ({sourceId, reason}, e.g. a duplicate-in-HubSpot
+    // conflict or an invalid property value isolated during a per-chunk fallback) BEFORE the
+    // "assumed updated" loop below, and mark those sourceIds as seen — otherwise the assumed
+    // loop would ALSO emit a conflicting entry for the very same sourceId (double counting).
+    for (const entry of batchSummary.skipped || []) {
+      if (entry == null) continue
+      const sourceId = typeof entry === 'object' ? entry.sourceId : entry
+      const reason = typeof entry === 'object' ? entry.reason : 'unknown'
+      if (sourceId == null) continue
+      if (seenSourceIds.has(String(sourceId))) continue
+      seenSourceIds.add(String(sourceId))
+      const product = idToProduct.get(String(sourceId))
+      results.push({ sourceId, sku: product ? product.default_code : undefined, skipped: true, reason })
     }
     for (const [sku, odooIds] of skuToOdooIds.entries()) {
       if (seenInBatch.has(sku)) continue
       if ((batchSummary.errors || []).some((e) => e.id === sku)) continue
-      const skipped = odooIds.length > 1 ? odooIds.slice(1) : []
-      results.push({ sourceId: odooIds[0], sku, assumed: 'updated' })
-      for (const oid of skipped) results.push({ sourceId: oid, sku, skipped: true, reason: 'duplicate_sku_in_odoo' })
+      const [first, ...rest] = odooIds
+      if (!seenSourceIds.has(String(first))) {
+        results.push({ sourceId: first, sku, assumed: 'updated' })
+      }
+      for (const oid of rest) {
+        if (seenSourceIds.has(String(oid))) continue
+        results.push({ sourceId: oid, sku, skipped: true, reason: 'duplicate_sku_in_odoo' })
+      }
     }
     log('info', 'product-sync.batch.summary', {
       chunks: Math.ceil(odooProducts.length / chunkSize),
