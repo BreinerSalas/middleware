@@ -14,6 +14,7 @@ const { createOdooApiClient } = require('./adapters/outbound/odoo/odooApiClient'
 const { OdooProductSource } = require('./adapters/outbound/odoo/OdooProductSource')
 const { HubspotProductGateway } = require('./adapters/outbound/hubspot/HubspotProductGateway')
 const { createProductSyncModule } = require('./composition/productSyncModule')
+const { buildProductImageUrlBuilder } = require('./composition/productImageUrlBuilder')
 const { createProductSyncJobModule } = require('./composition/productSyncJobModule')
 const { MongoJobRepository } = require('./adapters/outbound/mongo/MongoJobRepository')
 const { MongoProductMappingRepository } = require('./adapters/outbound/mongo/MongoProductMappingRepository')
@@ -63,10 +64,11 @@ async function start({ config = null } = {}) {
       mode: cfg.odoo.mode, baseUrl: cfg.odoo.baseUrl, db: cfg.odoo.db, login: cfg.odoo.login, apiKey: cfg.odoo.apiKey
     })
     const productHubspotApi = createHubspotApiClient({ baseUrl: cfg.hubspot.apiBase, accessToken: cfg.hubspot.accessToken })
+    const productImageUrlBuilder = buildProductImageUrlBuilder(cfg.media)
     const productSyncModule = createProductSyncModule({
       config: cfg,
       odooSource: new OdooProductSource({ apiClient: odooApi, logger }),
-      hubspotGateway: new HubspotProductGateway({ apiClient: productHubspotApi, logger }),
+      hubspotGateway: new HubspotProductGateway({ apiClient: productHubspotApi, logger, imageUrlBuilder: productImageUrlBuilder }),
       mappingRepo: new MongoProductMappingRepository({ logger }),
       runRepo: new MongoProductSyncRunRepository({ logger }),
       cursorRepo: new MongoSyncCursorRepository(),
@@ -176,7 +178,15 @@ async function start({ config = null } = {}) {
   process.on('SIGINT', () => shutdown('SIGINT'))
   process.on('SIGTERM', () => shutdown('SIGTERM'))
 
-  return { app, logger, config: cfg, dealSyncModule, productSyncJobModule, saleOrderStatusSyncJobModule, manufacturingOrderRetrySyncJobModule }
+  return {
+    app,
+    logger,
+    config: cfg,
+    dealSyncModule,
+    productSyncJobModule,
+    saleOrderStatusSyncJobModule,
+    manufacturingOrderRetrySyncJobModule
+  }
 }
 
 if (require.main === module) {
