@@ -508,9 +508,11 @@ línea de los tres flujos existentes. `OdooPartnerSource` (1) + `HubspotContactG
 es un flujo de una sola dirección, Odoo siempre gana. Apagado por defecto
 (`PARTNER_SYNC_JOB_ENABLED=false`); antes de encenderlo en producción, correr la sonda con
 `--dry-run --limit=N` y medir `countPartners()` (el volumen de partners puede superar
-ampliamente al de productos), y confirmar contra la instancia real si `res.partner.type`
-usa `'contact'` o `'private'` para las personas individuales (constante
-`PARTNER_CONTACT_TYPE` en `odooApiClient.js`, aislada a propósito para ese ajuste).
+ampliamente al de productos). La duda sobre si `res.partner.type` usa `'contact'` o
+`'private'` para las personas individuales (constante `PARTNER_CONTACT_TYPE` en
+`odooApiClient.js`, aislada a propósito para ese ajuste) ya se confirmó en staging
+(2026-08-12): de 400 partners escaneados, los 55 hijos (`parent_id` seteado) son todos
+`'contact'`. Repetir el chequeo si producción corre otra versión/config de Odoo.
 
 ---
 

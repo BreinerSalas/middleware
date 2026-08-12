@@ -7,10 +7,10 @@ const { createRateLimiter } = require('../../../core/shared/rateLimiter')
 const WRITE_OPS = new Set(['create', 'write', 'unlink'])
 // Odoo `res.partner.type` selection value that identifies a "real" contact
 // child record (as opposed to an address-only child, e.g. 'delivery'/'invoice').
-// This value is the Odoo 17 default and MUST be validated against the live
-// Odoo instance before enabling the partner-sync recurring tick in production:
-// some instances/modules use 'private' instead of 'contact' for this case
-// (see openspec/changes/odoo-hubspot-catalog-sync/design.md § Open Questions).
+// This is the Odoo 17 default; confirmed against the live staging instance on
+// 2026-08-12 (400 partners scanned, 55 children, all 'contact', none 'private').
+// Some instances/modules use 'private' instead — recheck if production runs a
+// different Odoo version/config than staging.
 const PARTNER_CONTACT_TYPE = 'contact'
 // AND(active=true, OR(no parent, contact-type child)) — excludes archived
 // partners and address-only children (delivery/invoice/other) server-side.

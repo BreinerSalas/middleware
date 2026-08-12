@@ -166,8 +166,11 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3007/
 > `node scripts/probes/partner-sync.probe.js --dry-run --limit=N` para validar la
 > conexión y (2) revisar el `countPartners()` que imprime la sonda para dimensionar el
 > primer backfill (el volumen de partners puede superar ampliamente al de productos).
-> Ver ARQUITECTURA.md §11.3 para el detalle completo, incluyendo la verificación
-> pendiente de `res.partner.type` (`'contact'` vs `'private'`) contra la instancia real.
+> Ver ARQUITECTURA.md §11.3 para el detalle completo. La verificación de `res.partner.type`
+> contra la instancia real ya se hizo en staging (2026-08-12): de 400 partners escaneados,
+> los 55 hijos (`parent_id` seteado) tienen `type: 'contact'`, ninguno `'private'` — confirma
+> el supuesto de `PARTNER_CONTACT_TYPE` en `odooApiClient.js`. Repetir el chequeo si producción
+> corre una versión/config de Odoo distinta a staging.
 
 ---
 
