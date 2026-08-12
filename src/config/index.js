@@ -43,7 +43,12 @@ const OPTIONAL_KEYS = [
   'PRODUCT_SYNC_JOB_ENABLED',
   'PRODUCT_SYNC_TICK_INTERVAL_MS',
   'PRODUCT_SYNC_ORPHAN_WATCHDOG_MS',
-  'PRODUCT_SYNC_INCLUDE_NO_SKU'
+  'PRODUCT_SYNC_INCLUDE_NO_SKU',
+  'PARTNER_SYNC_JOB_ENABLED',
+  'PARTNER_SYNC_TICK_INTERVAL_MS',
+  'PARTNER_SYNC_ORPHAN_WATCHDOG_MS',
+  'PARTNER_SYNC_PAGE_SIZE',
+  'HS_PROPERTY_ODOO_PARTNER_ID'
 ]
 
 const {
@@ -95,7 +100,8 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       quoteEligibleStatuses: quoteEligibleStatuses.length > 0 ? quoteEligibleStatuses : ['APPROVAL_NOT_NEEDED', 'APPROVED'],
       propertyManufacturingOrder: env.HS_PROPERTY_MANUFACTURING_ORDER || 'numero_orden_fabricacion',
       propertyQuoteState: env.HS_PROPERTY_QUOTE_STATE || 'estado_presupuesto_odoo',
-      propertyQuoteInvoiceStatus: env.HS_PROPERTY_QUOTE_INVOICE_STATUS || 'estado_facturacion_odoo'
+      propertyQuoteInvoiceStatus: env.HS_PROPERTY_QUOTE_INVOICE_STATUS || 'estado_facturacion_odoo',
+      propertyOdooPartnerId: env.HS_PROPERTY_ODOO_PARTNER_ID || 'id_contacto_odoo_v2'
     },
     odoo: {
       mode: (env.ODOO_CLIENT_MODE || 'stub').toLowerCase(),
@@ -149,6 +155,12 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       jobEnabled: String(env.MANUFACTURING_ORDER_RETRY_SYNC_JOB_ENABLED || 'false').toLowerCase() === 'true',
       tickIntervalMs: Number(env.MANUFACTURING_ORDER_RETRY_SYNC_TICK_INTERVAL_MS || 60000),
       orphanWatchdogMs: Number(env.MANUFACTURING_ORDER_RETRY_SYNC_ORPHAN_WATCHDOG_MS || 30 * 60 * 1000)
+    },
+    partnerSync: {
+      jobEnabled: String(env.PARTNER_SYNC_JOB_ENABLED || 'false').toLowerCase() === 'true',
+      tickIntervalMs: Number(env.PARTNER_SYNC_TICK_INTERVAL_MS || 60000),
+      orphanWatchdogMs: Number(env.PARTNER_SYNC_ORPHAN_WATCHDOG_MS || 30 * 60 * 1000),
+      pageSize: Number(env.PARTNER_SYNC_PAGE_SIZE || 100)
     }
   }
 }
