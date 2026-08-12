@@ -10,6 +10,7 @@ const { createHubspotApiClient } = require('./adapters/outbound/hubspot/hubspotA
 const { provisionProperties } = require('./composition/provisionProperties')
 const { buildDealPropertyDefinitions } = require('./composition/dealPropertyDefinitions')
 const { buildQuotePropertyDefinitions } = require('./composition/quotePropertyDefinitions')
+const { buildContactPropertyDefinitions } = require('./composition/contactPropertyDefinitions')
 const { createOdooApiClient } = require('./adapters/outbound/odoo/odooApiClient')
 const { OdooProductSource } = require('./adapters/outbound/odoo/OdooProductSource')
 const { HubspotProductGateway } = require('./adapters/outbound/hubspot/HubspotProductGateway')
@@ -29,6 +30,12 @@ const { createEchoGuard } = require('./core/shared/echoGuard')
 const { DEAL_STAGE_CLOSED_WON_ID } = require('./config/constants')
 const { createManufacturingOrderRetrySyncModule } = require('./composition/manufacturingOrderRetrySyncModule')
 const { createManufacturingOrderRetrySyncJobModule } = require('./composition/manufacturingOrderRetrySyncJobModule')
+const { OdooPartnerSource } = require('./adapters/outbound/odoo/OdooPartnerSource')
+const { HubspotContactGateway } = require('./adapters/outbound/hubspot/HubspotContactGateway')
+const { createPartnerSyncModule } = require('./composition/partnerSyncModule')
+const { createPartnerSyncJobModule } = require('./composition/partnerSyncJobModule')
+const { MongoPartnerMappingRepository } = require('./adapters/outbound/mongo/MongoPartnerMappingRepository')
+const { MongoPartnerSyncRunRepository } = require('./adapters/outbound/mongo/MongoPartnerSyncRunRepository')
 
 async function start({ config = null } = {}) {
   const cfg = config || load()
@@ -42,12 +49,14 @@ async function start({ config = null } = {}) {
   })
   const dealPropertiesToProvision = buildDealPropertyDefinitions(cfg.hubspot)
   const quotePropertiesToProvision = buildQuotePropertyDefinitions(cfg.hubspot)
+  const contactPropertiesToProvision = buildContactPropertyDefinitions(cfg.hubspot)
   try {
-    const [dealSummary, quoteSummary] = await Promise.all([
+    const [dealSummary, quoteSummary, contactSummary] = await Promise.all([
       provisionProperties({ api: hubspotApi, objectType: 'deals', properties: dealPropertiesToProvision, logger }),
-      provisionProperties({ api: hubspotApi, objectType: 'quotes', properties: quotePropertiesToProvision, logger })
+      provisionProperties({ api: hubspotApi, objectType: 'quotes', properties: quotePropertiesToProvision, logger }),
+      provisionProperties({ api: hubspotApi, objectType: 'contacts', properties: contactPropertiesToProvision, logger })
     ])
-    const combined = [...dealSummary, ...quoteSummary]
+    const combined = [...dealSummary, ...quoteSummary, ...contactSummary]
     logger.info('hubspot.provision.summary', {
       total: combined.length,
       created: combined.filter((s) => s.status === 'created').length,
@@ -155,6 +164,34 @@ async function start({ config = null } = {}) {
     })
   }
 
+  let partnerSyncJobModule = null
+  if (cfg.partnerSync && cfg.partnerSync.jobEnabled) {
+    const partnerOdooApi = createOdooApiClient({
+      mode: cfg.odoo.mode, baseUrl: cfg.odoo.baseUrl, db: cfg.odoo.db, login: cfg.odoo.login, apiKey: cfg.odoo.apiKey
+    })
+    const partnerHubspotApi = createHubspotApiClient({ baseUrl: cfg.hubspot.apiBase, accessToken: cfg.hubspot.accessToken })
+    const partnerSyncModule = createPartnerSyncModule({
+      config: cfg,
+      odooSource: new OdooPartnerSource({ apiClient: partnerOdooApi, logger, pageSize: cfg.partnerSync.pageSize }),
+      hubspotGateway: new HubspotContactGateway({
+        apiClient: partnerHubspotApi, logger, idProperty: cfg.hubspot.propertyOdooPartnerId
+      }),
+      mappingRepo: new MongoPartnerMappingRepository({ logger }),
+      runRepo: new MongoPartnerSyncRunRepository({ logger }),
+      cursorRepo: new MongoSyncCursorRepository(),
+      logger,
+      concurrency: 10
+    })
+    partnerSyncJobModule = createPartnerSyncJobModule({
+      config: cfg,
+      logger,
+      jobRepository: new MongoJobRepository({ logger }),
+      partnerSyncModule,
+      tickIntervalMs: cfg.partnerSync.tickIntervalMs,
+      orphanWatchdogMs: cfg.partnerSync.orphanWatchdogMs
+    })
+  }
+
   const staticRoot = path.resolve(__dirname, 'panel')
   const app = createApp({ config: cfg, logger, dealSyncModule, staticRoot })
 
@@ -162,6 +199,7 @@ async function start({ config = null } = {}) {
   if (productSyncJobModule) await productSyncJobModule.startWorker()
   if (saleOrderStatusSyncJobModule) await saleOrderStatusSyncJobModule.startWorker()
   if (manufacturingOrderRetrySyncJobModule) await manufacturingOrderRetrySyncJobModule.startWorker()
+  if (partnerSyncJobModule) await partnerSyncJobModule.startWorker()
   await app.listen({ port: cfg.server.port, host: '0.0.0.0' })
   logger.info('server.started', { port: cfg.server.port })
 
@@ -172,6 +210,7 @@ async function start({ config = null } = {}) {
     if (productSyncJobModule) { try { await productSyncJobModule.stopWorker() } catch (_) { /* noop */ } }
     if (saleOrderStatusSyncJobModule) { try { await saleOrderStatusSyncJobModule.stopWorker() } catch (_) { /* noop */ } }
     if (manufacturingOrderRetrySyncJobModule) { try { await manufacturingOrderRetrySyncJobModule.stopWorker() } catch (_) { /* noop */ } }
+    if (partnerSyncJobModule) { try { await partnerSyncJobModule.stopWorker() } catch (_) { /* noop */ } }
     try { await disconnectMongo({ logger }) } catch (_) { /* noop */ }
     process.exit(0)
   }
@@ -185,7 +224,8 @@ async function start({ config = null } = {}) {
     dealSyncModule,
     productSyncJobModule,
     saleOrderStatusSyncJobModule,
-    manufacturingOrderRetrySyncJobModule
+    manufacturingOrderRetrySyncJobModule,
+    partnerSyncJobModule
   }
 }
 
