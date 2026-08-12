@@ -153,8 +153,21 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3007/
 | `RETRY_MAX_DELAY_MS`                  | `300000`                             | Techo del backoff exponencial (5 min).                                     |
 | `PANEL_TOKEN`                         | _(vacío)_                            | Token de acceso al panel. **Si está vacío en `production` → 503**         |
 | `PANEL_TOKEN_HEADER_NAME`             | `x-panel-token`                      | Nombre del header esperado para el token del panel.                        |
+| `PARTNER_SYNC_JOB_ENABLED`            | `false`                              | Enciende el tick de `partner-sync` (Odoo `res.partner` → HubSpot Contact). **Apagado por defecto**; ver checklist de rollout abajo antes de activarlo. |
+| `PARTNER_SYNC_TICK_INTERVAL_MS`       | `60000`                              | Intervalo entre corridas incrementales del flujo `partner-sync`.           |
+| `PARTNER_SYNC_ORPHAN_WATCHDOG_MS`     | `1800000`                            | Watchdog de jobs huérfanos propio del flujo `partner-sync`.                |
+| `PARTNER_SYNC_PAGE_SIZE`              | `100`                                | Tamaño de página al paginar `res.partner` desde Odoo.                      |
+| `HS_PROPERTY_ODOO_PARTNER_ID`         | `id_contacto_odoo_v2`                | Propiedad custom del Contact que guarda el `res.partner.id` de Odoo (clave de idempotencia del flujo `partner-sync`, auto-provisionada al boot). El nombre `id_contacto_odoo` (sin sufijo) quedó bloqueado permanentemente por HubSpot en el portal de staging tras un intento fallido de provisioning sin `hasUniqueValue`; HubSpot no permite reusar un nombre de property que alguna vez existió como no-única, ni siquiera borrada. |
 
 > **Importante**: el archivo `.env` está en `.gitignore`. No commitear secretos.
+
+> **Rollout de `partner-sync`**: flujo nuevo, apagado por defecto. Antes de poner
+> `PARTNER_SYNC_JOB_ENABLED=true` en producción: (1) correr
+> `node scripts/probes/partner-sync.probe.js --dry-run --limit=N` para validar la
+> conexión y (2) revisar el `countPartners()` que imprime la sonda para dimensionar el
+> primer backfill (el volumen de partners puede superar ampliamente al de productos).
+> Ver ARQUITECTURA.md §11.3 para el detalle completo, incluyendo la verificación
+> pendiente de `res.partner.type` (`'contact'` vs `'private'`) contra la instancia real.
 
 ---
 

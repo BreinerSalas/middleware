@@ -499,6 +499,19 @@ escribir:
 9. **Sondas de readiness** en `scripts/probes/` antes de apuntar a producción.
 10. **Config** centralizada en `config/index.js`, sin `process.env` fuera de ahí.
 
+**Caso de referencia — `partner-sync` (Odoo `res.partner` → HubSpot Contact):** cuarto
+flujo de tick, construido siguiendo este checklist punto por punto sin tocar una sola
+línea de los tres flujos existentes. `OdooPartnerSource` (1) + `HubspotContactGateway`
+(3) + `partnerToContactMapper` puro (4) + `contactPropertyDefinitions` (6) +
+`partnerSyncModule`/`partnerSyncJobModule` (7-8) + `scripts/probes/partner-sync.probe.js`
+(9) + bloque `partnerSync` en `config/index.js` (10). Sin `SourceGateway`/`writeBack` (2):
+es un flujo de una sola dirección, Odoo siempre gana. Apagado por defecto
+(`PARTNER_SYNC_JOB_ENABLED=false`); antes de encenderlo en producción, correr la sonda con
+`--dry-run --limit=N` y medir `countPartners()` (el volumen de partners puede superar
+ampliamente al de productos), y confirmar contra la instancia real si `res.partner.type`
+usa `'contact'` o `'private'` para las personas individuales (constante
+`PARTNER_CONTACT_TYPE` en `odooApiClient.js`, aislada a propósito para ese ajuste).
+
 ---
 
 ## 12. Trampas conocidas
