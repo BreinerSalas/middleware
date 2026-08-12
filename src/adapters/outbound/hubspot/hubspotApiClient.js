@@ -52,7 +52,10 @@ function createHubspotApiClient({
 } = {}) {
   if (!accessToken) throw new Error('createHubspotApiClient requires accessToken')
   const http = httpClient || createAxiosHttpClient({ baseUrl, accessToken, timeoutMs })
-  const rl = rateLimiter === undefined ? createRateLimiter({ rps: 9, burst: 15 }) : rateLimiter
+  // Observed real per-token limits for this app (X-HubSpot-RateLimit-* headers, 2026-08-10):
+  // secondly=19, max=190 per 10s interval. Set below that ceiling to leave headroom for
+  // other concurrent flows (deal webhook, quotes) sharing the same token.
+  const rl = rateLimiter === undefined ? createRateLimiter({ rps: 15, burst: 20 }) : rateLimiter
 
   async function requestWithRateLimit(verb, url, opts = {}) {
     let attempt = 0
