@@ -5,6 +5,18 @@ const { normalizeProductName } = require('./productNameKey')
 const { createRateLimiter } = require('../../../core/shared/rateLimiter')
 
 const WRITE_OPS = new Set(['create', 'write', 'unlink'])
+// Odoo `res.partner.type` selection value that identifies a "real" contact
+// child record (as opposed to an address-only child, e.g. 'delivery'/'invoice').
+// This value is the Odoo 17 default and MUST be validated against the live
+// Odoo instance before enabling the partner-sync recurring tick in production:
+// some instances/modules use 'private' instead of 'contact' for this case
+// (see openspec/changes/odoo-hubspot-catalog-sync/design.md § Open Questions).
+const PARTNER_CONTACT_TYPE = 'contact'
+// AND(active=true, OR(no parent, contact-type child)) — excludes archived
+// partners and address-only children (delivery/invoice/other) server-side.
+const PARTNER_DOMAIN = [['active', '=', true], '|', ['parent_id', '=', false], ['type', '=', PARTNER_CONTACT_TYPE]]
+const PARTNER_FIELDS = ['id', 'name', 'email', 'phone', 'mobile', 'street', 'city', 'zip',
+  'country_id', 'parent_id', 'is_company', 'function', 'type', 'write_date', 'active']
 // Odoo delivers RPC errors inside an HTTP 200 body, so httpStatus/err.code from axios
 // never distinguish a transient failure from a real business error. Classify by the
 // Odoo-side exception name instead — matched against docs/plan-cambios-2026-08-05.md § Fase 2.
@@ -110,6 +122,15 @@ function createOdooApiClient({
       },
       async cancelManufacturingOrdersBySaleOrderName(_soName) {
         return { cancelledIds: [] }
+      },
+      async countPartners() {
+        return 0
+      },
+      async searchPartnersAll({ offset = 0, limit = 100 } = {}) {
+        return []
+      },
+      async searchPartnersChangedSince({ writeDateGte, offset = 0, limit = 100 } = {}) {
+        return []
       }
     }
   }
@@ -522,6 +543,20 @@ function createOdooApiClient({
       if (ids.length === 0) return { cancelledIds: [] }
       await executeKw('mrp.production', 'action_cancel', [ids], {})
       return { cancelledIds: ids }
+    },
+    async countPartners() {
+      return executeKw('res.partner', 'search_count', [PARTNER_DOMAIN], {})
+    },
+    async searchPartnersAll({ offset = 0, limit = 100 } = {}) {
+      return executeKw('res.partner', 'search_read',
+        [PARTNER_DOMAIN],
+        { fields: PARTNER_FIELDS, offset, limit })
+    },
+    async searchPartnersChangedSince({ writeDateGte, offset = 0, limit = 100 } = {}) {
+      const domain = [...PARTNER_DOMAIN, ['write_date', '>', writeDateGte]]
+      return executeKw('res.partner', 'search_read',
+        [domain],
+        { fields: PARTNER_FIELDS, offset, limit })
     }
   }
 }
