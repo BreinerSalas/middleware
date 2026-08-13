@@ -22,7 +22,7 @@ const {
   createMustBeInPipeline,
   createMustHaveQuoteCountry
 } = require('./validators')
-const { JOB_KIND, DEAL_STAGE_CLOSED_WON_ID } = require('../config/constants')
+const { JOB_KIND } = require('../config/constants')
 
 function buildWriteBackPayload(mapping) {
   const payload = {
@@ -59,6 +59,8 @@ function createDealSyncModule({
   const _dedupeGuard = dedupeGuard || new MongoDedupeGuard()
   const _auditTrail = auditTrail || new MongoAuditTrail()
 
+  const _defaultDealsConfig = (config && config.deals && typeof config.deals === 'object') ? config.deals : {}
+
   const _sourceGateway = sourceGateway || new HubspotSourceGateway({
     apiClient: require('../adapters/outbound/hubspot/hubspotApiClient').createHubspotApiClient({
       baseUrl: config.hubspot.apiBase,
@@ -72,7 +74,7 @@ function createDealSyncModule({
     propertyManufacturingOrder: config.hubspot.propertyManufacturingOrder,
     propertyQuoteState: config.hubspot.propertyQuoteState,
     propertyQuoteInvoiceStatus: config.hubspot.propertyQuoteInvoiceStatus,
-    closedWonStageId: DEAL_STAGE_CLOSED_WON_ID,
+    closedWonStageId: _defaultDealsConfig.closedWonStageId || null,
     quoteEligibleStatuses: config.hubspot.quoteEligibleStatuses,
     echoGuard,
     logger
@@ -95,7 +97,6 @@ function createDealSyncModule({
     logger
   })
 
-  const _defaultDealsConfig = (config && config.deals && typeof config.deals === 'object') ? config.deals : {}
   const defaultValidators = [
     createMustHaveDealStage({ allowed: _defaultDealsConfig.allowedStageIds || [] }),
     createMustBeInPipeline({

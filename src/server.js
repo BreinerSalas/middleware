@@ -27,7 +27,6 @@ const { createSaleOrderStatusSyncJobModule } = require('./composition/saleOrderS
 const { HubspotSourceGateway } = require('./adapters/outbound/hubspot/HubspotSourceGateway')
 const { MongoMappingRepository } = require('./adapters/outbound/mongo/MongoMappingRepository')
 const { createEchoGuard } = require('./core/shared/echoGuard')
-const { DEAL_STAGE_CLOSED_WON_ID } = require('./config/constants')
 const { createManufacturingOrderRetrySyncModule } = require('./composition/manufacturingOrderRetrySyncModule')
 const { createManufacturingOrderRetrySyncJobModule } = require('./composition/manufacturingOrderRetrySyncJobModule')
 const { OdooPartnerSource } = require('./adapters/outbound/odoo/OdooPartnerSource')
@@ -111,7 +110,7 @@ async function start({ config = null } = {}) {
       propertyManufacturingOrder: cfg.hubspot.propertyManufacturingOrder,
       propertyQuoteState: cfg.hubspot.propertyQuoteState,
       propertyQuoteInvoiceStatus: cfg.hubspot.propertyQuoteInvoiceStatus,
-      closedWonStageId: DEAL_STAGE_CLOSED_WON_ID,
+      closedWonStageId: cfg.deals.closedWonStageId,
       quoteEligibleStatuses: cfg.hubspot.quoteEligibleStatuses,
       // TTL propio, aislado del echoGuard del flujo principal (deal->Odoo) — ancho
       // al intervalo del tick para no repetir una llamada real a HubSpot con el
