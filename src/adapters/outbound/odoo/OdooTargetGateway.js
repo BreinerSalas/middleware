@@ -89,6 +89,11 @@ function buildSaleOrderUpdatePayload({ saleOrder, existing } = {}) {
 }
 
 const SMARTFLOW_MARKER = '[smartflow] País no resuelto: revisar country_expense antes de confirmar.'
+const SMARTFLOW_AMBIGUOUS_MARKER = '[smartflow] Gasto de país ambiguo (sin DDP exacto): revisar country_expense antes de confirmar.'
+
+function appendSmartflowNote(note, marker) {
+  return note ? `${note}\n${marker}` : marker
+}
 
 async function resolveCountryIdFromPartner(odooCustomerId, { apiClient, logger = null, correlationId = null } = {}) {
   const empty = { countryId: null, countryName: null, reason: null }
@@ -243,9 +248,9 @@ class OdooTargetGateway {
     }
 
     if (countryExpense.status === 'unresolved') {
-      payload.saleOrder.note = payload.saleOrder.note
-        ? `${payload.saleOrder.note}\n${SMARTFLOW_MARKER}`
-        : SMARTFLOW_MARKER
+      payload.saleOrder.note = appendSmartflowNote(payload.saleOrder.note, SMARTFLOW_MARKER)
+    } else if (countryExpense.ambiguous === true) {
+      payload.saleOrder.note = appendSmartflowNote(payload.saleOrder.note, SMARTFLOW_AMBIGUOUS_MARKER)
     }
 
     const soResult = await this.upsertSalesOrder({ payload, correlationId })

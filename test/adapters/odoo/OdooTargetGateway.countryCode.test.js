@@ -232,4 +232,53 @@ describe('OdooTargetGateway.upsert — ISO-driven country_expense', () => {
     const soPayload = api.createSalesOrder.mock.calls[0][0]
     expect(soPayload.note).toContain('[smartflow]')
   })
+
+  // Regression: an ambiguous pick (no exact "DDP <Country>" match, e.g. Venezuela's
+  // real operation.costs) used to land as status:'resolved' with no visible signal
+  // in Odoo — the sale order silently got whichever record had the lowest id, and
+  // nobody reviewing it in Odoo could tell it was a guess.
+  it('adds a distinct ambiguous-note marker when the country resolves but operation.costs has no exact DDP match', async () => {
+    const api = makeApi({
+      productMap: { 'SKU-1': 17 },
+      operationCosts: [
+        { id: 200, name: 'EXW Venezuela con Duca', countryId: 60, countryName: 'Venezuela', productId: null },
+        { id: 201, name: 'EXW Venezuela sin Duca', countryId: 60, countryName: 'Venezuela', productId: null }
+      ]
+    })
+    api.searchCountryIdsByCodes = vi.fn(async () => ({ VE: { id: 60, name: 'Venezuela' } }))
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, requireProductMatch: false })
+    const record = {
+      id: 'D-1:qQ-1',
+      dealId: 'D-1',
+      quoteId: 'Q-1',
+      properties: { id_cliente_odoo: '42' },
+      quote: { id: 'Q-1', properties: { pais_de_destino: 'VE' } }
+    }
+    const result = await gw.upsert({ record, references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] } })
+    expect(result.metadata.countryExpense.status).toBe('resolved')
+    expect(result.metadata.countryExpense.ambiguous).toBe(true)
+    const soPayload = api.createSalesOrder.mock.calls[0][0]
+    expect(soPayload.note).toContain('[smartflow]')
+    expect(soPayload.note).toMatch(/ambigu/i)
+  })
+
+  it('adds no smartflow marker when the country resolves to an exact DDP match (unambiguous)', async () => {
+    const api = makeApi({
+      productMap: { 'SKU-1': 17 },
+      operationCosts: ocCR,
+      searchCountryIdsByCodes: true
+    })
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, requireProductMatch: false })
+    const record = {
+      id: 'D-1:qQ-1',
+      dealId: 'D-1',
+      quoteId: 'Q-1',
+      properties: { id_cliente_odoo: '42' },
+      quote: { id: 'Q-1', properties: { pais_de_destino: 'CR' } }
+    }
+    const result = await gw.upsert({ record, references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] } })
+    expect(result.metadata.countryExpense.ambiguous).toBe(false)
+    const soPayload = api.createSalesOrder.mock.calls[0][0]
+    expect(soPayload.note || '').not.toContain('[smartflow]')
+  })
 })
