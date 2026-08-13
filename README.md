@@ -131,6 +131,9 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3007/
 | `HUBSPOT_ACCESS_TOKEN`    | Token de Private App de HubSpot (formato `pat-…`)                          |
 | `HUBSPOT_CLIENT_SECRET`   | Client Secret de la Private App (pestaña "Auth"). Se usa para verificar la firma HMAC v3 de los webhooks entrantes. |
 | `ODOO_API_KEY`            | Solo si `ODOO_CLIENT_MODE=http` — API key de Odoo                         |
+| `HS_ALLOWED_STAGE_IDS`    | CSV de IDs de dealstage que el validador acepta (ej. `1409249445`). Antes tenía fallback al ID del portal deployado; ahora es requerida — cada deployment define su propio portal, sin literal embebido en el código. |
+| `HS_ALLOWED_PIPELINE_IDS` | CSV de IDs de pipeline permitidos (ej. `t_5728252902aef7e9938dfcbb6cdc2af8`). Mismo motivo: requerida, sin fallback embebido. |
+| `HS_CLOSED_WON_STAGE_ID`  | ID del dealstage "cerrado-ganado" del portal, usado por `revertDealStage` (Fase 6, bidireccionalidad) para saber a qué etapa comparar antes de revertir. Campo propio, independiente de `HS_ALLOWED_STAGE_IDS` (esa es la lista completa de etapas válidas; esta es una sola etapa específica). |
 
 ### Opcionales (con defaults razonables)
 
