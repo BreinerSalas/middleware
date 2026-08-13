@@ -1,7 +1,58 @@
 import { describe, it, expect } from 'vitest'
 import { load, REQUIRED_KEYS } from '../src/config/index.js'
 
+const PORTAL_ENV = {
+  HS_ALLOWED_STAGE_IDS: '1409249445',
+  HS_ALLOWED_PIPELINE_IDS: 't_5728252902aef7e9938dfcbb6cdc2af8',
+  HS_CLOSED_WON_STAGE_ID: '1409249445'
+}
+
 describe('config', () => {
+  describe('portal config keys (required, no literal fallback)', () => {
+    const baseEnvWithoutPortal = {
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret'
+    }
+
+    it('throws CONFIG_MISSING naming HS_ALLOWED_STAGE_IDS, HS_ALLOWED_PIPELINE_IDS, HS_CLOSED_WON_STAGE_ID when absent', () => {
+      let err
+      try { load({ env: baseEnvWithoutPortal }) } catch (e) { err = e }
+      expect(err.code).toBe('CONFIG_MISSING')
+      expect(err.missing).toEqual(expect.arrayContaining([
+        'HS_ALLOWED_STAGE_IDS', 'HS_ALLOWED_PIPELINE_IDS', 'HS_CLOSED_WON_STAGE_ID'
+      ]))
+    })
+
+    it('sets cfg.deals.closedWonStageId from HS_CLOSED_WON_STAGE_ID independent of allowedStageIds', () => {
+      const cfg = load({
+        env: {
+          ...baseEnvWithoutPortal,
+          ...PORTAL_ENV,
+          HS_ALLOWED_STAGE_IDS: '999999,888888',
+          HS_CLOSED_WON_STAGE_ID: '1409249445'
+        }
+      })
+      expect(cfg.deals.closedWonStageId).toBe('1409249445')
+      expect(cfg.deals.allowedStageIds).toEqual(['999999', '888888'])
+    })
+
+    it('throws CONFIG_MISSING when HS_ALLOWED_STAGE_IDS is whitespace-only (parses to [])', () => {
+      let err
+      try {
+        load({
+          env: {
+            ...baseEnvWithoutPortal,
+            ...PORTAL_ENV,
+            HS_ALLOWED_STAGE_IDS: '   ,  '
+          }
+        })
+      } catch (e) { err = e }
+      expect(err.code).toBe('CONFIG_MISSING')
+      expect(err.missing).toContain('HS_ALLOWED_STAGE_IDS')
+    })
+  })
+
   it('throws when required env vars are missing', () => {
     expect(() => load({ env: {} })).toThrow(/Missing required/)
   })
@@ -19,6 +70,7 @@ describe('config', () => {
 
   it('returns parsed config when env is valid', () => {
     const env = {
+      ...PORTAL_ENV,
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
       HUBSPOT_CLIENT_SECRET: 'client-secret-hex',
@@ -42,6 +94,7 @@ describe('config', () => {
 
   it('exposes cfg.hubspot.clientSecret as parsed string', () => {
     const env = {
+      ...PORTAL_ENV,
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
       HUBSPOT_CLIENT_SECRET: 'my-secret'
@@ -52,6 +105,7 @@ describe('config', () => {
 
   it('parses HUBSPOT_WEBHOOK_TS_TOLERANCE_MS when provided', () => {
     const env = {
+      ...PORTAL_ENV,
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
       HUBSPOT_CLIENT_SECRET: 'my-secret',
@@ -63,6 +117,7 @@ describe('config', () => {
 
   it('defaults signatureTimestampToleranceMs to 5 minutes when missing', () => {
     const env = {
+      ...PORTAL_ENV,
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
       HUBSPOT_CLIENT_SECRET: 'my-secret'
@@ -73,6 +128,7 @@ describe('config', () => {
 
   it('accepts custom HubSpot property names', () => {
     const env = {
+      ...PORTAL_ENV,
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
       HUBSPOT_CLIENT_SECRET: 'my-secret',
@@ -87,6 +143,7 @@ describe('config', () => {
   it('accepts HS_PROPERTY_ODOO_QUOTE_ID and defaults propertyOdooQuoteId to id_presupuesto_odoo', () => {
     const cfg = load({
       env: {
+        ...PORTAL_ENV,
         MONGODB_URI: 'mongodb://localhost:27017/x',
         HUBSPOT_ACCESS_TOKEN: 'tok',
         HUBSPOT_CLIENT_SECRET: 'my-secret',
@@ -99,6 +156,7 @@ describe('config', () => {
   it('defaults propertyOdooQuoteId to id_presupuesto_odoo when env var missing', () => {
     const cfg = load({
       env: {
+        ...PORTAL_ENV,
         MONGODB_URI: 'mongodb://localhost:27017/x',
         HUBSPOT_ACCESS_TOKEN: 'tok',
         HUBSPOT_CLIENT_SECRET: 'my-secret'
@@ -109,6 +167,7 @@ describe('config', () => {
 
   it('parses ODOO_DB and ODOO_LOGIN when provided', () => {
     const env = {
+      ...PORTAL_ENV,
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
       HUBSPOT_CLIENT_SECRET: 'my-secret',
@@ -127,6 +186,7 @@ describe('config', () => {
 
   it('defaults cfg.odoo.db and cfg.odoo.login to empty string when missing', () => {
     const env = {
+      ...PORTAL_ENV,
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
       HUBSPOT_CLIENT_SECRET: 'my-secret',
@@ -139,6 +199,7 @@ describe('config', () => {
 
   it('exposes cfg.odoo.defaultCustomerId as parsed string when provided', () => {
     const env = {
+      ...PORTAL_ENV,
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
       HUBSPOT_CLIENT_SECRET: 'my-secret',
@@ -150,6 +211,7 @@ describe('config', () => {
 
   it('defaults cfg.odoo.defaultCustomerId to empty string when missing', () => {
     const env = {
+      ...PORTAL_ENV,
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
       HUBSPOT_CLIENT_SECRET: 'my-secret'
@@ -160,6 +222,7 @@ describe('config', () => {
 
   it('normalizes trailing slashes in ODOO_BASE_URL', () => {
     const env = {
+      ...PORTAL_ENV,
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
       HUBSPOT_CLIENT_SECRET: 'my-secret',
@@ -173,10 +236,16 @@ describe('config', () => {
     const saved = {
       MONGODB_URI: process.env.MONGODB_URI,
       HUBSPOT_ACCESS_TOKEN: process.env.HUBSPOT_ACCESS_TOKEN,
-      HUBSPOT_CLIENT_SECRET: process.env.HUBSPOT_CLIENT_SECRET
+      HUBSPOT_CLIENT_SECRET: process.env.HUBSPOT_CLIENT_SECRET,
+      HS_ALLOWED_STAGE_IDS: process.env.HS_ALLOWED_STAGE_IDS,
+      HS_ALLOWED_PIPELINE_IDS: process.env.HS_ALLOWED_PIPELINE_IDS,
+      HS_CLOSED_WON_STAGE_ID: process.env.HS_CLOSED_WON_STAGE_ID
     }
     process.env.HUBSPOT_ACCESS_TOKEN = 'dummy-hubspot'
     process.env.HUBSPOT_CLIENT_SECRET = 'dummy-client-secret'
+    process.env.HS_ALLOWED_STAGE_IDS = PORTAL_ENV.HS_ALLOWED_STAGE_IDS
+    process.env.HS_ALLOWED_PIPELINE_IDS = PORTAL_ENV.HS_ALLOWED_PIPELINE_IDS
+    process.env.HS_CLOSED_WON_STAGE_ID = PORTAL_ENV.HS_CLOSED_WON_STAGE_ID
     delete process.env.MONGODB_URI
     try {
       const cfg = load()
@@ -191,17 +260,18 @@ describe('config', () => {
 
   describe('deals allowlist (Pipeline Comercial Visual Branding)', () => {
     const baseEnv = {
+      ...PORTAL_ENV,
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
       HUBSPOT_CLIENT_SECRET: 'my-secret'
     }
 
-    it('defaults cfg.deals.allowedStageIds to ["1409249445"] (Cierre Ganado)', () => {
+    it('parses cfg.deals.allowedStageIds from the required HS_ALLOWED_STAGE_IDS env var (Cierre Ganado)', () => {
       const cfg = load({ env: baseEnv })
       expect(cfg.deals.allowedStageIds).toEqual(['1409249445'])
     })
 
-    it('defaults cfg.deals.allowedPipelineIds to Comercial Visual Branding pipeline id', () => {
+    it('parses cfg.deals.allowedPipelineIds from the required HS_ALLOWED_PIPELINE_IDS env var (Comercial Visual Branding)', () => {
       const cfg = load({ env: baseEnv })
       expect(cfg.deals.allowedPipelineIds).toEqual([
         't_5728252902aef7e9938dfcbb6cdc2af8'
@@ -251,6 +321,7 @@ describe('config', () => {
 
   describe('auto-confirm + MO write-back (Fase 4 — docs/plan-cambios-2026-08-05.md)', () => {
     const baseEnv = {
+      ...PORTAL_ENV,
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
       HUBSPOT_CLIENT_SECRET: 'my-secret'
@@ -291,6 +362,7 @@ describe('config', () => {
 
   describe('productSync (Fase 3 — docs/plan-cambios-2026-08-05.md continuous job loop)', () => {
     const baseEnv = {
+      ...PORTAL_ENV,
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
       HUBSPOT_CLIENT_SECRET: 'my-secret'
@@ -320,6 +392,7 @@ describe('config', () => {
 
   describe('saleOrderStatusSync (Fase 6 — docs/plan-cambios-2026-08-05.md bidireccionalidad)', () => {
     const baseEnv = {
+      ...PORTAL_ENV,
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
       HUBSPOT_CLIENT_SECRET: 'my-secret'
@@ -348,6 +421,7 @@ describe('config', () => {
 
   describe('manufacturingOrderRetrySync (Fase 6 — reintento de MO tardía)', () => {
     const baseEnv = {
+      ...PORTAL_ENV,
       MONGODB_URI: 'mongodb://localhost:27017/x',
       HUBSPOT_ACCESS_TOKEN: 'tok',
       HUBSPOT_CLIENT_SECRET: 'my-secret'

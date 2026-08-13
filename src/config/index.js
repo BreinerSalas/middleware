@@ -6,7 +6,10 @@ const dotenv = require('dotenv')
 const REQUIRED_KEYS = [
   'MONGODB_URI',
   'HUBSPOT_ACCESS_TOKEN',
-  'HUBSPOT_CLIENT_SECRET'
+  'HUBSPOT_CLIENT_SECRET',
+  'HS_ALLOWED_STAGE_IDS',
+  'HS_ALLOWED_PIPELINE_IDS',
+  'HS_CLOSED_WON_STAGE_ID'
 ]
 
 const OPTIONAL_KEYS = [
@@ -26,8 +29,6 @@ const OPTIONAL_KEYS = [
   'ODOO_API_KEY',
   'ODOO_DEFAULT_CUSTOMER_ID',
   'ODOO_AUTO_CONFIRM_QUOTES',
-  'HS_ALLOWED_STAGE_IDS',
-  'HS_ALLOWED_PIPELINE_IDS',
   'HS_REJECT_UNKNOWN_PIPELINE',
   'PORT',
   'NODE_ENV',
@@ -51,11 +52,6 @@ const OPTIONAL_KEYS = [
   'HS_PROPERTY_ODOO_PARTNER_ID'
 ]
 
-const {
-  DEAL_STAGE_CLOSED_WON_ID,
-  DEAL_PIPELINE_COMMERCIAL_VISUAL_BRANDING
-} = require('./constants')
-
 function parseCsvList(raw) {
   if (raw == null) return []
   return String(raw)
@@ -75,16 +71,18 @@ function loadEnvFile({ envFile = null, override = false } = {}) {
 function load({ env = process.env, envFile = null, override = false } = {}) {
   const targetFile = envFile === null ? path.resolve(process.cwd(), '.env') : envFile
   loadEnvFile({ envFile: targetFile, override })
+  const stageIds = parseCsvList(env.HS_ALLOWED_STAGE_IDS)
+  const pipelineIds = parseCsvList(env.HS_ALLOWED_PIPELINE_IDS)
+  const quoteEligibleStatuses = parseCsvList(env.HS_QUOTE_ELIGIBLE_STATUSES)
   const missing = REQUIRED_KEYS.filter((k) => !env[k] || String(env[k]).trim() === '')
+  if (stageIds.length === 0 && !missing.includes('HS_ALLOWED_STAGE_IDS')) missing.push('HS_ALLOWED_STAGE_IDS')
+  if (pipelineIds.length === 0 && !missing.includes('HS_ALLOWED_PIPELINE_IDS')) missing.push('HS_ALLOWED_PIPELINE_IDS')
   if (missing.length > 0) {
     const err = new Error(`Missing required env var(s): ${missing.join(', ')}`)
     err.code = 'CONFIG_MISSING'
     err.missing = missing
     throw err
   }
-  const stageIds = parseCsvList(env.HS_ALLOWED_STAGE_IDS)
-  const pipelineIds = parseCsvList(env.HS_ALLOWED_PIPELINE_IDS)
-  const quoteEligibleStatuses = parseCsvList(env.HS_QUOTE_ELIGIBLE_STATUSES)
   return {
     mongodbUri: env.MONGODB_URI,
     hubspot: {
@@ -113,8 +111,9 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       autoConfirmQuotes: String(env.ODOO_AUTO_CONFIRM_QUOTES || 'false').toLowerCase() === 'true'
     },
     deals: {
-      allowedStageIds: stageIds.length > 0 ? stageIds : [DEAL_STAGE_CLOSED_WON_ID],
-      allowedPipelineIds: pipelineIds.length > 0 ? pipelineIds : [DEAL_PIPELINE_COMMERCIAL_VISUAL_BRANDING],
+      allowedStageIds: stageIds,
+      allowedPipelineIds: pipelineIds,
+      closedWonStageId: String(env.HS_CLOSED_WON_STAGE_ID || '').trim(),
       rejectUnknownPipeline: String(env.HS_REJECT_UNKNOWN_PIPELINE || 'true').toLowerCase() !== 'false'
     },
     server: {
