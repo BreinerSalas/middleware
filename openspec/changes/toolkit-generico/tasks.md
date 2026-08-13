@@ -58,4 +58,4 @@ Estimated changed lines are additions+deletions per the design's File Changes ta
 
 ## Final — Documentation
 
-- [ ] 5.1 Update `ARQUITECTURA.md` §11.2: mark #1, #2, #4 resolved (with one-line pointer to the resolving file/commit each); note #3 (`config/constants.js` stage/pipeline literals) and #5 (`PlanDealSyncUseCase` → `ExpandParentIntoChildrenUseCase`) remain open/deferred per the proposal's Success Criteria.
+- [x] 5.1 Update `ARQUITECTURA.md` §11.2: mark #1, #2, #4 resolved (with one-line pointer to the resolving file/commit each); note #3 (`config/constants.js` stage/pipeline literals) and #5 (`PlanDealSyncUseCase` → `ExpandParentIntoChildrenUseCase`) remain open/deferred per the proposal's Success Criteria.

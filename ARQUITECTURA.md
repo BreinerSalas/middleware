@@ -451,26 +451,32 @@ Cómo están escritos, y cómo escribir los nuevos:
 
 Ordenados por lo que cuesta arreglarlos:
 
-1. **`ProcessSyncJobUseCase.buildWriteBackPayload`** — el default (línea ~115) devuelve
-   `{ id_presupuesto_odoo: … }`. `dealSyncModule` ya inyecta el suyo, así que el default
-   es solo un fósil: hacerlo obligatorio (o devolver `{}`) saca la última mención al
-   dominio del core. *Cambio de una línea.*
-2. **`core/shared/odooDate.js`** — mover a `adapters/outbound/odoo/`. Nada más en `core`
-   lo usa. *Mover archivo.*
+1. ~~**`ProcessSyncJobUseCase.buildWriteBackPayload`**~~ — **Resuelto** (change `toolkit-generico`,
+   commit `1d94d3e`). El constructor ahora exige `retryPolicy.buildWriteBackPayload` y falla
+   explícito si falta; ya no hay default con `id_presupuesto_odoo` quemado en `core`.
+2. ~~**`core/shared/odooDate.js`**~~ — **Resuelto** (change `toolkit-generico`, commit `1d94d3e`).
+   Movido a `adapters/outbound/odoo/odooDate.js`; ningún archivo de `core` lo importa.
 3. **`config/constants.js`** — `DEAL_STAGE_CLOSED_WON_ID` y
    `DEAL_PIPELINE_COMMERCIAL_VISUAL_BRANDING` son IDs de un portal concreto quemados en
    el código. Ya existen como env (`HS_ALLOWED_STAGE_IDS`, `HS_ALLOWED_PIPELINE_IDS`)
    usando estos como fallback; el toolkit debería exigirlos y borrar los literales.
-4. **Los tres `*SyncJobModule.js`** — ~90 líneas casi idénticas cada uno. Extraer
-   `createTickJobModule({ kind, seedSourceId, run, tickIntervalMs, … })` los reduce a
-   tres llamadas de cinco líneas, y ese factory pertenece a `core/application/`. *Es la
-   pieza de toolkit más obvia que falta.*
+   **Abierto/diferido** — la exploración de `toolkit-generico` encontró 3 copias del literal
+   + 2 call sites que bypassean `config.deals`; borrarlo sin confirmar las env vars de
+   producción puede romper el flujo Deal→Sale Order en vivo. Necesita su propio change,
+   condicionado a esa verificación.
+4. ~~**Los tres `*SyncJobModule.js`**~~ — **Resuelto** (change `toolkit-generico`, commits
+   `de0f860` factory + `80880ba`/`befd9c7`/`f71b640`/`06f8af9` migración de los 4 wrappers).
+   Eran **cuatro** archivos, no tres (`partnerSyncJobModule.js` se sumó después de escrita
+   esta sección) — los cuatro delegan ahora en `createTickJobModule` de `core/application/`,
+   sin cambio de comportamiento observable.
 5. **`PlanDealSyncUseCase`** — la violación real de la regla de dependencias: un use case
    de `core` importando `adapters/outbound/hubspot/HubspotSourceGateway` y
    `composition/validators`. El patrón que modela ("un registro padre se expande en N
    hijos") es general y merece existir en el toolkit como
    `ExpandParentIntoChildrenUseCase` con la partición inyectada. *Es el refactor más
-   grande de los cinco.*
+   grande de los cinco.* **Abierto/diferido** — toca el único flujo disparado por webhook
+   con efectos financieros reales en Odoo; necesita su propio change con `design.md` y
+   plan de paridad de tests antes/después.
 
 Además, en el terreno de la forma más que del acoplamiento: los modelos de Mongoose se
 registran a nivel de módulo (`model('Job', JobSchema)`), un singleton global que obliga
