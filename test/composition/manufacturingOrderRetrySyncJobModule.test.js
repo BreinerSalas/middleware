@@ -48,6 +48,7 @@ describe('manufacturingOrderRetrySyncJobModule (Fase 6 — brecha de MO tardía)
     expect(jobRepository.markFailed).not.toHaveBeenCalled()
     const scheduled = jobRepository.create.mock.calls[0][0]
     expect(scheduled.kind).toBe(JOB_KIND.MANUFACTURING_ORDER_RETRY_SYNC)
+    expect(scheduled.sourceId).toBe('manufacturing-order-retry-sync-loop')
     expect(scheduled.status).toBe(JOB_STATUS.RETRY_PENDING)
     expect(scheduled.nextRetryAt).toEqual(new Date(now + 60_000))
   })
