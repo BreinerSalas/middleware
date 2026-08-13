@@ -99,6 +99,9 @@ function createOdooApiClient({
       async searchCountryIdsByCodes(_codes) {
         return {}
       },
+      async readCountriesByIds(_ids) {
+        return {}
+      },
       async readProductImage(_odooId) {
         return null
       },
@@ -324,6 +327,75 @@ function createOdooApiClient({
     return out
   }
 
+  // countryByIdCache/countryByIdInflight mirror countryCache/countryInflight
+  // above, keyed by numeric country id instead of ISO code — same per-key
+  // promise isolation so a caller asking for one id can never resolve with
+  // another id's row under concurrent calls.
+  const countryByIdCache = new Map()
+  const countryByIdInflight = new Map()
+
+  async function fetchCountryRowsByIds(idsToFetch) {
+    const result = await executeKw('res.country', 'search_read',
+      [[['id', 'in', idsToFetch]]],
+      { fields: ['id', 'code', 'name'] }
+    )
+    const rows = (Array.isArray(result) ? result : [])
+    const byId = new Map()
+    for (const r of rows) {
+      if (!r || r.id == null) continue
+      byId.set(Number(r.id), { code: r.code || null, name: r.name || null })
+    }
+    return byId
+  }
+
+  async function readCountriesByIds(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return {}
+    const cleaned = []
+    const seen = new Set()
+    for (const raw of ids) {
+      if (raw == null || !Number.isFinite(Number(raw))) continue
+      const id = Number(raw)
+      if (seen.has(id)) continue
+      seen.add(id)
+      cleaned.push(id)
+    }
+    if (cleaned.length === 0) return {}
+
+    const nowMs = now()
+    const out = {}
+    const needsFetch = []
+    for (const id of cleaned) {
+      const cached = countryByIdCache.get(id)
+      if (cached && (nowMs - cached.at) < countryCacheTtlMs) {
+        if (cached.entry) out[id] = cached.entry
+        continue
+      }
+      needsFetch.push(id)
+    }
+    if (needsFetch.length === 0) return out
+
+    const freshIds = needsFetch.filter((id) => !countryByIdInflight.has(id))
+    if (freshIds.length > 0) {
+      const batchPromise = fetchCountryRowsByIds(freshIds)
+      for (const id of freshIds) {
+        const idPromise = batchPromise
+          .then((rowsById) => rowsById.get(id) || null)
+          .finally(() => {
+            if (countryByIdInflight.get(id) === idPromise) countryByIdInflight.delete(id)
+          })
+        countryByIdInflight.set(id, idPromise)
+      }
+    }
+
+    await Promise.all(needsFetch.map(async (id) => {
+      const entry = await countryByIdInflight.get(id)
+      countryByIdCache.set(id, { entry, at: now() })
+      if (entry) out[id] = entry
+    }))
+
+    return out
+  }
+
   return {
     mode: 'http',
     _transport: t,
@@ -478,6 +550,7 @@ function createOdooApiClient({
     },
     listOperationCosts,
     searchCountryIdsByCodes,
+    readCountriesByIds,
 
     async createManufacturingOrder(payload) {
       const result = await executeKw('mrp.production', 'create', [payload])

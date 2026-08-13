@@ -8,7 +8,7 @@
  *
  * Reads:
  *   - config (HS_PROPERTY_QUOTE_COUNTRY, ODOO_*, HUBSPOT_*)
- *   - Odoo: listOperationCosts() + searchCountryIdsByCodes(ISO codes)
+ *   - Odoo: listOperationCosts() + readCountriesByIds(country ids)
  *   - HubSpot: GET /crm/v3/properties/quotes/<prop>
  *
  * Writes:
@@ -25,20 +25,24 @@ const { createOdooApiClient } = require('../src/adapters/outbound/odoo/odooApiCl
 const { createHubspotApiClient } = require('../src/adapters/outbound/hubspot/hubspotApiClient')
 const { parseArgs } = require('./sync-products.lib')
 
-const ISO_CODES = ['CR', 'GT', 'HN', 'SV', 'NI', 'PA', 'MX']
-
 function buildOptions({ countries, countriesWithOpCosts, usedIsos }) {
   const seen = new Set()
   // HubSpot rejects enumeration options with a blank ('') value on both create
   // and update ("cannot have options with blank values") — a real, non-empty
   // sentinel is required even for the "no answer yet" placeholder.
-  const options = [{ label: 'Sin definir', value: 'sin_definir' }]
+  //
+  // displayOrder is sent explicitly on every option: when a PATCH omits it,
+  // HubSpot auto-assigns it alphabetically by label — confirmed live, where
+  // "Sin definir" landed between SX and TT instead of staying first. Pinning
+  // it to 0 keeps the placeholder first regardless of which country labels
+  // alphabetically surround it.
+  const options = [{ label: 'Sin definir', value: 'sin_definir', displayOrder: 0 }]
   for (const iso of usedIsos) {
     if (seen.has(iso)) continue
     seen.add(iso)
     const country = countries && countries[iso]
     const label = country && country.name ? `${iso} — ${country.name}` : iso
-    options.push({ label, value: iso })
+    options.push({ label, value: iso, displayOrder: options.length })
   }
   return options
 }
@@ -50,34 +54,40 @@ async function planOptions({ apiClient, hubspot, propertyName, logger }) {
     if (oc && oc.countryId != null) countryIdsWithOc.add(Number(oc.countryId))
   }
 
-  const countryMap = await apiClient.searchCountryIdsByCodes(ISO_CODES) || {}
-  // res.country is a static base table; CR/GT/HN/SV/NI/PA/MX always exist on a
-  // real Odoo instance. An empty countryMap means the ISO lookup itself came
-  // back empty (stub mode, or a swallowed connectivity failure), not "Odoo
-  // genuinely has zero of these countries" — refuse rather than silently
-  // publishing the raw ISO list with no names attached to HubSpot.
+  // No fixed ISO allow-list: whatever countries operation.costs actually has
+  // configured in Odoo is what gets published — the dropdown is exactly as
+  // wide (or narrow) as the real business data, and needs no code change
+  // when Odoo gains or loses a country.
+  if (countryIdsWithOc.size === 0) {
+    const err = new Error(
+      'sync-quote-country-options: Odoo returned no operation.costs records with a country — ' +
+      'refusing to publish an empty country list. Check ODOO_CLIENT_MODE=http and connectivity.'
+    )
+    err.code = 'EMPTY_OPERATION_COSTS'
+    throw err
+  }
+
+  const countriesById = await apiClient.readCountriesByIds([...countryIdsWithOc]) || {}
+  const countryMap = {}
+  for (const id of countryIdsWithOc) {
+    const entry = countriesById[id]
+    if (entry && entry.code) countryMap[entry.code] = { id, name: entry.name }
+  }
+
+  // A non-empty operation.costs with country ids but nothing resolved means
+  // the id->country lookup itself came back empty (stub mode, or a swallowed
+  // connectivity failure), not "Odoo genuinely has zero of these countries" —
+  // refuse rather than silently publishing a blind list.
   if (Object.keys(countryMap).length === 0) {
     const err = new Error(
-      'sync-quote-country-options: Odoo returned no res.country rows for any configured ISO — ' +
+      'sync-quote-country-options: Odoo returned no res.country rows for the countries used in operation.costs — ' +
       'refusing to publish a blind country list. Check ODOO_CLIENT_MODE=http and connectivity.'
     )
     err.code = 'EMPTY_COUNTRY_MAP'
     throw err
   }
 
-  const usedIsos = []
-  for (const iso of ISO_CODES) {
-    const country = countryMap[iso]
-    if (country && country.id != null && countryIdsWithOc.has(Number(country.id))) {
-      usedIsos.push(iso)
-    }
-  }
-
-  if (usedIsos.length === 0) {
-    if (logger) logger.warn('sync-quote-country-options: no operation.costs found for any configured ISO, falling back to all ISOs')
-  }
-
-  const finalIsos = usedIsos.length > 0 ? usedIsos : ISO_CODES
+  const usedIsos = Object.keys(countryMap).sort()
 
   let currentProperty = null
   let propertyLookupFailed = false
@@ -88,8 +98,8 @@ async function planOptions({ apiClient, hubspot, propertyName, logger }) {
     if (logger) logger.warn('sync-quote-country-options: property lookup failed', { propertyName, error: err.message })
   }
 
-  const options = buildOptions({ countries: countryMap, countriesWithOpCosts: new Set(usedIsos), usedIsos: finalIsos })
-  return { options, usedIsos: finalIsos, countryMap, currentProperty, propertyLookupFailed }
+  const options = buildOptions({ countries: countryMap, countriesWithOpCosts: new Set(usedIsos), usedIsos })
+  return { options, usedIsos, countryMap, currentProperty, propertyLookupFailed }
 }
 
 async function applyOptions({ hubspot, propertyName, options, currentProperty, propertyLookupFailed = false, dryRun, logger }) {
