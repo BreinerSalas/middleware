@@ -3,8 +3,6 @@
 const { JOB_KIND } = require('../config/constants')
 const { createTickJobModule } = require('../core/application/createTickJobModule')
 
-const DEFAULT_TICK_INTERVAL_MS = 60 * 1000
-const DEFAULT_ORPHAN_WATCHDOG_MS = 30 * 60 * 1000
 const SEED_SOURCE_ID = 'product-sync-loop'
 
 function createProductSyncJobModule({
@@ -14,8 +12,8 @@ function createProductSyncJobModule({
   productSyncModule,
   jobPoller = null,
   includeNoSku = false,
-  tickIntervalMs = DEFAULT_TICK_INTERVAL_MS,
-  orphanWatchdogMs = DEFAULT_ORPHAN_WATCHDOG_MS,
+  tickIntervalMs,
+  orphanWatchdogMs,
   clock = () => Date.now()
 } = {}) {
   if (!jobRepository) throw new Error('createProductSyncJobModule requires jobRepository')
