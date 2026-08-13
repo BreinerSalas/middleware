@@ -1,0 +1,47 @@
+# Exploration: Camino a toolkit — romper los 5 acoplamientos de ARQUITECTURA.md §11.2
+
+## Current State
+
+Repo runs 4 flujos HubSpot↔Odoo en vivo sobre un core hexagonal compartido (`src/core/`). `ARQUITECTURA.md` §11.2 lista 5 acoplamientos que bloquean la extracción del toolkit, ordenados de más barato a más caro. Los 5 fueron verificados contra el código actual (branch `feature/toolkit-generico`, `main` intacto). Los hallazgos confirman el documento en general, pero surgen 3 brechas materiales que el doc no menciona:
+
+- **(a)** el literal del stage ID tiene 3 copias + 2 consumidores directos que bypassean el config, no 1 sola;
+- **(b)** hoy existen 4 archivos `*SyncJobModule.js` casi idénticos (partner-sync agregó un 4º después de escrita la §11), no 3;
+- **(c)** los tests existentes hardcodean el valor literal de fallback, así que borrarlo es un cambio de comportamiento que exige confirmar las env vars del entorno de producción desplegado, no solo un cambio de código.
+
+## Affected Areas (verificado, con referencias de línea)
+
+- `src/core/application/use-cases/ProcessSyncJobUseCase.js:111-116` — el default de `buildWriteBackPayload` devuelve `{ id_presupuesto_odoo }`. `dealSyncModule.js` siempre inyecta el suyo (línea 27-36), así que el default está muerto en producción. Ningún test ejercita la rama del default puro (solo el path con override inyectado, `test/core/application/ProcessSyncJobUseCase.test.js:36`). Confirmado: fix de una línea.
+- `src/core/shared/odooDate.js` — usado solo por `productSyncModule.js`, `partnerSyncModule.js`, `saleOrderStatusSyncModule.js` (todos en `composition/`, ninguno en `core/`). Confirmado exhaustivo vía grep. Tiene su propio test: `test/core/shared/odooDate.test.js` (debe moverse junto al archivo). Confirmado: movimiento mecánico.
+- `src/config/constants.js:29-31` (`DEAL_STAGE_CLOSED_WON_ID`, `DEAL_PIPELINE_COMMERCIAL_VISUAL_BRANDING`) — **NO es un acoplamiento limpio y único como documenta el doc**:
+  - `config/index.js:116-117` usa ambos como fallback de array para `config.deals.allowedStageIds`/`allowedPipelineIds` cuando faltan las env vars `HS_ALLOWED_STAGE_IDS`/`HS_ALLOWED_PIPELINE_IDS` — este es el path "seguro" documentado.
+  - PERO `src/server.js:114` y `src/composition/dealSyncModule.js:75` **ambos** importan `DEAL_STAGE_CLOSED_WON_ID` directamente (bypasseando `config.deals` por completo) y lo pasan como `closedWonStageId` a dos instancias distintas de `HubspotSourceGateway` (flujo principal de deals + sale-order-status-sync), usado para el guard anti-ping-pong de reversión de stage.
+  - Y `src/adapters/outbound/hubspot/HubspotSourceGateway.js:23,132` tiene su **propio** literal embebido `DEFAULT_CLOSED_WON_STAGE_ID = '1409249445'` usado cuando no se pasa `closedWonStageId`.
+  - O sea: hay 3 copias literales del mismo stage ID de HubSpot en 3 archivos, y no existe hoy un campo `config.deals.closedWonStageId` (solo el array `allowedStageIds`, semánticamente distinto — un ID único de "closed won" vs. una lista de stages permitidos para el validador).
+  - `test/config.test.js:199-201,204-206,220,248` hardcodea `'1409249445'` como default esperado — estos tests deben reescribirse si se borra el literal.
+  - **Riesgo**: si `HS_ALLOWED_STAGE_IDS`/`HS_ALLOWED_PIPELINE_IDS` no están ya seteadas en el entorno de producción desplegado, borrar el fallback rompe el flujo Deal→Sale Order en vivo (el de mayor valor, el único disparado por webhook). Debe confirmarse contra la config desplegada antes de tocar este acoplamiento.
+- `src/composition/{product,saleOrderStatus,manufacturingOrderRetry,partner}SyncJobModule.js` — **CUATRO archivos** (el doc dice tres; `partnerSyncJobModule.js` se agregó después, misma forma copy-paste, ~97 líneas). Los 4 difieren solo en: `SEED_SOURCE_ID`, `JOB_KIND.*`, el nombre del módulo inyectado, la forma de la llamada a `run` (`runIncremental({includeNoSku})` / `runIncremental({})` / `runOnce({})` / `runIncremental()`), los prefijos de log, y qué campos del resultado se loguean en éxito. Los 4 tienen tests dedicados (`test/composition/*JobModule.test.js`). Un factory `createTickJobModule({kind, seedSourceId, run, tickIntervalMs, orphanWatchdogMs, ...})` en `core/application/` necesita parametrizar limpiamente el callback `run` y los campos logueados (más simple: loguear siempre el objeto de resultado completo, dejar que el pipeline de logging filtre).
+- `src/core/application/use-cases/PlanDealSyncUseCase.js:3-4` — importa `parseSourceId, listEligibleQuotes` de `adapters/outbound/hubspot/HubspotSourceGateway` Y `mustHaveLineItems` de `composition/validators`. Confirmada violación real de la regla de dependencias, confirmado el más grande/riesgoso de los 5 — es el único flujo disparado por webhook entrante (Deal→Sale Order), así que cualquier generalización a `ExpandParentIntoChildrenUseCase` necesita paridad de comportamiento estricta antes/después. Test: `test/application/PlanDealSyncUseCase.test.js`.
+- Singleton de Mongoose: confirmado en los 9 archivos de schema (`job`, `mapping`, `dedupe`, `audit`, `productMapping`, `productSyncRun`, `partnerMapping`, `partnerSyncRun`, `syncCursor` — vía `model('X', Schema)` a nivel de módulo, una única conexión global de `mongoose` en `connection.js`). Superficie amplia (9 archivos) pero baja urgencia — no bloquea el uso actual de una conexión por proceso; queda como idea para un cambio posterior separado dado su tamaño.
+
+## Approaches
+
+1. **Un solo cambio cubriendo los acoplamientos #1, #2, #4 (default del payload, movimiento de odooDate, factory de job-module)** — Pros: los tres son mecánicos/de bajo riesgo, sin dependencia de config de producción, TDD-friendly, entra en un presupuesto de PR razonable. Contras: deja sin resolver #3 y #5 (los dos más riesgosos). Esfuerzo: Bajo-Medio.
+2. **Diferir #3 (literales de constants.js) a su propio cambio, condicionado a confirmar las env vars de prod** — Pros: evita romper silenciosamente producción en el flujo más crítico del negocio; convierte la confirmación de env vars en una precondición/tarea explícita. Contras: requiere un paso de infra/ops (chequear el entorno desplegado) antes de arrancar el código. Esfuerzo: Bajo (código) + verificación externa.
+3. **Separar #5 (`PlanDealSyncUseCase` → `ExpandParentIntoChildrenUseCase`) en su propio cambio dedicado** — Pros: aísla la única violación real de la regla de arquitectura y el refactor de mayor radio de impacto de las otras 4 limpiezas de bajo riesgo; permite su propio `design.md` con plan completo de paridad de tests antes/después. Contras: la extracción del toolkit queda incompleta hasta que esto se resuelva. Esfuerzo: Alto.
+4. **Un cambio grande cubriendo los 5** — Pros: un único hito coherente de "toolkit listo". Contras: mezcla trabajo mecánico de bajo riesgo con un cambio de config crítico para producción (#3) y un refactor de arquitectura grande (#5) en una sola revisión; probablemente excede el presupuesto de 400 líneas por PR y dispara el trigger de PRs encadenados del review workload guard.
+
+## Recommendation
+
+Dividir en (al menos) 2-3 cambios: **(a)** este cambio = acoplamientos #1, #2, #4 — todos de bajo riesgo, cubribles con TDD, sin dependencia de config de prod; **(b)** un cambio de seguimiento para #3, condicionado a una tarea explícita de confirmar que `HS_ALLOWED_STAGE_IDS`/`HS_ALLOWED_PIPELINE_IDS` (y un equivalente a `closedWonStageId`) estén seteadas en el entorno de producción desplegado antes de borrar cualquier literal; **(c)** un cambio separado y más grande para #5 (`PlanDealSyncUseCase` → `ExpandParentIntoChildrenUseCase`) con su propio design doc, dado que es la única violación real de la regla de dependencias y toca el único flujo de producción disparado por webhook. El factory del singleton de Mongoose queda opcional/posterior, no urgente.
+
+## Risks
+
+- Acoplamiento #3: borrar los literales de fallback sin confirmar las env vars de prod rompe el flujo Deal→Sale Order en vivo, silenciosamente o vía falla de arranque (estilo `CONFIG_MISSING`) — hay que verificar el entorno desplegado primero.
+- Acoplamiento #3 también tiene 3 copias literales (`constants.js`, el default propio de `HubspotSourceGateway.js`, y 2 call sites de importación directa que bypassean `config.deals`) — un fix ingenuo de "borrar 2 líneas en constants.js" queda incompleto; las 3 copias + ambos call sites necesitan actualizarse de forma coordinada.
+- Acoplamiento #4 tiene alcance de 4 archivos, no 3 — el módulo de partner-sync debe incluirse o la extracción del factory queda inconsistente/incompleta.
+- Acoplamiento #5 toca el único flujo webhook entrante con efectos financieros/de orden reales en Odoo; necesita paridad de tests cuidadosa que preserve comportamiento, probablemente su propio ciclo de PR/revisión dado el guard de presupuesto de 400 líneas.
+- Los tests existentes (`test/config.test.js`) hardcodean el ID literal `'1409249445'` como default esperado — cualquier cambio al acoplamiento #3 exige reescribir estos tests bajo TDD estricto, no solo agregar nuevos.
+
+## Ready for Proposal
+
+Sí, para los acoplamientos #1/#2/#4 como primer cambio (change de openspec `toolkit-generico`, acotado a esos tres). Los acoplamientos #3 y #5 necesitan una decisión explícita de acotar el alcance (confirmada arriba como cambios de seguimiento separados) o una decisión explícita del usuario de mantenerlos en este mismo cambio pese a los riesgos señalados.

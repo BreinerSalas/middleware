@@ -49,6 +49,7 @@ describe('saleOrderStatusSyncJobModule (Fase 6 — docs/plan-cambios-2026-08-05.
     expect(jobRepository.create).toHaveBeenCalledTimes(1)
     const scheduled = jobRepository.create.mock.calls[0][0]
     expect(scheduled.kind).toBe(JOB_KIND.SALE_ORDER_STATUS_SYNC)
+    expect(scheduled.sourceId).toBe('sale-order-status-sync-loop')
     expect(scheduled.status).toBe(JOB_STATUS.RETRY_PENDING)
     expect(scheduled.nextRetryAt).toEqual(new Date(now + 60_000))
   })

@@ -1,6 +1,6 @@
 'use strict'
 
-const { parseOdooDateUtc, formatOdooDateUtc } = require('../core/shared/odooDate')
+const { parseOdooDateUtc, formatOdooDateUtc } = require('../adapters/outbound/odoo/odooDate')
 
 const DEFAULT_OVERLAP_MS = 60 * 1000
 const EPOCH_WATERMARK = '1970-01-01 00:00:00'

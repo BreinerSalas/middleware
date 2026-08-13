@@ -51,6 +51,7 @@ describe('partnerSyncJobModule', () => {
     expect(jobRepository.create).toHaveBeenCalledTimes(1)
     const scheduled = jobRepository.create.mock.calls[0][0]
     expect(scheduled.kind).toBe(JOB_KIND.PARTNER_SYNC)
+    expect(scheduled.sourceId).toBe('partner-sync-loop')
     expect(scheduled.status).toBe(JOB_STATUS.RETRY_PENDING)
     expect(scheduled.nextRetryAt).toEqual(new Date(now + 60_000))
   })

@@ -163,7 +163,7 @@ describe('ProcessSyncJobUseCase', () => {
       targetGateway: targetGw,
       auditTrail: audit,
       validators: [],
-      retryPolicy: { maxDelayMs: 60_000, jitter: false }
+      retryPolicy: { maxDelayMs: 60_000, jitter: false, buildWriteBackPayload: (m) => ({ ref: m.targetRef }) }
     })
   })
 
@@ -187,7 +187,7 @@ describe('ProcessSyncJobUseCase', () => {
     const u = new ProcessSyncJobUseCase({
       jobRepository: jobRepo, mappingRepository: mappingRepo,
       sourceGateway: sourceGw, targetGateway: gwWithSo,
-      auditTrail: audit, validators: [], retryPolicy: { jitter: false }
+      auditTrail: audit, validators: [], retryPolicy: { jitter: false, buildWriteBackPayload: (m) => ({ ref: m.targetRef }) }
     })
     const created = await jobRepo.create({ sourceId: 'D-9', payload: null, dedupeKey: null, status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8 })
     await u.execute({ job: created })
@@ -207,7 +207,7 @@ describe('ProcessSyncJobUseCase', () => {
     const u = new ProcessSyncJobUseCase({
       jobRepository: jobRepo, mappingRepository: mappingRepo,
       sourceGateway: sourceGw, targetGateway: gwWithMeta,
-      auditTrail: audit, validators: [], retryPolicy: { jitter: false }
+      auditTrail: audit, validators: [], retryPolicy: { jitter: false, buildWriteBackPayload: (m) => ({ ref: m.targetRef }) }
     })
     const created = await jobRepo.create({ sourceId: 'D-10', payload: null, dedupeKey: null, status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8 })
     await u.execute({ job: created })
@@ -230,7 +230,7 @@ describe('ProcessSyncJobUseCase', () => {
     const u = new ProcessSyncJobUseCase({
       jobRepository: jobRepo, mappingRepository: mappingRepo,
       sourceGateway: sourceGw, targetGateway: gwWithMeta,
-      auditTrail: audit, validators: [], retryPolicy: { jitter: false }
+      auditTrail: audit, validators: [], retryPolicy: { jitter: false, buildWriteBackPayload: (m) => ({ ref: m.targetRef }) }
     })
     const created = await jobRepo.create({ sourceId: 'D-11', payload: null, dedupeKey: null, status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8 })
     await u.execute({ job: created })
@@ -246,7 +246,7 @@ describe('ProcessSyncJobUseCase', () => {
     const u = new ProcessSyncJobUseCase({
       jobRepository: jobRepo, mappingRepository: mappingRepo,
       sourceGateway: sourceGw, targetGateway: targetGw,
-      auditTrail: audit, validators: [v], retryPolicy: { jitter: false }
+      auditTrail: audit, validators: [v], retryPolicy: { jitter: false, buildWriteBackPayload: (m) => ({ ref: m.targetRef }) }
     })
     const created = await jobRepo.create({ sourceId: 'D-2', payload: null, dedupeKey: null, status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8 })
     const res = await u.execute({ job: created })
@@ -261,7 +261,7 @@ describe('ProcessSyncJobUseCase', () => {
     const u = new ProcessSyncJobUseCase({
       jobRepository: jobRepo, mappingRepository: mappingRepo,
       sourceGateway: sourceGw, targetGateway: targetGw,
-      auditTrail: audit, validators: [v], retryPolicy: { jitter: false }
+      auditTrail: audit, validators: [v], retryPolicy: { jitter: false, buildWriteBackPayload: (m) => ({ ref: m.targetRef }) }
     })
     const created = await jobRepo.create({ sourceId: 'D-3', payload: null, dedupeKey: null, status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8 })
     await u.execute({ job: created })
@@ -275,7 +275,7 @@ describe('ProcessSyncJobUseCase', () => {
     const u = new ProcessSyncJobUseCase({
       jobRepository: jobRepo, mappingRepository: mappingRepo,
       sourceGateway: sourceGw, targetGateway: targetGw,
-      auditTrail: audit, validators: [v], retryPolicy: { jitter: false }
+      auditTrail: audit, validators: [v], retryPolicy: { jitter: false, buildWriteBackPayload: (m) => ({ ref: m.targetRef }) }
     })
     const created = await jobRepo.create({ sourceId: 'D-4', payload: null, dedupeKey: null, status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8 })
     await u.execute({ job: created })
@@ -294,7 +294,7 @@ describe('ProcessSyncJobUseCase', () => {
     const u = new ProcessSyncJobUseCase({
       jobRepository: jobRepo, mappingRepository: mappingRepo,
       sourceGateway: sourceGw, targetGateway: target,
-      auditTrail: audit, validators: [], retryPolicy: { jitter: false, baseMs: 1000 }
+      auditTrail: audit, validators: [], retryPolicy: { jitter: false, baseMs: 1000, buildWriteBackPayload: (m) => ({ ref: m.targetRef }) }
     })
     const created = await jobRepo.create({ sourceId: 'D-3', payload: null, dedupeKey: null, status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8 })
     const res = await u.execute({ job: created })
@@ -312,7 +312,7 @@ describe('ProcessSyncJobUseCase', () => {
     const u = new ProcessSyncJobUseCase({
       jobRepository: jobRepo, mappingRepository: mappingRepo,
       sourceGateway: sourceGw, targetGateway: target,
-      auditTrail: audit, validators: [], retryPolicy: { jitter: false, baseMs: 1000 }
+      auditTrail: audit, validators: [], retryPolicy: { jitter: false, baseMs: 1000, buildWriteBackPayload: (m) => ({ ref: m.targetRef }) }
     })
     const created = await jobRepo.create({ sourceId: 'D-4', payload: null, dedupeKey: null, status: JOB_STATUS.PENDING, attempts: 8, maxAttempts: 8 })
     const res = await u.execute({ job: created })
@@ -330,7 +330,7 @@ describe('ProcessSyncJobUseCase', () => {
     const u = new ProcessSyncJobUseCase({
       jobRepository: jobRepo, mappingRepository: mappingRepo,
       sourceGateway: sourceGw, targetGateway: target,
-      auditTrail: audit, validators: [], retryPolicy: { jitter: false, baseMs: 1000 }
+      auditTrail: audit, validators: [], retryPolicy: { jitter: false, baseMs: 1000, buildWriteBackPayload: (m) => ({ ref: m.targetRef }) }
     })
     const created = await jobRepo.create({ sourceId: 'D-5', payload: null, dedupeKey: null, status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8 })
     const res = await u.execute({ job: created })
@@ -352,7 +352,7 @@ describe('ProcessSyncJobUseCase', () => {
     const u = new ProcessSyncJobUseCase({
       jobRepository: jobRepo, mappingRepository: mappingRepo,
       sourceGateway: sourceNoRefs, targetGateway: target,
-      auditTrail: audit, validators: [], retryPolicy: { jitter: false, baseMs: 1000 }
+      auditTrail: audit, validators: [], retryPolicy: { jitter: false, baseMs: 1000, buildWriteBackPayload: (m) => ({ ref: m.targetRef }) }
     })
     const created = await jobRepo.create({ sourceId: 'D-6', payload: null, dedupeKey: null, status: JOB_STATUS.PENDING, attempts: 0, maxAttempts: 8 })
     const res = await u.execute({ job: created })

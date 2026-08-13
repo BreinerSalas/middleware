@@ -1,6 +1,6 @@
 'use strict'
 
-const { parseOdooDateUtc, formatOdooDateUtc } = require('../core/shared/odooDate')
+const { parseOdooDateUtc, formatOdooDateUtc } = require('../adapters/outbound/odoo/odooDate')
 const { isPermanentHttpError } = require('../core/domain/RetryPolicy')
 
 const DEFAULT_OVERLAP_MS = 60 * 1000
