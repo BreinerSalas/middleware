@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { parseOdooDateUtc, formatOdooDateUtc } = require('../../../src/core/shared/odooDate.js')
+const { parseOdooDateUtc, formatOdooDateUtc } = require('../../../../src/adapters/outbound/odoo/odooDate.js')
 
 describe('odooDate (Fase 3 — docs/plan-cambios-2026-08-05.md)', () => {
   it('parseOdooDateUtc interprets the naive string as UTC', () => {

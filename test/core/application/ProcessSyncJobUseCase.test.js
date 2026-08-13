@@ -32,6 +32,21 @@ function makeTargetGateway({ metadata = {} } = {}) {
   }
 }
 
+describe('ProcessSyncJobUseCase — constructor requires retryPolicy.buildWriteBackPayload', () => {
+  it('throws when retryPolicy.buildWriteBackPayload is not a function', () => {
+    const jobRepository = makeJobRepository()
+    const mappingRepository = makeMappingRepository()
+    const sourceGateway = makeSourceGateway()
+    const targetGateway = makeTargetGateway()
+    expect(() => new ProcessSyncJobUseCase({
+      jobRepository, mappingRepository, sourceGateway, targetGateway,
+      auditTrail: { record: vi.fn(async () => null) },
+      retryPolicy: {},
+      validators: []
+    })).toThrow(/requires retryPolicy\.buildWriteBackPayload/)
+  })
+})
+
 describe('ProcessSyncJobUseCase — retryPolicy pass-through (write-back regression)', () => {
   it('uses retryPolicy.buildWriteBackPayload (not the bare default) when writing back', async () => {
     const sourceGateway = makeSourceGateway()
@@ -66,7 +81,7 @@ describe('ProcessSyncJobUseCase — retryPolicy pass-through (write-back regress
     const useCase = new ProcessSyncJobUseCase({
       jobRepository, mappingRepository, sourceGateway, targetGateway,
       auditTrail: { record: vi.fn(async () => null) },
-      retryPolicy: { hashPayload },
+      retryPolicy: { hashPayload, buildWriteBackPayload: (m) => ({ ref: m.targetRef }) },
       validators: []
     })
     await useCase.execute({ job: { _id: 'JOB-1', sourceId: 'D-1:qQ-1', correlationId: 'c-1', attempts: 0, maxAttempts: 5 } })

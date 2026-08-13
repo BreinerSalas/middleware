@@ -20,6 +20,9 @@ class ProcessSyncJobUseCase {
     if (!sourceGateway) throw new Error('ProcessSyncJobUseCase requires sourceGateway')
     if (!targetGateway) throw new Error('ProcessSyncJobUseCase requires targetGateway')
     if (!auditTrail) throw new Error('ProcessSyncJobUseCase requires auditTrail')
+    if (typeof retryPolicy.buildWriteBackPayload !== 'function') {
+      throw new Error('ProcessSyncJobUseCase requires retryPolicy.buildWriteBackPayload')
+    }
     this.jobRepository = jobRepository
     this.mappingRepository = mappingRepository
     this.sourceGateway = sourceGateway
@@ -109,10 +112,7 @@ class ProcessSyncJobUseCase {
   }
 
   buildWriteBackPayload(mapping) {
-    if (typeof this.retryPolicy.buildWriteBackPayload === 'function') {
-      return this.retryPolicy.buildWriteBackPayload(mapping)
-    }
-    return { id_presupuesto_odoo: mapping && mapping.targetRef ? mapping.targetRef : null }
+    return this.retryPolicy.buildWriteBackPayload(mapping)
   }
 
   async handleError({ job, jobId, sourceId, correlationId, err, priorAttempts, maxAttempts }) {
