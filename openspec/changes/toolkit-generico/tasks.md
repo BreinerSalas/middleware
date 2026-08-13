@@ -28,19 +28,19 @@ Estimated changed lines are additions+deletions per the design's File Changes ta
 
 ## Slice #1 — Write-Back Fail-Fast Guard (`core-vendor-neutrality`)
 
-- [ ] 1.1 RED: add test in `test/core/application/ProcessSyncJobUseCase.test.js` — `new ProcessSyncJobUseCase({...no retryPolicy.buildWriteBackPayload})` throws `/requires retryPolicy.buildWriteBackPayload/`. Confirm it fails (constructs fine today).
-- [ ] 1.2 GREEN: add the constructor guard in `src/core/application/use-cases/ProcessSyncJobUseCase.js` (`:111-116`) — throw plain `Error('ProcessSyncJobUseCase requires retryPolicy.buildWriteBackPayload')` when `typeof retryPolicy.buildWriteBackPayload !== 'function'`; simplify `buildWriteBackPayload(mapping)` body to `return this.retryPolicy.buildWriteBackPayload(mapping)` (drop the `typeof` branch and the `{ id_presupuesto_odoo }` default).
-- [ ] 1.3 GREEN: inject `buildWriteBackPayload: (m) => ({ ref: m.targetRef })` (or equivalent vendor-free stub) into all 11 `new ProcessSyncJobUseCase({...})` constructions in `test/application/use-cases.test.js` that currently omit it.
-- [ ] 1.4 GREEN: inject the same vendor-free stub into the one construction at `test/core/application/ProcessSyncJobUseCase.test.js:66` (the `retryPolicy.hashPayload` test). Do NOT touch the construction at `:47` — it already supplies `buildWriteBackPayload`.
-- [ ] 1.5 REFACTOR: run full `npm test`; confirm `dealSyncModule.js:27-36` still owns `id_presupuesto_odoo`/`numero_orden_fabricacion` and its own suite is untouched and green.
-- [ ] 1.6 Verify: `rg 'id_presupuesto_odoo' src/core/` returns zero hits.
+- [x] 1.1 RED: add test in `test/core/application/ProcessSyncJobUseCase.test.js` — `new ProcessSyncJobUseCase({...no retryPolicy.buildWriteBackPayload})` throws `/requires retryPolicy.buildWriteBackPayload/`. Confirm it fails (constructs fine today).
+- [x] 1.2 GREEN: add the constructor guard in `src/core/application/use-cases/ProcessSyncJobUseCase.js` (`:111-116`) — throw plain `Error('ProcessSyncJobUseCase requires retryPolicy.buildWriteBackPayload')` when `typeof retryPolicy.buildWriteBackPayload !== 'function'`; simplify `buildWriteBackPayload(mapping)` body to `return this.retryPolicy.buildWriteBackPayload(mapping)` (drop the `typeof` branch and the `{ id_presupuesto_odoo }` default).
+- [x] 1.3 GREEN: inject `buildWriteBackPayload: (m) => ({ ref: m.targetRef })` (or equivalent vendor-free stub) into all 11 `new ProcessSyncJobUseCase({...})` constructions in `test/application/use-cases.test.js` that currently omit it.
+- [x] 1.4 GREEN: inject the same vendor-free stub into the one construction at `test/core/application/ProcessSyncJobUseCase.test.js:66` (the `retryPolicy.hashPayload` test). Do NOT touch the construction at `:47` — it already supplies `buildWriteBackPayload`.
+- [x] 1.5 REFACTOR: run full `npm test`; confirm `dealSyncModule.js:27-36` still owns `id_presupuesto_odoo`/`numero_orden_fabricacion` and its own suite is untouched and green.
+- [x] 1.6 Verify: `rg 'id_presupuesto_odoo' src/core/` returns zero hits.
 
 ## Slice #2 — Move `odooDate` Out of Core (`core-vendor-neutrality`)
 
-- [ ] 2.1 RED: `git mv test/core/shared/odooDate.test.js test/adapters/outbound/odoo/odooDate.test.js`; update its require path to `../../../../src/adapters/outbound/odoo/odooDate.js`. Confirm it fails (module not found).
-- [ ] 2.2 GREEN: `git mv src/core/shared/odooDate.js src/adapters/outbound/odoo/odooDate.js`. Run the moved test; confirm green with no logic change.
-- [ ] 2.3 GREEN: update the `odooDate` import path in `src/composition/productSyncModule.js`, `src/composition/partnerSyncModule.js`, and `src/composition/saleOrderStatusSyncModule.js` (one require line each).
-- [ ] 2.4 Verify: `rg 'core/shared/odooDate'` returns zero hits; `rg 'id_presupuesto_odoo|odooDate|JOB_KIND' src/core/` returns zero hits; run full `npm test`.
+- [x] 2.1 RED: `git mv test/core/shared/odooDate.test.js test/adapters/outbound/odoo/odooDate.test.js`; update its require path to `../../../../src/adapters/outbound/odoo/odooDate.js`. Confirm it fails (module not found).
+- [x] 2.2 GREEN: `git mv src/core/shared/odooDate.js src/adapters/outbound/odoo/odooDate.js`. Run the moved test; confirm green with no logic change.
+- [x] 2.3 GREEN: update the `odooDate` import path in `src/composition/productSyncModule.js`, `src/composition/partnerSyncModule.js`, and `src/composition/saleOrderStatusSyncModule.js` (one require line each).
+- [x] 2.4 Verify: `rg 'core/shared/odooDate'` returns zero hits; `rg 'id_presupuesto_odoo|odooDate|JOB_KIND' src/core/` returns zero hits; run full `npm test`.
 
 ## Slice #4 — Shared Tick-Job Factory (`tick-job-scheduling`)
 
