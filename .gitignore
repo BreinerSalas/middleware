@@ -10,3 +10,4 @@ logs/
 .vscode/
 dist/
 .claude/settings.local.json
+docker-compose.override.yml

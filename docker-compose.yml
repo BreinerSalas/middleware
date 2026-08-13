@@ -24,10 +24,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: ${PORT:-3007}
-    # host: el Mongo local de esta máquina escucha solo en 127.0.0.1, así que
-    # el contenedor necesita la red del host para llegar a "localhost:27017"
-    # tal cual está en .env (bridge/host.docker.internal no alcanza loopback-only).
-    network_mode: host
+    ports:
+      - "${PORT:-3007}:3007"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3007/health"]
       interval: 15s
