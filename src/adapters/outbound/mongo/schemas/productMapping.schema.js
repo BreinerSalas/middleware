@@ -5,7 +5,7 @@ const { Schema, model } = require('mongoose')
 const ProductMappingSchema = new Schema({
   odooId: { type: Number, required: true, unique: true, index: true },
   hsSku: { type: String, default: null, index: true },
-  hubspotId: { type: String, default: null },
+  hubspotId: { type: String, default: null, index: true, sparse: true },
   lastAction: {
     type: String,
     enum: ['created', 'updated', 'backfilled', 'attempted', 'no_sku_no_match'],

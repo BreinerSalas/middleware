@@ -144,8 +144,8 @@ describe('hubspotApiClient.quote', () => {
       const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
       const items = await api.getQuoteLineItems('Q-1')
       expect(items).toEqual([
-        { id: 'L-1', hs_sku: 'SKU-1', quantity: 3, price: 7.5, name: 'Item A' },
-        { id: 'L-2', hs_sku: 'SKU-2', quantity: 1, price: 0, name: 'Item B' }
+        { id: 'L-1', hs_sku: 'SKU-1', quantity: 3, price: 7.5, name: 'Item A', hs_product_id: null },
+        { id: 'L-2', hs_sku: 'SKU-2', quantity: 1, price: 0, name: 'Item B', hs_product_id: null }
       ])
       expect(get.mock.calls[0][0]).toBe('/crm/v3/objects/quotes/Q-1/associations/line_items')
       expect(post.mock.calls[0][0]).toBe('/crm/v3/objects/line_items/batch/read')

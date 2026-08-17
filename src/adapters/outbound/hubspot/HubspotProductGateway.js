@@ -5,11 +5,27 @@ const async = require('async')
 const FALLBACK_CONCURRENCY = 10
 
 class HubspotProductGateway {
-  constructor({ apiClient, logger = null, imageUrlBuilder = null } = {}) {
+  constructor({ apiClient, logger = null, imageUrlBuilder = null, idProperty = 'id_producto_odoo' } = {}) {
     if (!apiClient) throw new Error('HubspotProductGateway requires apiClient')
     this.apiClient = apiClient
     this.logger = logger
     this.imageUrlBuilder = imageUrlBuilder
+    this.idProperty = idProperty
+  }
+
+  // (openspec/hubspot-product-odoo-id-key) The product-sync identity key is now the Odoo
+  // `product.product.id`, NOT `default_code` / `hs_sku`. `hs_sku` is informational only.
+  hasValidOdooId(odooProduct) {
+    if (!odooProduct) return false
+    const id = odooProduct.id
+    if (id == null) return false
+    if (typeof id === 'number') return Number.isFinite(id)
+    const n = Number(id)
+    return Number.isFinite(n)
+  }
+
+  extractOdooId(odooProduct) {
+    return String(odooProduct.id)
   }
 
   hasValidSku(odooProduct) {
@@ -29,6 +45,8 @@ class HubspotProductGateway {
       name: String(odooProduct.name),
       price: String(safePrice)
     }
+    // id_producto_odoo is the new identity key — always written.
+    props.id_producto_odoo = String(odooProduct.id)
     if (this.hasValidSku(odooProduct)) {
       props.hs_sku = String(odooProduct.default_code).trim()
     }
@@ -41,20 +59,23 @@ class HubspotProductGateway {
     return props
   }
 
-  async upsertBySku(odooProduct) {
+  async upsertByOdooId(odooProduct) {
     if (!odooProduct) return { skipped: true, reason: 'no_product', created: false }
+    if (!this.hasValidOdooId(odooProduct)) {
+      return { skipped: true, reason: 'no_id', created: false }
+    }
     const name = odooProduct.name == null ? '' : String(odooProduct.name).trim()
     if (!name) return { skipped: true, reason: 'no_name', created: false }
-    const hasSku = this.hasValidSku(odooProduct)
-    const sku = hasSku ? this.extractSku(odooProduct) : ''
+
+    const odooId = this.extractOdooId(odooProduct)
     const properties = this.buildProperties(odooProduct)
 
     let existing = null
-    if (hasSku) {
-      try {
-        existing = await this.apiClient.searchProductByHsSku(sku)
-      } catch (err) {
-        if (this.logger) this.logger.warn('hubspot.product.search failed; falling back to create', { sku, error: err.message })
+    try {
+      existing = await this.apiClient.searchProductByOdooId(odooId)
+    } catch (err) {
+      if (this.logger) {
+        this.logger.warn('hubspot.product.search failed; falling back to create', { odooId, error: err.message })
       }
     }
     if (existing && existing.id) {
@@ -66,7 +87,7 @@ class HubspotProductGateway {
       return { ...data, created: true }
     } catch (err) {
       if (this.isDuplicateError(err)) {
-        if (this.logger) this.logger.warn('hubspot.product.duplicate', { sku, sourceId: odooProduct.id, error: err.message })
+        if (this.logger) this.logger.warn('hubspot.product.duplicate', { odooId, sourceId: odooProduct.id, error: err.message })
         return { skipped: true, reason: 'duplicate_in_hubspot', created: false }
       }
       throw err
@@ -102,46 +123,33 @@ class HubspotProductGateway {
     return status === 400 && msg.includes('property values were not valid')
   }
 
-  async batchUpsertBySkus(odooProducts, { chunkSize = 100, idProperty = 'hs_sku' } = {}) {
+  // (openspec/hubspot-product-odoo-id-key) batch path dedupes by Odoo id — no SKU partition, no
+  // `no_sku` skip entries, no `duplicate_sku_in_input` skip entries. The Odoo id is unique by
+  // construction so duplicates within the batch are impossible; missing Odoo ids are skipped
+  // up-front (`no_id`).
+  async batchUpsertByOdooIds(odooProducts, { chunkSize = 100, idProperty = this.idProperty } = {}) {
     if (!Array.isArray(odooProducts) || odooProducts.length === 0) {
       return { results: [], errors: [], skipped: [] }
     }
     const valid = []
-    const skippedNoSku = []
+    const skipped = []
     for (const p of odooProducts) {
-      if (!p || this.hasValidSku(p)) {
+      if (this.hasValidOdooId(p)) {
         valid.push(p)
       } else {
-        skippedNoSku.push({ sourceId: p && p.id != null ? p.id : null, reason: 'no_sku' })
+        skipped.push({ sourceId: p && p.id != null ? p.id : null, reason: 'no_id' })
       }
     }
-    const seen = new Map()
-    const dupSkipped = []
-    const dedup = []
-    for (const p of valid) {
-      const sku = this.extractSku(p)
-      if (seen.has(sku)) {
-        dupSkipped.push({ sourceId: p.id, reason: 'duplicate_sku_in_input' })
-      } else {
-        seen.set(sku, p)
-        dedup.push(p)
-      }
+    if (valid.length === 0) {
+      return { results: [], errors: [], skipped }
     }
-    if (dupSkipped.length > 0 && this.logger && typeof this.logger.warn === 'function') {
-      this.logger.warn('hubspot.products.duplicate_sku_in_input', {
-        count: dupSkipped.length, sourceIds: dupSkipped.slice(0, 5).map((d) => d.sourceId)
-      })
-    }
-    if (dedup.length === 0) {
-      return { results: [], errors: [], skipped: [...skippedNoSku, ...dupSkipped] }
-    }
+
     const allResults = []
     const allErrors = []
-    const fallbackSkipped = []
-    for (let i = 0; i < dedup.length; i += chunkSize) {
-      const chunk = dedup.slice(i, i + chunkSize)
+    for (let i = 0; i < valid.length; i += chunkSize) {
+      const chunk = valid.slice(i, i + chunkSize)
       const inputs = chunk.map((p) => ({
-        id: this.extractSku(p),
+        id: this.extractOdooId(p),
         properties: this.buildProperties(p)
       }))
       try {
@@ -149,38 +157,34 @@ class HubspotProductGateway {
         allResults.push(...(response.results || []))
         allErrors.push(...(response.errors || []))
       } catch (err) {
-        // HubSpot can reject the WHOLE batch request for a single item's conflict/invalid value
-        // (e.g. a duplicate hs_sku collision or a malformed property) instead of returning it as
-        // a per-item error. Falling back to one single-item batch call per product isolates just
-        // the offending product(s) so the rest of the chunk still syncs.
         if (this.logger) {
           this.logger.warn('hubspot.product.batch_chunk_failed_fallback_to_individual', {
             chunkSize: chunk.length, error: err.message
           })
         }
         await async.mapLimit(chunk, FALLBACK_CONCURRENCY, async (p) => {
-          const sku = this.extractSku(p)
+          const odooId = this.extractOdooId(p)
           try {
             const response = await this.apiClient.batchUpsertProducts({
-              inputs: [{ id: sku, properties: this.buildProperties(p) }],
+              inputs: [{ id: odooId, properties: this.buildProperties(p) }],
               idProperty
             })
             allResults.push(...(response.results || []))
           } catch (itemErr) {
             if (this.isDuplicateError(itemErr)) {
-              if (this.logger) this.logger.warn('hubspot.product.duplicate', { sku, sourceId: p.id, error: itemErr.message })
-              fallbackSkipped.push({ sourceId: p.id, reason: 'duplicate_in_hubspot' })
+              if (this.logger) this.logger.warn('hubspot.product.duplicate', { odooId, sourceId: p.id, error: itemErr.message })
+              skipped.push({ sourceId: p.id, reason: 'duplicate_in_hubspot' })
             } else if (this.isInvalidPropertyValueError(itemErr)) {
-              if (this.logger) this.logger.warn('hubspot.product.invalid_property_value', { sku, sourceId: p.id, error: itemErr.message })
-              fallbackSkipped.push({ sourceId: p.id, reason: 'invalid_property_value' })
+              if (this.logger) this.logger.warn('hubspot.product.invalid_property_value', { odooId, sourceId: p.id, error: itemErr.message })
+              skipped.push({ sourceId: p.id, reason: 'invalid_property_value' })
             } else {
-              allErrors.push({ id: sku, message: itemErr.message })
+              allErrors.push({ id: odooId, message: itemErr.message })
             }
           }
         })
       }
     }
-    return { results: allResults, errors: allErrors, skipped: [...skippedNoSku, ...dupSkipped, ...fallbackSkipped] }
+    return { results: allResults, errors: allErrors, skipped }
   }
 }
 
