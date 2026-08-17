@@ -10,6 +10,7 @@ const { isRetryableError } = require('../core/domain/RetryPolicy')
 
 const { MongoJobRepository } = require('../adapters/outbound/mongo/MongoJobRepository')
 const { MongoMappingRepository } = require('../adapters/outbound/mongo/MongoMappingRepository')
+const { MongoProductMappingRepository } = require('../adapters/outbound/mongo/MongoProductMappingRepository')
 const { MongoDedupeGuard } = require('../adapters/outbound/mongo/MongoDedupeGuard')
 const { MongoAuditTrail } = require('../adapters/outbound/mongo/MongoAuditTrail')
 const { HubspotSourceGateway } = require('../adapters/outbound/hubspot/HubspotSourceGateway')
@@ -94,6 +95,11 @@ function createDealSyncModule({
     // siempre null; exigir match ahi convertiria cada corrida local en SKIPPED.
     requireProductMatch: config.odoo.mode === 'http',
     autoConfirm: config.odoo.autoConfirmQuotes === true,
+    // (openspec/hubspot-product-odoo-id-key — deal-product-resolution capability, PR 2)
+    // Wires the line-item Tier 2: hs_product_id → product_mapping.findByHubspotId → odooId.
+    // Optional in OdooTargetGateway (D4: self-disables when null), but in production wiring
+    // it's always injected so no-SKU line items resolve via the catalog mapping.
+    productMappingRepository: new MongoProductMappingRepository({ logger }),
     logger
   })
 

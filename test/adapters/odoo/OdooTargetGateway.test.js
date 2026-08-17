@@ -45,13 +45,13 @@ describe('collectUnresolvedLines', () => {
 
   it('reports not_found for a line item with an unresolvable sku', () => {
     expect(collectUnresolvedLines([{ id: 'L-1', hs_sku: 'NOPE', name: 'Cosa' }])).toEqual([
-      { lineItemId: 'L-1', name: 'Cosa', hsSku: 'NOPE', reason: 'not_found' }
+      { lineItemId: 'L-1', name: 'Cosa', hsSku: 'NOPE', hsProductId: null, reason: 'not_found' }
     ])
   })
 
   it('reports no_name_no_sku when the line item has neither', () => {
     expect(collectUnresolvedLines([{ id: 'L-1', hs_sku: null, name: '  ' }])).toEqual([
-      { lineItemId: 'L-1', name: null, hsSku: null, reason: 'no_name_no_sku' }
+      { lineItemId: 'L-1', name: null, hsSku: null, hsProductId: null, reason: 'no_name_no_sku' }
     ])
   })
 
@@ -59,7 +59,7 @@ describe('collectUnresolvedLines', () => {
     expect(collectUnresolvedLines([
       { id: 'L-1', hs_sku: null, name: 'Dup', productResolutionError: 'name_ambiguous', productNameCandidates: [1, 2] }
     ])).toEqual([
-      { lineItemId: 'L-1', name: 'Dup', hsSku: null, reason: 'name_ambiguous', candidates: [1, 2] }
+      { lineItemId: 'L-1', name: 'Dup', hsSku: null, hsProductId: null, reason: 'name_ambiguous', candidates: [1, 2] }
     ])
   })
 
@@ -378,7 +378,7 @@ describe('OdooTargetGateway', () => {
     expect(caught.message).toContain('L-1')
     expect(caught.message).toContain('Fantasma')
     expect(caught.detail.unresolved).toEqual([
-      { lineItemId: 'L-1', name: 'Fantasma', hsSku: null, reason: 'not_found' }
+      { lineItemId: 'L-1', name: 'Fantasma', hsSku: null, hsProductId: null, reason: 'not_found' }
     ])
     expect(api.createSalesOrder).not.toHaveBeenCalled()
   })
