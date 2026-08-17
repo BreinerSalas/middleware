@@ -373,7 +373,8 @@ describe('config', () => {
       expect(cfg.productSync.jobEnabled).toBe(false)
       expect(cfg.productSync.tickIntervalMs).toBe(60000)
       expect(cfg.productSync.orphanWatchdogMs).toBe(30 * 60 * 1000)
-      expect(cfg.productSync.includeNoSku).toBe(false)
+      // Default flipped to true (openspec/hubspot-product-odoo-id-key): include all Odoo products.
+      expect(cfg.productSync.includeNoSku).toBe(true)
     })
 
     it('parses PRODUCT_SYNC_JOB_ENABLED=true to enable the continuous job loop', () => {
@@ -387,6 +388,30 @@ describe('config', () => {
       })
       expect(cfg.productSync.tickIntervalMs).toBe(15000)
       expect(cfg.productSync.orphanWatchdogMs).toBe(900000)
+    })
+
+    it('parses PRODUCT_SYNC_INCLUDE_NO_SKU=false to opt out of full-catalog sync', () => {
+      const cfg = load({ env: { ...baseEnv, PRODUCT_SYNC_INCLUDE_NO_SKU: 'false' } })
+      expect(cfg.productSync.includeNoSku).toBe(false)
+    })
+  })
+
+  describe('hubspot.propertyOdooProductId (openspec/hubspot-product-odoo-id-key — id_producto_odoo key)', () => {
+    const baseEnv = {
+      ...PORTAL_ENV,
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret'
+    }
+
+    it('defaults cfg.hubspot.propertyOdooProductId to id_producto_odoo when env var missing', () => {
+      const cfg = load({ env: baseEnv })
+      expect(cfg.hubspot.propertyOdooProductId).toBe('id_producto_odoo')
+    })
+
+    it('parses HS_PROPERTY_ODOO_PRODUCT_ID override', () => {
+      const cfg = load({ env: { ...baseEnv, HS_PROPERTY_ODOO_PRODUCT_ID: 'id_producto_odoo_custom' } })
+      expect(cfg.hubspot.propertyOdooProductId).toBe('id_producto_odoo_custom')
     })
   })
 

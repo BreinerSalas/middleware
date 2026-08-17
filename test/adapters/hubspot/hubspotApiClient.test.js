@@ -83,14 +83,47 @@ describe('hubspotApiClient', () => {
       const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
       const items = await api.getDealLineItems('D-1')
       expect(items).toHaveLength(3)
-      expect(items[0]).toEqual({ id: 'L-1', hs_sku: 'SKU-1', quantity: 2, price: 9.99, name: 'Item 1' })
-      expect(items[2]).toEqual({ id: 'L-3', hs_sku: 'SKU-3', quantity: 1, price: 0, name: 'Item 3' })
+      expect(items[0]).toEqual({ id: 'L-1', hs_sku: 'SKU-1', quantity: 2, price: 9.99, name: 'Item 1', hs_product_id: null })
+      expect(items[2]).toEqual({ id: 'L-3', hs_sku: 'SKU-3', quantity: 1, price: 0, name: 'Item 3', hs_product_id: null })
       expect(http.post).toHaveBeenCalledTimes(1)
       const [postUrl, postBody] = http.post.mock.calls[0]
       expect(postUrl).toBe('/crm/v3/objects/line_items/batch/read')
       expect(postBody.inputs).toEqual([{ id: 'L-1' }, { id: 'L-2' }, { id: 'L-3' }])
       expect(postBody.properties).toContain('hs_sku')
       expect(postBody.properties).toContain('quantity')
+    })
+
+    it('requests hs_product_id in the line-item batch read (openspec/hubspot-product-odoo-id-key)', async () => {
+      const http = makeHttpMock({
+        get: vi.fn(async () => ({ data: { results: [{ id: 'L-1' }] } })),
+        post: vi.fn(async () => ({ data: { results: [{ id: 'L-1', properties: {} }] } }))
+      })
+      const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
+      await api.getDealLineItems('D-1')
+      const [, postBody] = http.post.mock.calls[0]
+      expect(postBody.properties).toContain('hs_product_id')
+      expect(postBody.properties).toContain('hs_sku')
+      expect(postBody.properties).toContain('quantity')
+      expect(postBody.properties).toContain('price')
+      expect(postBody.properties).toContain('name')
+    })
+
+    it('maps hs_product_id into the normalized line-item result (deal-product-resolution tier 2)', async () => {
+      const http = makeHttpMock({
+        get: vi.fn(async () => ({ data: { results: [{ id: 'L-1' }] } })),
+        post: vi.fn(async () => ({
+          data: {
+            results: [{
+              id: 'L-1',
+              properties: { hs_sku: null, quantity: '1', price: '0', name: 'X', hs_product_id: '46671077999' }
+            }]
+          }
+        }))
+      })
+      const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
+      const items = await api.getDealLineItems('D-1')
+      expect(items[0].hs_product_id).toBe('46671077999')
+      expect(items[0].hs_sku).toBe(null)
     })
 
     it('propagates errors from associations call', async () => {
@@ -110,43 +143,43 @@ describe('hubspotApiClient', () => {
   })
 
   describe('Product APIs', () => {
-    it('searchProductByHsSku returns first matching product', async () => {
+    it('searchProductByOdooId returns first matching product by id_producto_odoo (openspec/hubspot-product-odoo-id-key)', async () => {
       const post = vi.fn(async () => ({
-        data: { results: [{ id: 'P-1', properties: { hs_sku: '1170', name: 'X', price: '93.04' } }] }
+        data: { results: [{ id: 'P-1', properties: { id_producto_odoo: '42', name: 'X', price: '93.04' } }] }
       }))
       const http = makeHttpMock({ post })
       const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
-      const r = await api.searchProductByHsSku('1170')
-      expect(r).toEqual({ id: 'P-1', properties: { hs_sku: '1170', name: 'X', price: '93.04' } })
+      const r = await api.searchProductByOdooId('42')
+      expect(r).toEqual({ id: 'P-1', properties: { id_producto_odoo: '42', name: 'X', price: '93.04' } })
       expect(post).toHaveBeenCalledWith(
         '/crm/v3/objects/products/search',
         expect.objectContaining({
-          filterGroups: [{ filters: [{ propertyName: 'hs_sku', operator: 'EQ', value: '1170' }] }],
+          filterGroups: [{ filters: [{ propertyName: 'id_producto_odoo', operator: 'EQ', value: '42' }] }],
           limit: 1
         })
       )
     })
 
-    it('searchProductByHsSku returns null when no matches', async () => {
+    it('searchProductByOdooId returns null when no matches', async () => {
       const post = vi.fn(async () => ({ data: { results: [] } }))
       const http = makeHttpMock({ post })
       const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
-      const r = await api.searchProductByHsSku('NOT-EXIST')
+      const r = await api.searchProductByOdooId('NOT-EXIST')
       expect(r).toBeNull()
     })
 
-    it('searchProductByHsSku returns null when sku is empty', async () => {
+    it('searchProductByOdooId returns null when odooId is empty without issuing a query', async () => {
       const http = makeHttpMock()
       const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
-      const r = await api.searchProductByHsSku(null)
+      const r = await api.searchProductByOdooId(null)
       expect(r).toBeNull()
       expect(http.post).not.toHaveBeenCalled()
     })
 
-    it('searchProductByHsSku propagates errors', async () => {
+    it('searchProductByOdooId propagates errors', async () => {
       const http = makeHttpMock({ post: vi.fn(async () => { throw new Error('search-down') }) })
       const api = createHubspotApiClient({ baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http })
-      await expect(api.searchProductByHsSku('1170')).rejects.toThrow('search-down')
+      await expect(api.searchProductByOdooId('42')).rejects.toThrow('search-down')
     })
 
     it('createProduct POSTs to /crm/v3/objects/products', async () => {

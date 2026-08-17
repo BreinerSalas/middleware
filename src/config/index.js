@@ -49,7 +49,8 @@ const OPTIONAL_KEYS = [
   'PARTNER_SYNC_TICK_INTERVAL_MS',
   'PARTNER_SYNC_ORPHAN_WATCHDOG_MS',
   'PARTNER_SYNC_PAGE_SIZE',
-  'HS_PROPERTY_ODOO_PARTNER_ID'
+  'HS_PROPERTY_ODOO_PARTNER_ID',
+  'HS_PROPERTY_ODOO_PRODUCT_ID'
 ]
 
 function parseCsvList(raw) {
@@ -99,7 +100,8 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       propertyManufacturingOrder: env.HS_PROPERTY_MANUFACTURING_ORDER || 'numero_orden_fabricacion',
       propertyQuoteState: env.HS_PROPERTY_QUOTE_STATE || 'estado_presupuesto_odoo',
       propertyQuoteInvoiceStatus: env.HS_PROPERTY_QUOTE_INVOICE_STATUS || 'estado_facturacion_odoo',
-      propertyOdooPartnerId: env.HS_PROPERTY_ODOO_PARTNER_ID || 'id_contacto_odoo_v2'
+      propertyOdooPartnerId: env.HS_PROPERTY_ODOO_PARTNER_ID || 'id_contacto_odoo_v2',
+      propertyOdooProductId: env.HS_PROPERTY_ODOO_PRODUCT_ID || 'id_producto_odoo'
     },
     odoo: {
       mode: (env.ODOO_CLIENT_MODE || 'stub').toLowerCase(),
@@ -143,7 +145,7 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       jobEnabled: String(env.PRODUCT_SYNC_JOB_ENABLED || 'false').toLowerCase() === 'true',
       tickIntervalMs: Number(env.PRODUCT_SYNC_TICK_INTERVAL_MS || 60000),
       orphanWatchdogMs: Number(env.PRODUCT_SYNC_ORPHAN_WATCHDOG_MS || 30 * 60 * 1000),
-      includeNoSku: String(env.PRODUCT_SYNC_INCLUDE_NO_SKU || 'false').toLowerCase() === 'true'
+      includeNoSku: String(env.PRODUCT_SYNC_INCLUDE_NO_SKU || 'true').toLowerCase() === 'true'
     },
     saleOrderStatusSync: {
       jobEnabled: String(env.SALE_ORDER_STATUS_SYNC_JOB_ENABLED || 'false').toLowerCase() === 'true',

@@ -8,7 +8,7 @@ function makeHttpMock({ post = async () => ({ data: {} }) } = {}) {
 }
 
 describe('hubspotApiClient - batchUpsertProducts', () => {
-  it('POSTs to /crm/v3/objects/products/batch/upsert with inputs tagged by idProperty', async () => {
+  it('defaults idProperty to id_producto_odoo (openspec/hubspot-product-odoo-id-key)', async () => {
     const post = vi.fn(async () => ({ data: { results: [], numErrors: 0 } }))
     const http = makeHttpMock({ post })
     const rl = { take: vi.fn().mockResolvedValue(undefined), pause: vi.fn() }
@@ -20,15 +20,15 @@ describe('hubspotApiClient - batchUpsertProducts', () => {
     })
     await api.batchUpsertProducts({
       inputs: [
-        { id: 'AC-1170', properties: { name: 'Aceite', price: '12.5' } },
-        { id: 'AC-1171', properties: { name: 'Filtro', price: '3.0' } }
+        { id: '42', properties: { name: 'Aceite', id_producto_odoo: '42' } },
+        { id: '43', properties: { name: 'Filtro', id_producto_odoo: '43' } }
       ]
     })
     const [url, body] = post.mock.calls[0]
     expect(url).toBe('/crm/v3/objects/products/batch/upsert')
     expect(body.inputs).toEqual([
-      { id: 'AC-1170', idProperty: 'hs_sku', properties: { name: 'Aceite', price: '12.5' } },
-      { id: 'AC-1171', idProperty: 'hs_sku', properties: { name: 'Filtro', price: '3.0' } }
+      { id: '42', idProperty: 'id_producto_odoo', properties: { name: 'Aceite', id_producto_odoo: '42' } },
+      { id: '43', idProperty: 'id_producto_odoo', properties: { name: 'Filtro', id_producto_odoo: '43' } }
     ])
   })
 
@@ -133,5 +133,73 @@ describe('hubspotApiClient - batchUpsertProducts', () => {
     })
     await api.batchUpsertProducts({ inputs: [{ id: 'P-1', properties: {} }] })
     expect(takeSpy).toHaveBeenCalledTimes(1)
+  })
+})
+
+// (openspec/hubspot-product-odoo-id-key, post-verify fix) HubSpot's real batch/upsert
+// endpoint rejects any input missing idProperty ("Upserts in a single batch must specify
+// its unique property using idProperty") — there is no idProperty:null variant. Writing
+// onto a product by its already-known native HubSpot object id (the backfill's use case)
+// requires the separate batch/update endpoint instead, which always matches by native id
+// and never takes an idProperty.
+describe('hubspotApiClient - batchUpdateProducts (native id, no idProperty)', () => {
+  it('posts to /crm/v3/objects/products/batch/update with plain {id, properties} inputs', async () => {
+    const post = vi.fn(async () => ({ data: { results: [], numErrors: 0 } }))
+    const http = makeHttpMock({ post })
+    const rl = { take: vi.fn().mockResolvedValue(undefined), pause: vi.fn() }
+    const api = createHubspotApiClient({
+      baseUrl: 'https://api.hubapi.com',
+      accessToken: 'tok-1',
+      httpClient: http,
+      rateLimiter: rl
+    })
+    await api.batchUpdateProducts({
+      inputs: [{ id: '46671077999', properties: { id_producto_odoo: '42' } }]
+    })
+    const [url, body] = post.mock.calls[0]
+    expect(url).toBe('/crm/v3/objects/products/batch/update')
+    expect(body.inputs).toEqual([{ id: '46671077999', properties: { id_producto_odoo: '42' } }])
+    expect('idProperty' in body.inputs[0]).toBe(false)
+  })
+
+  it('parses per-item errors the same way as batchUpsertProducts', async () => {
+    const post = vi.fn(async () => ({
+      data: {
+        results: [{ id: 'P-1', properties: {} }],
+        errors: [{ id: 'P-2', message: 'not found' }],
+        numErrors: 1
+      }
+    }))
+    const http = makeHttpMock({ post })
+    const rl = { take: vi.fn().mockResolvedValue(undefined), pause: vi.fn() }
+    const api = createHubspotApiClient({
+      baseUrl: 'https://api.hubapi.com',
+      accessToken: 'tok-1',
+      httpClient: http,
+      rateLimiter: rl
+    })
+    const r = await api.batchUpdateProducts({
+      inputs: [{ id: 'P-1', properties: {} }, { id: 'P-2', properties: {} }]
+    })
+    expect(r.results).toHaveLength(1)
+    expect(r.errors).toHaveLength(1)
+    expect(r.errors[0]).toMatchObject({ id: 'P-2', message: 'not found' })
+  })
+
+  it('throws on top-level error', async () => {
+    const post = vi.fn(async () => {
+      const err = new Error('Bad Request')
+      err.response = { status: 400, data: { message: 'bad input' } }
+      throw err
+    })
+    const http = makeHttpMock({ post })
+    const rl = { take: vi.fn().mockResolvedValue(undefined), pause: vi.fn() }
+    const api = createHubspotApiClient({
+      baseUrl: 'https://api.hubapi.com',
+      accessToken: 'tok-1',
+      httpClient: http,
+      rateLimiter: rl
+    })
+    await expect(api.batchUpdateProducts({ inputs: [] })).rejects.toThrow()
   })
 })
