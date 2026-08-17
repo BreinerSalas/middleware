@@ -487,3 +487,32 @@ describe('buildWriteBackPayload (quote flow)', () => {
     expect(payload).not.toHaveProperty('numero_orden_fabricacion')
   })
 })
+
+describe('composition/dealSyncModule wiring (openspec/hubspot-product-odoo-id-key — PR 2)', () => {
+  it('the default-constructed OdooTargetGateway receives a productMappingRepository (line-item tier 2 wiring, PR 2)', () => {
+    // Do NOT inject `targetGateway` — let the module's default factory construct it. The
+    // wiring test then inspects `module._internals.targetGateway` to assert the repo is wired.
+    const m = createDealSyncModule({
+      config: {
+        mongodbUri: 'mongodb://x',
+        hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com' },
+        odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
+        server: { port: 0, nodeEnv: 'test' },
+        logging: { level: 'error' },
+        worker: { concurrency: 1, pollIntervalMs: 50 },
+        retry: { maxAttempts: 8, maxDelayMs: 60_000 }
+      },
+      sourceGateway: makeSourceGateway(),
+      // targetGateway NOT injected — exercise the default factory
+      logger: null,
+      recoverOrphansOnStart: false,
+      validators: []
+    })
+    const gw = m._internals.targetGateway
+    expect(gw).toBeTruthy()
+    expect(gw.productMappingRepository).toBeTruthy()
+    // The repo must expose the tier-2 contract (findByHubspotId). MongoProductMappingRepository
+    // does — verified in Phase 2.4; here we just assert the wiring is in place.
+    expect(typeof gw.productMappingRepository.findByHubspotId).toBe('function')
+  })
+})

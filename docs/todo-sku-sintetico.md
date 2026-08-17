@@ -1,8 +1,31 @@
 # TODO — Fix de raíz: SKU sintético para productos sin `default_code`
 
-> **Estado: PENDIENTE.** Escrito el 2026-07-30 después de blindar la demo con un puente
+> **SUPERSEDED by `openspec/changes/hubspot-product-odoo-id-key/`** (rev 2, 2026-08-14).
+>
+> The synthetic-SKU plan below is **rejected** as policy. Company rule: no customer-visible
+> product data is ever mutated by middleware — a synthetic `hs_sku = String(odooId)` would
+> stamp meaningless numeric SKUs onto ~5 348 real HubSpot products visible to the client.
+>
+> The change `hubspot-product-odoo-id-key` reaches the same goal (no-SKU products sync, deal
+> line-item resolution works for them) via two decoupled mechanisms that NEVER touch a
+> customer-visible field:
+>
+> 1. **Catalog identity** — a provisioned, unique custom property `id_producto_odoo`
+>    (`HubspotProductGateway.buildProperties` writes it always; `batchUpsertProducts` uses
+>    it as the sole `idProperty`). Replaces the old SKU-as-key pattern.
+> 2. **Line-item resolution** — HubSpot's native `hs_product_id` on the line item is
+>    resolved to `odooId` through `product_mapping.findByHubspotId`, inserted as a new
+>    tier before the name-based fallback.
+>
+> **Do not re-propose synthetic `hs_sku` under any future proposal.** The plan below is
+> kept only as historical context for anyone tracing why we don't use `hs_sku` as the
+> product identity key.
+>
+> ---
+>
+> **Estado original: PENDIENTE.** Escrito el 2026-07-30 después de blindar la demo con un puente
 > (fallback por nombre + fallo legible). El puente funciona, pero no es la solución
-> definitiva. Este documento es el plan del fix real.
+> definitiva. Este documento era el plan del fix real.
 
 ## El problema
 
