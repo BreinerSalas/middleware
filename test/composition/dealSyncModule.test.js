@@ -134,6 +134,27 @@ describe('composition/dealSyncModule end-to-end', () => {
     })
   })
 
+  it('wires the real HubspotSourceGateway.closedWonStageId from config.deals.closedWonStageId when sourceGateway is not injected', () => {
+    const otherTenantClosedWonId = '999999-other-portal'
+    const module = createDealSyncModule({
+      config: {
+        mongodbUri: 'mongodb://x',
+        hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com', propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b' },
+        odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
+        deals: { allowedStageIds: [CIERRE_GANADO], allowedPipelineIds: [CVB], closedWonStageId: otherTenantClosedWonId },
+        server: { port: 0, nodeEnv: 'test' },
+        logging: { level: 'error' },
+        worker: { concurrency: 1, pollIntervalMs: 50 },
+        retry: { maxAttempts: 8, maxDelayMs: 60_000 }
+      },
+      targetGateway: makeTargetGateway({ writeBack: [], upsert: [] }),
+      logger: null,
+      recoverOrphansOnStart: false,
+      validators: []
+    })
+    expect(module._internals.sourceGateway.closedWonStageId).toBe(otherTenantClosedWonId)
+  })
+
   it('runs full pipeline: enqueue -> process -> writeback', async () => {
     const r = await moduleUnderTest.enqueueWebhook({ rawBody: { objectId: 'D-1' }, objectId: 'D-1', eventType: 'deal.creation' })
     expect(r.job).toBeTruthy()

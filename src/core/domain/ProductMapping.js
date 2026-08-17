@@ -16,13 +16,17 @@ class ProductMapping {
 
 function buildProductMapping({ odooId, hsSku, hubspotId, action, now = () => new Date().toISOString() } = {}) {
   if (odooId == null) throw new Error('buildProductMapping requires odooId')
-  if (!hsSku) throw new Error('buildProductMapping requires hsSku')
   if (hubspotId == null) throw new Error('buildProductMapping requires hubspotId')
   if (!VALID_ACTIONS.has(action)) throw new Error(`buildProductMapping invalid action: ${action}`)
+  // (openspec/hubspot-product-odoo-id-key) hsSku is informational only — never an identity key.
+  // Normalize null/absent/false/whitespace to null so no-SKU products can be persisted.
+  const normalizedHsSku = (hsSku == null || hsSku === false || String(hsSku).trim() === '')
+    ? null
+    : String(hsSku)
   const syncedAt = now()
   return {
     odooId: Number(odooId),
-    hsSku: String(hsSku),
+    hsSku: normalizedHsSku,
     hubspotId: String(hubspotId),
     action,
     syncedAt,

@@ -87,7 +87,7 @@ async function main() {
 
     if (args.help === true || args.h === true) {
       process.stdout.write([
-        'Usage: node scripts/sync-products.js [--interval=60000] [--limit=N] [--sample=N] [--once] [--dry-run] [--include-no-sku]',
+        'Usage: node scripts/sync-products.js [--interval=60000] [--limit=N] [--sample=N] [--once] [--dry-run] [--only-with-sku]',
         '',
         'Flags:',
         '  --interval=MS       repeat runOnce every MS (default: $PRODUCT_SYNC_INTERVAL_MS or 60000)',
@@ -95,10 +95,12 @@ async function main() {
         '  --limit=N           process only first N products from Odoo',
         '  --sample=N          alias for --limit=N intended for a one-off demo/sample run',
         '  --dry-run           log planned changes, do not write to HubSpot',
-        '  --include-no-sku    include products WITHOUT default_code (default: skip; 5848 with SKU vs ~11132 all)',
+        '  --only-with-sku     opt-OUT of the default full-catalog sync (sync ONLY products WITH default_code;',
+        '                      default: sync ALL ~11132 Odoo products, keyed on product.product.id, openspec/hubspot-product-odoo-id-key)',
         '',
         'Env:',
         '  PRODUCT_SYNC_INTERVAL_MS   default interval when --interval omitted',
+        '  PRODUCT_SYNC_INCLUDE_NO_SKU default behaviour override ("false" = opt-out, same as --only-with-sku)',
         '  SMARTFLOW_ENV_FILE         alternate .env path (e.g. .env.staging, .env.client)',
         '  MEDIA_URL_SECRET / MEDIA_PUBLIC_BASE_URL   when both are set, hs_images is',
         '                              populated with a signed proxy URL for products Odoo has an image for',
@@ -112,7 +114,10 @@ async function main() {
   const sample = typeof args.sample === 'number' ? args.sample : null
   const limit = sample != null ? sample : (typeof args.limit === 'number' ? args.limit : null)
   const dryRun = args['dry-run'] === true
-  const includeNoSku = args['include-no-sku'] === true || args.includeNoSku === true
+  // (openspec/hubspot-product-odoo-id-key) Default is full-catalog sync; opt-out via
+  // `--only-with-sku` (CLI) or `PRODUCT_SYNC_INCLUDE_NO_SKU=false` (env). cfg.productSync.includeNoSku
+  // already defaults to true after the config change in 1.2.
+  const includeNoSku = args['only-with-sku'] !== true && cfg.productSync.includeNoSku !== false
 
   const tick = async () => {
     await refreshImageIds()

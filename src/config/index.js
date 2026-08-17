@@ -6,7 +6,10 @@ const dotenv = require('dotenv')
 const REQUIRED_KEYS = [
   'MONGODB_URI',
   'HUBSPOT_ACCESS_TOKEN',
-  'HUBSPOT_CLIENT_SECRET'
+  'HUBSPOT_CLIENT_SECRET',
+  'HS_ALLOWED_STAGE_IDS',
+  'HS_ALLOWED_PIPELINE_IDS',
+  'HS_CLOSED_WON_STAGE_ID'
 ]
 
 const OPTIONAL_KEYS = [
@@ -26,8 +29,6 @@ const OPTIONAL_KEYS = [
   'ODOO_API_KEY',
   'ODOO_DEFAULT_CUSTOMER_ID',
   'ODOO_AUTO_CONFIRM_QUOTES',
-  'HS_ALLOWED_STAGE_IDS',
-  'HS_ALLOWED_PIPELINE_IDS',
   'HS_REJECT_UNKNOWN_PIPELINE',
   'PORT',
   'NODE_ENV',
@@ -48,13 +49,9 @@ const OPTIONAL_KEYS = [
   'PARTNER_SYNC_TICK_INTERVAL_MS',
   'PARTNER_SYNC_ORPHAN_WATCHDOG_MS',
   'PARTNER_SYNC_PAGE_SIZE',
-  'HS_PROPERTY_ODOO_PARTNER_ID'
+  'HS_PROPERTY_ODOO_PARTNER_ID',
+  'HS_PROPERTY_ODOO_PRODUCT_ID'
 ]
-
-const {
-  DEAL_STAGE_CLOSED_WON_ID,
-  DEAL_PIPELINE_COMMERCIAL_VISUAL_BRANDING
-} = require('./constants')
 
 function parseCsvList(raw) {
   if (raw == null) return []
@@ -75,16 +72,18 @@ function loadEnvFile({ envFile = null, override = false } = {}) {
 function load({ env = process.env, envFile = null, override = false } = {}) {
   const targetFile = envFile === null ? path.resolve(process.cwd(), '.env') : envFile
   loadEnvFile({ envFile: targetFile, override })
+  const stageIds = parseCsvList(env.HS_ALLOWED_STAGE_IDS)
+  const pipelineIds = parseCsvList(env.HS_ALLOWED_PIPELINE_IDS)
+  const quoteEligibleStatuses = parseCsvList(env.HS_QUOTE_ELIGIBLE_STATUSES)
   const missing = REQUIRED_KEYS.filter((k) => !env[k] || String(env[k]).trim() === '')
+  if (stageIds.length === 0 && !missing.includes('HS_ALLOWED_STAGE_IDS')) missing.push('HS_ALLOWED_STAGE_IDS')
+  if (pipelineIds.length === 0 && !missing.includes('HS_ALLOWED_PIPELINE_IDS')) missing.push('HS_ALLOWED_PIPELINE_IDS')
   if (missing.length > 0) {
     const err = new Error(`Missing required env var(s): ${missing.join(', ')}`)
     err.code = 'CONFIG_MISSING'
     err.missing = missing
     throw err
   }
-  const stageIds = parseCsvList(env.HS_ALLOWED_STAGE_IDS)
-  const pipelineIds = parseCsvList(env.HS_ALLOWED_PIPELINE_IDS)
-  const quoteEligibleStatuses = parseCsvList(env.HS_QUOTE_ELIGIBLE_STATUSES)
   return {
     mongodbUri: env.MONGODB_URI,
     hubspot: {
@@ -101,7 +100,8 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       propertyManufacturingOrder: env.HS_PROPERTY_MANUFACTURING_ORDER || 'numero_orden_fabricacion',
       propertyQuoteState: env.HS_PROPERTY_QUOTE_STATE || 'estado_presupuesto_odoo',
       propertyQuoteInvoiceStatus: env.HS_PROPERTY_QUOTE_INVOICE_STATUS || 'estado_facturacion_odoo',
-      propertyOdooPartnerId: env.HS_PROPERTY_ODOO_PARTNER_ID || 'id_contacto_odoo_v2'
+      propertyOdooPartnerId: env.HS_PROPERTY_ODOO_PARTNER_ID || 'id_contacto_odoo_v2',
+      propertyOdooProductId: env.HS_PROPERTY_ODOO_PRODUCT_ID || 'id_producto_odoo'
     },
     odoo: {
       mode: (env.ODOO_CLIENT_MODE || 'stub').toLowerCase(),
@@ -113,8 +113,9 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       autoConfirmQuotes: String(env.ODOO_AUTO_CONFIRM_QUOTES || 'false').toLowerCase() === 'true'
     },
     deals: {
-      allowedStageIds: stageIds.length > 0 ? stageIds : [DEAL_STAGE_CLOSED_WON_ID],
-      allowedPipelineIds: pipelineIds.length > 0 ? pipelineIds : [DEAL_PIPELINE_COMMERCIAL_VISUAL_BRANDING],
+      allowedStageIds: stageIds,
+      allowedPipelineIds: pipelineIds,
+      closedWonStageId: String(env.HS_CLOSED_WON_STAGE_ID || '').trim(),
       rejectUnknownPipeline: String(env.HS_REJECT_UNKNOWN_PIPELINE || 'true').toLowerCase() !== 'false'
     },
     server: {
@@ -144,7 +145,7 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       jobEnabled: String(env.PRODUCT_SYNC_JOB_ENABLED || 'false').toLowerCase() === 'true',
       tickIntervalMs: Number(env.PRODUCT_SYNC_TICK_INTERVAL_MS || 60000),
       orphanWatchdogMs: Number(env.PRODUCT_SYNC_ORPHAN_WATCHDOG_MS || 30 * 60 * 1000),
-      includeNoSku: String(env.PRODUCT_SYNC_INCLUDE_NO_SKU || 'false').toLowerCase() === 'true'
+      includeNoSku: String(env.PRODUCT_SYNC_INCLUDE_NO_SKU || 'true').toLowerCase() === 'true'
     },
     saleOrderStatusSync: {
       jobEnabled: String(env.SALE_ORDER_STATUS_SYNC_JOB_ENABLED || 'false').toLowerCase() === 'true',

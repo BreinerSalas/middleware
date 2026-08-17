@@ -19,24 +19,24 @@ function makeSource({ count = 0, listAll = async () => [] } = {}) {
   }
 }
 
-function makeGateway({ upsertBySku = async () => ({ id: 'X', created: true }), batchUpsertBySkus } = {}) {
+function makeGateway({ upsertByOdooId = async () => ({ id: 'X', created: true }), batchUpsertByOdooIds } = {}) {
   const gateway = {
-    batchUpsertBySkus: vi.fn(batchUpsertBySkus || (async (products) => ({
-      results: products.map((p) => ({ id: 'BATCH-NEW', properties: { hs_sku: String(p.default_code).trim() } })),
+    batchUpsertByOdooIds: vi.fn(batchUpsertByOdooIds || (async (products) => ({
+      results: products.map((p) => ({ id: `BATCH-${p.id}`, properties: { id_producto_odoo: String(p.id) } })),
       errors: [],
       skipped: []
     }))),
-    upsertBySku: vi.fn(upsertBySku)
+    upsertByOdooId: vi.fn(upsertByOdooId)
   }
   return gateway
 }
 
-describe('productSyncModule', () => {
-  it('runOnce fetches all from odooSource and dispatches with-SKU to batch + without-SKU to single', async () => {
+describe('productSyncModule (openspec/hubspot-product-odoo-id-key — Odoo-id key)', () => {
+  it('runOnce fetches all from odooSource and dispatches ONE batch call (no SKU partition)', async () => {
     const odooSource = makeSource({ count: 3, listAll: async () => [
       { id: 1, name: 'A', default_code: 'A', list_price: 1 },
-      { id: 2, name: 'B', default_code: 'B', list_price: 2 },
-      { id: 3, name: 'C', default_code: false, list_price: 3 }
+      { id: 2, name: 'B', default_code: false, list_price: 2 },
+      { id: 3, name: 'C', default_code: 'C', list_price: 3 }
     ] })
     const hubspotGateway = makeGateway()
     const logger = makeLogger()
@@ -46,10 +46,12 @@ describe('productSyncModule', () => {
     })
     const out = await m.runOnce({})
     expect(odooSource.count).toHaveBeenCalledTimes(1)
-    expect(odooSource.listAll).toHaveBeenCalledWith({ includeNoSku: false })
-    expect(hubspotGateway.batchUpsertBySkus).toHaveBeenCalledTimes(1)
-    expect(hubspotGateway.batchUpsertBySkus.mock.calls[0][0]).toHaveLength(2)
-    expect(hubspotGateway.upsertBySku).toHaveBeenCalledTimes(1)
+    // Default is now includeNoSku: true (full-catalog sync)
+    expect(odooSource.listAll).toHaveBeenCalledWith({ includeNoSku: true })
+    expect(hubspotGateway.batchUpsertByOdooIds).toHaveBeenCalledTimes(1)
+    expect(hubspotGateway.batchUpsertByOdooIds.mock.calls[0][0]).toHaveLength(3)
+    // No single-item path anymore — single upsert only used for incremental pages with chunks <1
+    expect(hubspotGateway.upsertByOdooId).not.toHaveBeenCalled()
     expect(out).toHaveLength(3)
     expect(logger.info).toHaveBeenCalledWith('product-sync.start', expect.objectContaining({ total: 3 }))
     expect(logger.info).toHaveBeenCalledWith('product-sync.done', expect.objectContaining({ count: 3 }))
@@ -65,13 +67,13 @@ describe('productSyncModule', () => {
       config: {}, odooSource, hubspotGateway, logger: makeLogger(), concurrency: 10
     })
     await m.runOnce({ limit: 2 })
-    expect(odooSource.listAll).toHaveBeenCalledWith({ limit: 2, includeNoSku: false })
+    expect(odooSource.listAll).toHaveBeenCalledWith({ limit: 2, includeNoSku: true })
   })
 
   it('runOnce with dryRun=true makes 0 gateway calls', async () => {
     const odooSource = makeSource({ count: 2, listAll: async () => [
       { id: 1, name: 'A', default_code: 'A', list_price: 1 },
-      { id: 2, name: 'B', default_code: 'B', list_price: 2 }
+      { id: 2, name: 'B', default_code: false, list_price: 2 }
     ] })
     const hubspotGateway = makeGateway()
     const logger = makeLogger()
@@ -79,8 +81,7 @@ describe('productSyncModule', () => {
       config: {}, odooSource, hubspotGateway, logger, concurrency: 10
     })
     const out = await m.runOnce({ dryRun: true })
-    expect(hubspotGateway.batchUpsertBySkus).not.toHaveBeenCalled()
-    expect(hubspotGateway.upsertBySku).not.toHaveBeenCalled()
+    expect(hubspotGateway.batchUpsertByOdooIds).not.toHaveBeenCalled()
     expect(out).toHaveLength(2)
     expect(out[0]).toMatchObject({ id: 1, dryRun: true, created: false, skipped: true })
   })
@@ -92,9 +93,9 @@ describe('productSyncModule', () => {
       { id: 3, name: 'C', default_code: 'C', list_price: 3 }
     ] })
     const hubspotGateway = makeGateway({
-      batchUpsertBySkus: async (products) => ({
-        results: [products[0]].map((p) => ({ id: 'BATCH-P1', properties: { hs_sku: String(p.default_code).trim() } })),
-        errors: products.slice(1).map((p) => ({ id: String(p.default_code).trim(), message: 'bad-batch', category: 'X' })),
+      batchUpsertByOdooIds: async (products) => ({
+        results: [products[0]].map((p) => ({ id: 'BATCH-P1', properties: { id_producto_odoo: String(p.id) } })),
+        errors: products.slice(1).map((p) => ({ id: String(p.id), message: 'bad-batch', category: 'X' })),
         skipped: []
       })
     })
@@ -110,16 +111,16 @@ describe('productSyncModule', () => {
     expect(logger.info).toHaveBeenCalledWith('product-sync.done', expect.objectContaining({ failed: 2, succeeded: 1 }))
   })
 
-  it('runOnce counts created vs updated from batch results', async () => {
+  it('runOnce counts created vs updated from batch results (correlation by sent Odoo id)', async () => {
     const odooSource = makeSource({ count: 2, listAll: async () => [
       { id: 1, name: 'A', default_code: 'A', list_price: 1 },
       { id: 2, name: 'B', default_code: 'B', list_price: 2 }
     ] })
     const hubspotGateway = makeGateway({
-      batchUpsertBySkus: async () => ({
+      batchUpsertByOdooIds: async () => ({
         results: [
-          { id: 'P-1', properties: { hs_sku: 'A' }, createdAt: 'T', updatedAt: 'T' },
-          { id: 'P-2', properties: { hs_sku: 'B' }, createdAt: 'T', updatedAt: 'T2' }
+          { id: 'P-1', properties: { id_producto_odoo: '1' }, createdAt: 'T', updatedAt: 'T' },
+          { id: 'P-2', properties: { id_producto_odoo: '2' }, createdAt: 'T', updatedAt: 'T2' }
         ],
         errors: [],
         skipped: []
@@ -133,6 +134,32 @@ describe('productSyncModule', () => {
     expect(logger.info).toHaveBeenCalledWith('product-sync.done', expect.objectContaining({ created: 1, updated: 1 }))
   })
 
+  it('correlates batch results by sent Odoo id even when the echo is absent/mismatched', async () => {
+    const odooSource = makeSource({ count: 2, listAll: async () => [
+      { id: 42, name: 'A', default_code: 'AC-1170', list_price: 1 },
+      { id: 99, name: 'B', default_code: 'OTHER', list_price: 2 }
+    ] })
+    const hubspotGateway = makeGateway({
+      batchUpsertByOdooIds: async () => ({
+        results: [
+          { id: 'P-1', properties: { id_producto_odoo: '42' }, createdAt: 'T', updatedAt: 'T' },
+          // No id_producto_odoo echo on the second — correlation must still work via inputs[i].id
+          { id: 'P-2', properties: {}, createdAt: 'T', updatedAt: 'T' }
+        ],
+        errors: [],
+        skipped: []
+      })
+    })
+    const m = createProductSyncModule({
+      config: {}, odooSource, hubspotGateway, logger: makeLogger(), concurrency: 10
+    })
+    const out = await m.runOnce({})
+    const succeeded = out.filter((r) => !r.failed && !r.dryRun && !r.skipped)
+    expect(succeeded).toHaveLength(2)
+    expect(succeeded.find((r) => r.sourceId === 42)).toMatchObject({ hubspotId: 'P-1', action: 'created' })
+    expect(succeeded.find((r) => r.sourceId === 99)).toMatchObject({ hubspotId: 'P-2', action: 'created' })
+  })
+
   it('requires odooSource', () => {
     expect(() => createProductSyncModule({ config: {}, odooSource: null, hubspotGateway: makeGateway() })).toThrow(/odooSource/)
   })
@@ -141,8 +168,8 @@ describe('productSyncModule', () => {
     expect(() => createProductSyncModule({ config: {}, odooSource: makeSource(), hubspotGateway: null })).toThrow(/hubspotGateway/)
   })
 
-  it('runOnce({ includeNoSku: true }) forwards to source', async () => {
-    const odooSource = makeSource({ count: 11132, listAll: async () => [
+  it('runOnce({ includeNoSku: false }) forwards to source (opt-out still works)', async () => {
+    const odooSource = makeSource({ count: 5848, listAll: async () => [
       { id: 1, name: 'A', default_code: 'A', list_price: 1 },
       { id: 2, name: 'B', default_code: false, list_price: 2 }
     ] })
@@ -150,8 +177,8 @@ describe('productSyncModule', () => {
     const m = createProductSyncModule({
       config: {}, odooSource, hubspotGateway, logger: makeLogger(), concurrency: 10
     })
-    await m.runOnce({ includeNoSku: true })
-    expect(odooSource.count).toHaveBeenCalledWith({ includeNoSku: true })
-    expect(odooSource.listAll).toHaveBeenCalledWith(expect.objectContaining({ includeNoSku: true }))
+    await m.runOnce({ includeNoSku: false })
+    expect(odooSource.count).toHaveBeenCalledWith({ includeNoSku: false })
+    expect(odooSource.listAll).toHaveBeenCalledWith(expect.objectContaining({ includeNoSku: false }))
   })
 })

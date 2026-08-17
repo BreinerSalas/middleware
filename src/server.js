@@ -11,6 +11,7 @@ const { provisionProperties } = require('./composition/provisionProperties')
 const { buildDealPropertyDefinitions } = require('./composition/dealPropertyDefinitions')
 const { buildQuotePropertyDefinitions } = require('./composition/quotePropertyDefinitions')
 const { buildContactPropertyDefinitions } = require('./composition/contactPropertyDefinitions')
+const { buildProductPropertyDefinitions } = require('./composition/productPropertyDefinitions')
 const { createOdooApiClient } = require('./adapters/outbound/odoo/odooApiClient')
 const { OdooProductSource } = require('./adapters/outbound/odoo/OdooProductSource')
 const { HubspotProductGateway } = require('./adapters/outbound/hubspot/HubspotProductGateway')
@@ -27,7 +28,6 @@ const { createSaleOrderStatusSyncJobModule } = require('./composition/saleOrderS
 const { HubspotSourceGateway } = require('./adapters/outbound/hubspot/HubspotSourceGateway')
 const { MongoMappingRepository } = require('./adapters/outbound/mongo/MongoMappingRepository')
 const { createEchoGuard } = require('./core/shared/echoGuard')
-const { DEAL_STAGE_CLOSED_WON_ID } = require('./config/constants')
 const { createManufacturingOrderRetrySyncModule } = require('./composition/manufacturingOrderRetrySyncModule')
 const { createManufacturingOrderRetrySyncJobModule } = require('./composition/manufacturingOrderRetrySyncJobModule')
 const { OdooPartnerSource } = require('./adapters/outbound/odoo/OdooPartnerSource')
@@ -36,6 +36,7 @@ const { createPartnerSyncModule } = require('./composition/partnerSyncModule')
 const { createPartnerSyncJobModule } = require('./composition/partnerSyncJobModule')
 const { MongoPartnerMappingRepository } = require('./adapters/outbound/mongo/MongoPartnerMappingRepository')
 const { MongoPartnerSyncRunRepository } = require('./adapters/outbound/mongo/MongoPartnerSyncRunRepository')
+const { runProductsProvisioningGate } = require('./composition/productsProvisioningGate')
 
 async function start({ config = null } = {}) {
   const cfg = config || load()
@@ -50,13 +51,17 @@ async function start({ config = null } = {}) {
   const dealPropertiesToProvision = buildDealPropertyDefinitions(cfg.hubspot)
   const quotePropertiesToProvision = buildQuotePropertyDefinitions(cfg.hubspot)
   const contactPropertiesToProvision = buildContactPropertyDefinitions(cfg.hubspot)
+  const productsPropertiesToProvision = buildProductPropertyDefinitions(cfg.hubspot)
   try {
-    const [dealSummary, quoteSummary, contactSummary] = await Promise.all([
+    const [dealSummary, quoteSummary, contactSummary, productsSummary] = await Promise.all([
       provisionProperties({ api: hubspotApi, objectType: 'deals', properties: dealPropertiesToProvision, logger }),
       provisionProperties({ api: hubspotApi, objectType: 'quotes', properties: quotePropertiesToProvision, logger }),
-      provisionProperties({ api: hubspotApi, objectType: 'contacts', properties: contactPropertiesToProvision, logger })
+      provisionProperties({ api: hubspotApi, objectType: 'contacts', properties: contactPropertiesToProvision, logger }),
+      // Fail-loud products provisioning (openspec/hubspot-product-odoo-id-key design D7):
+      // throws if any products entry has status:'failed' — never falls back to SKU matching.
+      runProductsProvisioningGate({ api: hubspotApi, hubspotCfg: cfg.hubspot, logger })
     ])
-    const combined = [...dealSummary, ...quoteSummary, ...contactSummary]
+    const combined = [...dealSummary, ...quoteSummary, ...contactSummary, ...productsSummary]
     logger.info('hubspot.provision.summary', {
       total: combined.length,
       created: combined.filter((s) => s.status === 'created').length,
@@ -111,7 +116,7 @@ async function start({ config = null } = {}) {
       propertyManufacturingOrder: cfg.hubspot.propertyManufacturingOrder,
       propertyQuoteState: cfg.hubspot.propertyQuoteState,
       propertyQuoteInvoiceStatus: cfg.hubspot.propertyQuoteInvoiceStatus,
-      closedWonStageId: DEAL_STAGE_CLOSED_WON_ID,
+      closedWonStageId: cfg.deals.closedWonStageId,
       quoteEligibleStatuses: cfg.hubspot.quoteEligibleStatuses,
       // TTL propio, aislado del echoGuard del flujo principal (deal->Odoo) — ancho
       // al intervalo del tick para no repetir una llamada real a HubSpot con el

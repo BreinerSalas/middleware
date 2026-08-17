@@ -10,10 +10,13 @@ function makeSource({ count = 0, listAll = async () => [] } = {}) {
   return { count: vi.fn(async () => count), listAll: vi.fn(listAll) }
 }
 function makeGateway({
-  batchUpsertBySkus = async () => ({ results: [], errors: [], skipped: [] }),
-  upsertBySku = async () => ({ id: 'X', created: true })
+  batchUpsertByOdooIds = async () => ({ results: [], errors: [], skipped: [] }),
+  upsertByOdooId = async () => ({ id: 'X', created: true })
 } = {}) {
-  return { batchUpsertBySkus: vi.fn(batchUpsertBySkus), upsertBySku: vi.fn(upsertBySku) }
+  return {
+    batchUpsertByOdooIds: vi.fn(batchUpsertByOdooIds),
+    upsertByOdooId: vi.fn(upsertByOdooId)
+  }
 }
 function p(id, sku, name = `P-${id}`, price = 10) {
   return { id, name, default_code: sku, list_price: price }
@@ -36,7 +39,7 @@ function makeRunRepo() {
   }
 }
 
-describe('productSyncModule - persistence', () => {
+describe('productSyncModule - persistence (openspec/hubspot-product-odoo-id-key — persist all)', () => {
   it('starts a run on runOnce and completes it at the end', async () => {
     const odooSource = makeSource({ count: 0, listAll: async () => [] })
     const gateway = makeGateway()
@@ -53,22 +56,22 @@ describe('productSyncModule - persistence', () => {
     expect(['completed', 'failed']).toContain(completeArgs.status)
   })
 
-  it('persists with-SKU products as ProductMapping records via bulkUpsertMany', async () => {
+  it('persists ALL products (SKU + no-SKU) as ProductMapping records via bulkUpsertMany — no hsSku filter', async () => {
     const odooSource = makeSource({ count: 3, listAll: async () => [
       p(1, 'A-1'),
       p(2, 'A-2'),
       p(3, false, 'NoSku', 5)
     ] })
     const gateway = makeGateway({
-      batchUpsertBySkus: async () => ({
+      batchUpsertByOdooIds: async () => ({
         results: [
-          { id: 'HUB-1', properties: { hs_sku: 'A-1' }, new: true, createdAt: 'T', updatedAt: 'T' },
-          { id: 'HUB-2', properties: { hs_sku: 'A-2' }, new: false, createdAt: 'T1', updatedAt: 'T2' }
+          { id: 'HUB-1', properties: { id_producto_odoo: '1' }, new: true, createdAt: 'T', updatedAt: 'T' },
+          { id: 'HUB-2', properties: { id_producto_odoo: '2' }, new: false, createdAt: 'T1', updatedAt: 'T2' },
+          { id: 'HUB-3', properties: { id_producto_odoo: '3' }, new: true, createdAt: 'T', updatedAt: 'T' }
         ],
         errors: [],
         skipped: []
-      }),
-      upsertBySku: async () => ({ id: 'HUB-3', created: true })
+      })
     })
     const mappingRepo = makeMappingRepo()
     const runRepo = makeRunRepo()
@@ -79,15 +82,17 @@ describe('productSyncModule - persistence', () => {
     await m.runOnce({})
     expect(mappingRepo.bulkUpsertMany).toHaveBeenCalledTimes(1)
     const items = mappingRepo.bulkUpsertMany.mock.calls[0][0].items
-    expect(items).toHaveLength(2)
+    expect(items).toHaveLength(3)
     expect(items).toContainEqual(expect.objectContaining({ odooId: 1, hsSku: 'A-1', hubspotId: 'HUB-1', action: 'created' }))
     expect(items).toContainEqual(expect.objectContaining({ odooId: 2, hsSku: 'A-2', hubspotId: 'HUB-2', action: 'updated' }))
+    // No-SKU product is persisted with hsSku: null — NOT filtered out
+    expect(items).toContainEqual(expect.objectContaining({ odooId: 3, hsSku: null, hubspotId: 'HUB-3', action: 'created' }))
   })
 
   it('marks run as failed and skips mapping persistence when a top-level error occurs', async () => {
     const odooSource = makeSource({ count: 2, listAll: async () => [p(1, 'A-1'), p(2, 'A-2')] })
     const gateway = makeGateway({
-      batchUpsertBySkus: async () => { throw new Error('big-boom') }
+      batchUpsertByOdooIds: async () => { throw new Error('big-boom') }
     })
     const mappingRepo = makeMappingRepo()
     const runRepo = makeRunRepo()
@@ -98,13 +103,14 @@ describe('productSyncModule - persistence', () => {
     await m.runOnce({})
     expect(runRepo.complete).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }))
     expect(mappingRepo.upsert).not.toHaveBeenCalled()
+    expect(mappingRepo.bulkUpsertMany).not.toHaveBeenCalled()
   })
 
   it('does not require repos (works without persistence for backwards compat)', async () => {
     const odooSource = makeSource({ count: 1, listAll: async () => [p(1, 'A-1')] })
     const gateway = makeGateway({
-      batchUpsertBySkus: async () => ({
-        results: [{ id: 'HUB-1', properties: { hs_sku: 'A-1' }, new: true }],
+      batchUpsertByOdooIds: async () => ({
+        results: [{ id: 'HUB-1', properties: { id_producto_odoo: '1' }, new: true }],
         errors: [],
         skipped: []
       })
@@ -116,8 +122,8 @@ describe('productSyncModule - persistence', () => {
     expect(out.every((r) => !r.failed)).toBe(true)
   })
 
-  it('dryRun=true does not persist any mappings', async () => {
-    const odooSource = makeSource({ count: 2, listAll: async () => [p(1, 'A-1'), p(2, 'A-2')] })
+  it('dryRun=true does not persist any mappings and does not start a run', async () => {
+    const odooSource = makeSource({ count: 2, listAll: async () => [p(1, 'A-1'), p(2, false, 'NoSku')] })
     const gateway = makeGateway()
     const mappingRepo = makeMappingRepo()
     const runRepo = makeRunRepo()

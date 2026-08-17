@@ -7,6 +7,10 @@ const DEFAULT_OVERLAP_MS = 60 * 1000
 const EPOCH_WATERMARK = '1970-01-01 00:00:00'
 const DEFAULT_CURSOR_KEY = 'product-sync'
 
+// (openspec/hubspot-product-odoo-id-key) Catalog sync identity is now keyed on the Odoo
+// product.product.id. There is no SKU partition, no SKU echo correlation, no `no_sku` skip
+// paths. `hs_sku` is informational only — it travels in the upsert payload but is never
+// matched on.
 function createProductSyncModule({
   config = {},
   odooSource,
@@ -33,22 +37,6 @@ function createProductSyncModule({
     return { id: odooProduct.id, sku: odooProduct.default_code, dryRun: true, created: false, skipped: true }
   }
 
-  async function syncOneItem(odooProduct, { dryRun } = {}) {
-    if (dryRun) return dryRunItem(odooProduct)
-    return hubspotGateway.upsertBySku(odooProduct)
-  }
-
-  function partition(products) {
-    const withSku = []
-    const withoutSku = []
-    for (const p of products) {
-      const sku = p && p.default_code
-      if (sku != null && sku !== false && String(sku).trim() !== '') withSku.push(p)
-      else withoutSku.push(p)
-    }
-    return { withSku, withoutSku }
-  }
-
   function chunk(arr, size) {
     const out = []
     for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
@@ -64,56 +52,88 @@ function createProductSyncModule({
     }
     let batchSummary
     try {
-      batchSummary = await hubspotGateway.batchUpsertBySkus(odooProducts, { chunkSize })
+      batchSummary = await hubspotGateway.batchUpsertByOdooIds(odooProducts, { chunkSize })
     } catch (err) {
       for (const p of odooProducts) results.push({ sourceId: p.id, sku: p.default_code, failed: true, error: err.message })
       log('error', 'product-sync.chunk.failed', { items: odooProducts.length, error: err.message })
       return results
     }
+    // Correlation by sent Odoo id. HubSpot echoes `id_producto_odoo` back on each result, so
+    // we use that as the primary key. If the echo is absent (HubSpot omits the property on
+    // an upsert that updated an existing product), fall back to the input order — the
+    // gateway preserves order on its end, and any echo-matched result is removed from the
+    // index-fallback pool first.
     const idToProduct = new Map()
     for (const p of odooProducts) idToProduct.set(String(p.id), p)
-    const skuToOdooIds = new Map()
-    for (const p of odooProducts) {
-      const sku = String(p.default_code || '').trim()
-      if (!sku) continue
-      if (!skuToOdooIds.has(sku)) skuToOdooIds.set(sku, [])
-      skuToOdooIds.get(sku).push(p.id)
+    const odooIds = odooProducts.map((p) => String(p.id))
+
+    const resultByEchoedId = new Map()
+    const resultByIndex = [] // ordered list of results NOT claimed by an echo match
+    for (let i = 0; i < (batchSummary.results || []).length; i += 1) {
+      const item = batchSummary.results[i]
+      const echoed = item && item.properties && item.properties.id_producto_odoo
+      if (echoed != null) {
+        resultByEchoedId.set(String(echoed), item)
+      } else {
+        resultByIndex.push(item)
+      }
     }
-    const seenInBatch = new Set()
+    const errorByEchoedId = new Map()
+    const errorByIndex = [] // ordered list of errors NOT claimed by an echo match
+    for (let i = 0; i < (batchSummary.errors || []).length; i += 1) {
+      const errItem = batchSummary.errors[i]
+      if (errItem.id != null) {
+        errorByEchoedId.set(String(errItem.id), errItem)
+      } else {
+        errorByIndex.push(errItem)
+      }
+    }
+
     const seenSourceIds = new Set()
-    for (const item of batchSummary.results || []) {
-      const sku = item.properties && item.properties.hs_sku
-      if (sku) seenInBatch.add(sku)
-      const isNew = item.new === true || (item.createdAt && item.createdAt === item.updatedAt)
-      const odooIds = (sku && skuToOdooIds.get(sku)) || []
-      if (odooIds.length > 0) {
+    let resultIdx = 0
+    let errorIdx = 0
+    for (const oid of odooIds) {
+      const product = idToProduct.get(oid)
+      // 1) Try echo match on a success result.
+      let item = resultByEchoedId.get(oid)
+      // 2) Otherwise consume the next unclaimed result (no echo).
+      if (item == null && resultIdx < resultByIndex.length) {
+        item = resultByIndex[resultIdx]
+        resultIdx += 1
+      }
+      if (item) {
+        const isNew = item.new === true || (item.createdAt && item.createdAt === item.updatedAt)
         results.push({
-          sourceId: odooIds[0],
-          sku,
+          sourceId: Number(oid),
+          sku: product ? product.default_code : undefined,
           id: item.id,
           created: Boolean(isNew),
           action: isNew ? 'created' : 'updated',
           hubspotId: item.id
         })
-        seenSourceIds.add(String(odooIds[0]))
+        seenSourceIds.add(oid)
+        continue
       }
-      for (let i = 1; i < odooIds.length; i += 1) {
-        results.push({ sourceId: odooIds[i], sku, skipped: true, reason: 'duplicate_sku_in_odoo' })
-        seenSourceIds.add(String(odooIds[i]))
+      // 3) Try echo match on an error.
+      let errItem = errorByEchoedId.get(oid)
+      // 4) Otherwise consume the next unclaimed error.
+      if (errItem == null && errorIdx < errorByIndex.length) {
+        errItem = errorByIndex[errorIdx]
+        errorIdx += 1
+      }
+      if (errItem) {
+        log('error', 'product-sync.item.failed', { odooId: errItem.id, error: errItem.message, category: errItem.category })
+        results.push({
+          sourceId: Number(oid),
+          sku: product ? product.default_code : undefined,
+          failed: true,
+          error: errItem.message
+        })
+        seenSourceIds.add(oid)
       }
     }
-    for (const errItem of batchSummary.errors || []) {
-      log('error', 'product-sync.item.failed', { sku: errItem.id, error: errItem.message, category: errItem.category })
-      const odooIds = skuToOdooIds.get(errItem.id) || []
-      for (const oid of odooIds) {
-        results.push({ sourceId: oid, sku: errItem.id, failed: true, error: errItem.message })
-        seenSourceIds.add(String(oid))
-      }
-    }
-    // Consume the gateway's richer skipped list ({sourceId, reason}, e.g. a duplicate-in-HubSpot
-    // conflict or an invalid property value isolated during a per-chunk fallback) BEFORE the
-    // "assumed updated" loop below, and mark those sourceIds as seen — otherwise the assumed
-    // loop would ALSO emit a conflicting entry for the very same sourceId (double counting).
+    // Consume the gateway's richer skipped list ({sourceId, reason}, e.g. duplicate_in_hubspot
+    // or invalid_property_value isolated during the per-chunk fallback).
     for (const entry of batchSummary.skipped || []) {
       if (entry == null) continue
       const sourceId = typeof entry === 'object' ? entry.sourceId : entry
@@ -124,22 +144,19 @@ function createProductSyncModule({
       const product = idToProduct.get(String(sourceId))
       results.push({ sourceId, sku: product ? product.default_code : undefined, skipped: true, reason })
     }
-    for (const [sku, odooIds] of skuToOdooIds.entries()) {
-      if (seenInBatch.has(sku)) continue
-      if ((batchSummary.errors || []).some((e) => e.id === sku)) continue
-      const [first, ...rest] = odooIds
-      if (!seenSourceIds.has(String(first))) {
-        results.push({ sourceId: first, sku, assumed: 'updated' })
-      }
-      for (const oid of rest) {
-        if (seenSourceIds.has(String(oid))) continue
-        results.push({ sourceId: oid, sku, skipped: true, reason: 'duplicate_sku_in_odoo' })
-      }
+    // Anything still unseen (no result / no error / no skipped entry) → assume updated.
+    for (const oid of odooIds) {
+      if (seenSourceIds.has(oid)) continue
+      const product = idToProduct.get(oid)
+      results.push({
+        sourceId: Number(oid),
+        sku: product ? product.default_code : undefined,
+        assumed: 'updated'
+      })
     }
     log('info', 'product-sync.batch.summary', {
       chunks: Math.ceil(odooProducts.length / chunkSize),
       items: odooProducts.length,
-      uniqueSkus: skuToOdooIds.size,
       results: (batchSummary.results || []).length,
       errors: (batchSummary.errors || []).length,
       duplicatesSkipped: (batchSummary.skipped || []).length
@@ -147,36 +164,24 @@ function createProductSyncModule({
     return results
   }
 
-  async function syncSingleItems(products, { dryRun }) {
-    return async.mapLimit(products, Math.max(1, Math.min(3, singleConcurrency)), async (p) => {
-      try {
-        const r = await syncOneItem(p, { dryRun })
-        const out = { sourceId: p.id, sku: p.default_code, ...r }
-        if (r && r.id && !r.skipped && !r.failed && !dryRun) {
-          out.action = r.created === true ? 'created' : 'updated'
-          out.hubspotId = r.id
-        }
-        return out
-      } catch (err) {
-        if (logger && typeof logger.error === 'function') {
-          logger.error('product-sync.item.failed', { sourceId: p.id, sku: p.default_code, error: err.message })
-        }
-        return { sourceId: p.id, sku: p.default_code, failed: true, error: err.message }
-      }
-    })
-  }
-
   async function persistMappings(results) {
     if (!mappingRepo) return
     const toPersist = results
-      .filter((r) => r.hubspotId && r.sourceId && !r.failed && !r.dryRun && !r.skipped)
-      .map((r) => ({
-        odooId: r.sourceId,
-        hsSku: r.sku == null ? null : String(r.sku),
-        hubspotId: r.hubspotId,
-        action: r.action || (r.created ? 'created' : 'updated')
-      }))
-      .filter((m) => m.hsSku && m.hsSku !== 'null' && m.hsSku !== 'false')
+      .filter((r) => r.hubspotId && r.sourceId != null && !r.failed && !r.dryRun && !r.skipped)
+      .map((r) => {
+        const sku = r.sku
+        const normalizedHsSku = (sku == null || sku === false || (typeof sku === 'string' && sku.trim() === ''))
+          ? null
+          : String(sku)
+        return {
+          odooId: r.sourceId,
+          hsSku: normalizedHsSku,
+          hubspotId: r.hubspotId,
+          action: r.action || (r.created ? 'created' : 'updated')
+        }
+      })
+      // (openspec/hubspot-product-odoo-id-key) NO `hsSku`-truthy filter — every product with a
+      // hubspotId is persisted, including no-SKU products (hsSku: null).
     if (toPersist.length === 0) return
     try {
       await mappingRepo.bulkUpsertMany({ items: toPersist })
@@ -185,14 +190,12 @@ function createProductSyncModule({
     }
   }
 
-  async function runOnce({ limit = null, dryRun = false, includeNoSku = false } = {}) {
+  async function runOnce({ limit = null, dryRun = false, includeNoSku = true } = {}) {
     const total = await odooSource.count({ includeNoSku })
     log('info', 'product-sync.start', { total, limit, dryRun, includeNoSku })
     const opts = { includeNoSku }
     if (limit != null) opts.limit = limit
     const products = await odooSource.listAll(opts)
-
-    const { withSku, withoutSku } = partition(products)
 
     let run = null
     if (runRepo && !dryRun) {
@@ -206,18 +209,16 @@ function createProductSyncModule({
     let batchFailed = false
     let batchResults = []
     try {
-      batchResults = await runBatchForOdooItems(withSku, { dryRun })
-      if (withSku.length > 0 && batchResults.length === withSku.length && batchResults.every((r) => r.failed)) {
+      batchResults = await runBatchForOdooItems(products, { dryRun })
+      if (products.length > 0 && batchResults.length === products.length && batchResults.every((r) => r.failed)) {
         batchFailed = true
       }
     } catch (err) {
       batchFailed = true
-      batchResults = withSku.map((p) => ({ sourceId: p.id, sku: p.default_code, failed: true, error: err.message }))
+      batchResults = products.map((p) => ({ sourceId: p.id, sku: p.default_code, failed: true, error: err.message }))
     }
 
-    const singleResults = await syncSingleItems(withoutSku, { dryRun })
-
-    const results = [...batchResults, ...singleResults]
+    const results = [...batchResults]
 
     const succeeded = results.filter((r) => !r.failed && !r.dryRun && !r.skipped)
     const created = results.filter((r) => r.created === true).length
@@ -239,8 +240,6 @@ function createProductSyncModule({
           updated,
           skipped,
           failed,
-          uniqueSkus: withSku.length - results.filter((r) => r.skipped && r.reason === 'duplicate_sku_in_odoo').length,
-          duplicatesInInput: results.filter((r) => r.skipped && r.reason === 'duplicate_sku_in_odoo').length,
           status: batchFailed ? 'failed' : 'completed'
         })
       } catch (err) {
@@ -251,7 +250,7 @@ function createProductSyncModule({
     return results
   }
 
-  async function runIncremental({ includeNoSku = false, overlapMs = DEFAULT_OVERLAP_MS, cursorKey = DEFAULT_CURSOR_KEY } = {}) {
+  async function runIncremental({ includeNoSku = true, overlapMs = DEFAULT_OVERLAP_MS, cursorKey = DEFAULT_CURSOR_KEY } = {}) {
     if (!cursorRepo) throw new Error('createProductSyncModule requires cursorRepo for runIncremental')
     const watermark = (await cursorRepo.get(cursorKey)) || EPOCH_WATERMARK
     log('info', 'product-sync.incremental.start', { cursorKey, watermark, includeNoSku })
@@ -282,17 +281,14 @@ function createProductSyncModule({
         if (ms != null && (maxSeenMs == null || ms > maxSeenMs)) maxSeenMs = ms
       }
 
-      const { withSku, withoutSku } = partition(activeProducts)
-
       let pageBatchResults = []
       try {
-        pageBatchResults = await runBatchForOdooItems(withSku, { dryRun: false })
+        pageBatchResults = await runBatchForOdooItems(activeProducts, { dryRun: false })
       } catch (err) {
         batchFailed = true
-        pageBatchResults = withSku.map((p) => ({ sourceId: p.id, sku: p.default_code, failed: true, error: err.message }))
+        pageBatchResults = activeProducts.map((p) => ({ sourceId: p.id, sku: p.default_code, failed: true, error: err.message }))
       }
-      const pageSingleResults = await syncSingleItems(withoutSku, { dryRun: false })
-      results.push(...pageBatchResults, ...pageSingleResults)
+      results.push(...pageBatchResults)
     }
 
     const created = results.filter((r) => r.created === true).length
@@ -328,6 +324,14 @@ function createProductSyncModule({
     }
 
     return { results, created, updated, failed, skipped, archived, cursorAdvanced }
+  }
+
+  // Kept for backward compatibility — single-item upserts are no longer used by runOnce/runIncremental
+  // (the gateway's batchUpsertByOdooIds covers every product), but productSyncJobModule.test.js etc.
+  // may still call it for legacy / probe paths.
+  async function syncOneItem(odooProduct, { dryRun } = {}) {
+    if (dryRun) return dryRunItem(odooProduct)
+    return hubspotGateway.upsertByOdooId(odooProduct)
   }
 
   return { runOnce, runIncremental, syncOneItem }

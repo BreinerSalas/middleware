@@ -6,7 +6,6 @@ const { createProductSyncModule } = require('../../src/composition/productSyncMo
 function makeLogger() {
   return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
 }
-
 function makeSource({ pages = [] } = {}) {
   return {
     count: vi.fn(async () => 0),
@@ -16,41 +15,36 @@ function makeSource({ pages = [] } = {}) {
     })
   }
 }
-
 function makeGateway({
-  batchUpsertBySkus = async (products) => ({
-    results: products.map((p) => ({ id: `HUB-${p.id}`, properties: { hs_sku: String(p.default_code).trim() }, new: true })),
+  batchUpsertByOdooIds = async (products) => ({
+    results: products.map((p) => ({ id: `HUB-${p.id}`, properties: { id_producto_odoo: String(p.id) }, new: true })),
     errors: [],
     skipped: []
   }),
-  upsertBySku = async () => ({ id: 'X', created: true })
+  upsertByOdooId = async () => ({ id: 'X', created: true })
 } = {}) {
-  return { batchUpsertBySkus: vi.fn(batchUpsertBySkus), upsertBySku: vi.fn(upsertBySku) }
+  return { batchUpsertByOdooIds: vi.fn(batchUpsertByOdooIds), upsertByOdooId: vi.fn(upsertByOdooId) }
 }
-
 function makeMappingRepo() {
   return { bulkUpsertMany: vi.fn(async () => ({ upsertedCount: 0 })) }
 }
-
 function makeRunRepo() {
   return {
     start: vi.fn(async (args) => ({ _id: 'RUN-1', ...args })),
     complete: vi.fn(async () => null)
   }
 }
-
 function makeCursorRepo({ watermark = null } = {}) {
   return {
     get: vi.fn(async () => watermark),
     set: vi.fn(async () => null)
   }
 }
-
 function p(id, sku, writeDate, opts = {}) {
   return { id, name: `P-${id}`, default_code: sku, list_price: 10, write_date: writeDate, active: true, ...opts }
 }
 
-describe('productSyncModule.runIncremental (Fase 3 — docs/plan-cambios-2026-08-05.md)', () => {
+describe('productSyncModule.runIncremental (openspec/hubspot-product-odoo-id-key)', () => {
   it('requires cursorRepo', async () => {
     const odooSource = makeSource({ pages: [] })
     const m = createProductSyncModule({ config: {}, odooSource, hubspotGateway: makeGateway(), logger: makeLogger() })
@@ -65,15 +59,18 @@ describe('productSyncModule.runIncremental (Fase 3 — docs/plan-cambios-2026-08
     expect(odooSource.listChangedSince).toHaveBeenCalledWith(expect.objectContaining({ writeDateGte: expect.stringMatching(/^19|^20/) }))
   })
 
-  it('passes the existing cursor watermark through to listChangedSince', async () => {
+  it('passes the existing cursor watermark through to listChangedSince with includeNoSku default true', async () => {
     const odooSource = makeSource({ pages: [] })
     const cursorRepo = makeCursorRepo({ watermark: '2026-08-05 09:00:00' })
     const m = createProductSyncModule({ config: {}, odooSource, hubspotGateway: makeGateway(), cursorRepo, logger: makeLogger() })
-    await m.runIncremental({ includeNoSku: true })
-    expect(odooSource.listChangedSince).toHaveBeenCalledWith({ writeDateGte: '2026-08-05 09:00:00', includeNoSku: true })
+    await m.runIncremental({})
+    expect(odooSource.listChangedSince).toHaveBeenCalledWith({
+      writeDateGte: '2026-08-05 09:00:00',
+      includeNoSku: true
+    })
   })
 
-  it('dispatches with-SKU rows via batch and without-SKU rows via single, across multiple pages', async () => {
+  it('dispatches ALL active products (SKU and no-SKU) via batch — no partition, no single-item path', async () => {
     const odooSource = makeSource({
       pages: [
         [p(1, 'A-1', '2026-08-05 09:00:00'), p(2, false, '2026-08-05 09:01:00')],
@@ -84,8 +81,12 @@ describe('productSyncModule.runIncremental (Fase 3 — docs/plan-cambios-2026-08
     const cursorRepo = makeCursorRepo()
     const m = createProductSyncModule({ config: {}, odooSource, hubspotGateway: gateway, cursorRepo, logger: makeLogger() })
     const out = await m.runIncremental({})
-    expect(gateway.batchUpsertBySkus).toHaveBeenCalledTimes(2)
-    expect(gateway.upsertBySku).toHaveBeenCalledTimes(1)
+    // Two pages → two batch calls (one per page)
+    expect(gateway.batchUpsertByOdooIds).toHaveBeenCalledTimes(2)
+    // Page 1 has both products (1, 2)
+    expect(gateway.batchUpsertByOdooIds.mock.calls[0][0]).toHaveLength(2)
+    // Page 2 has product 3
+    expect(gateway.batchUpsertByOdooIds.mock.calls[1][0]).toHaveLength(1)
     expect(out.results).toHaveLength(3)
     expect(out.failed).toBe(0)
   })
@@ -106,7 +107,7 @@ describe('productSyncModule.runIncremental (Fase 3 — docs/plan-cambios-2026-08
       pages: [[p(1, 'A-1', '2026-08-05 09:00:00')]]
     })
     const gateway = makeGateway({
-      batchUpsertBySkus: async () => ({ results: [], errors: [{ id: 'A-1', message: 'boom', category: 'X' }], skipped: [] })
+      batchUpsertByOdooIds: async () => ({ results: [], errors: [{ id: '1', message: 'boom', category: 'X' }], skipped: [] })
     })
     const cursorRepo = makeCursorRepo()
     const m = createProductSyncModule({ config: {}, odooSource, hubspotGateway: gateway, cursorRepo, logger: makeLogger() })
@@ -125,20 +126,26 @@ describe('productSyncModule.runIncremental (Fase 3 — docs/plan-cambios-2026-08
     const m = createProductSyncModule({ config: {}, odooSource, hubspotGateway: gateway, cursorRepo, logger: makeLogger() })
     const out = await m.runIncremental({})
     expect(out.archived).toBe(1)
-    expect(gateway.batchUpsertBySkus.mock.calls[0][0]).toHaveLength(1)
-    expect(gateway.batchUpsertBySkus.mock.calls[0][0][0].id).toBe(1)
+    expect(gateway.batchUpsertByOdooIds.mock.calls[0][0]).toHaveLength(1)
+    expect(gateway.batchUpsertByOdooIds.mock.calls[0][0][0].id).toBe(1)
   })
 
-  it('persists mappings via mappingRepo.bulkUpsertMany like runOnce', async () => {
-    const odooSource = makeSource({ pages: [[p(1, 'A-1', '2026-08-05 09:00:00')]] })
+  it('persists mappings via mappingRepo.bulkUpsertMany — including no-SKU products', async () => {
+    const odooSource = makeSource({
+      pages: [[p(1, 'A-1', '2026-08-05 09:00:00'), p(2, false, '2026-08-05 09:00:01')]]
+    })
     const gateway = makeGateway()
     const mappingRepo = makeMappingRepo()
     const cursorRepo = makeCursorRepo()
     const m = createProductSyncModule({ config: {}, odooSource, hubspotGateway: gateway, mappingRepo, cursorRepo, logger: makeLogger() })
     await m.runIncremental({})
     expect(mappingRepo.bulkUpsertMany).toHaveBeenCalledTimes(1)
-    expect(mappingRepo.bulkUpsertMany.mock.calls[0][0].items).toContainEqual(
+    const items = mappingRepo.bulkUpsertMany.mock.calls[0][0].items
+    expect(items).toContainEqual(
       expect.objectContaining({ odooId: 1, hsSku: 'A-1', hubspotId: 'HUB-1' })
+    )
+    expect(items).toContainEqual(
+      expect.objectContaining({ odooId: 2, hsSku: null, hubspotId: 'HUB-2' })
     )
   })
 

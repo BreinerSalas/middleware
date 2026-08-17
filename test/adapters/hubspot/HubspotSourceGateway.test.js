@@ -190,10 +190,11 @@ describe('HubspotSourceGateway.revertDealStage (Fase 6 — retroceso de etapa po
     expect(api.updateDeal).not.toHaveBeenCalled()
   })
 
-  it('defaults closedWonStageId to the real Cierre Ganado stage id when not provided', async () => {
+  it('throws before any HubSpot API call when closedWonStageId is not configured', async () => {
     const api = makeApiClient({ getDealStageHistory: async () => [{ value: '1409249445' }, { value: 'negotiation' }] })
     const gw = new HubspotSourceGateway({ apiClient: api, propertyOdooCustomerId: 'cust', propertyOdooOrderId: 'order' })
-    await gw.revertDealStage('D-1')
-    expect(api.updateDeal).toHaveBeenCalledWith('D-1', { dealstage: 'negotiation' })
+    await expect(gw.revertDealStage('D-1')).rejects.toThrow(/closedWonStageId/)
+    expect(api.getDealStageHistory).not.toHaveBeenCalled()
+    expect(api.updateDeal).not.toHaveBeenCalled()
   })
 })

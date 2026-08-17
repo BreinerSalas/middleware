@@ -72,16 +72,22 @@ describe('sync-products.lib', () => {
     })
   })
 
-  describe('--include-no-sku flag', () => {
-    it('parseArgs captures --include-no-sku as true', () => {
-      expect(parseArgs(['--include-no-sku'])).toEqual({ 'include-no-sku': true })
+  describe('--only-with-sku flag (openspec/hubspot-product-odoo-id-key — default is full-catalog sync)', () => {
+    it('parseArgs captures --only-with-sku as true', () => {
+      expect(parseArgs(['--only-with-sku'])).toEqual({ 'only-with-sku': true })
     })
 
-    it('parseArgs normalizes include-no-sku from boolean flag', () => {
-      const args = parseArgs(['--once', '--include-no-sku', '--dry-run'])
-      expect(args['include-no-sku']).toBe(true)
+    it('parseArgs normalizes only-with-sku from boolean flag', () => {
+      const args = parseArgs(['--once', '--only-with-sku', '--dry-run'])
+      expect(args['only-with-sku']).toBe(true)
       expect(args.once).toBe(true)
       expect(args['dry-run']).toBe(true)
+    })
+
+    it('parseArgs does NOT recognize --include-no-sku anymore (legacy flag removed)', () => {
+      const args = parseArgs(['--include-no-sku'])
+      expect(args['include-no-sku']).toBe(true)
+      expect(args['only-with-sku']).toBeUndefined()
     })
   })
 })

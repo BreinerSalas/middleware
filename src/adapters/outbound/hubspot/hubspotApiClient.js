@@ -3,7 +3,7 @@
 const axios = require('axios')
 const { createRateLimiter } = require('../../../core/shared/rateLimiter')
 
-const LINE_ITEM_PROPERTIES = ['hs_sku', 'quantity', 'price', 'name']
+const LINE_ITEM_PROPERTIES = ['hs_sku', 'quantity', 'price', 'name', 'hs_product_id']
 
 const QUOTE_PROPERTIES = [
   'hs_status',
@@ -141,7 +141,8 @@ function createHubspotApiClient({
       hs_sku: (li.properties && li.properties.hs_sku) || null,
       quantity: Number(li.properties && li.properties.quantity) || 1,
       price: Number(li.properties && li.properties.price) || 0,
-      name: (li.properties && li.properties.name) || null
+      name: (li.properties && li.properties.name) || null,
+      hs_product_id: (li.properties && li.properties.hs_product_id) || null
     }))
   }
 
@@ -197,12 +198,12 @@ function createHubspotApiClient({
     } catch (err) { throw normalizeHubspotError(err) }
   }
 
-  async function searchProductByHsSku(sku) {
-    if (!sku || String(sku).length === 0) return null
+  async function searchProductByOdooId(odooId) {
+    if (odooId == null || String(odooId).length === 0) return null
     try {
       const data = await requestWithRateLimit('post', '/crm/v3/objects/products/search', {
-        filterGroups: [{ filters: [{ propertyName: 'hs_sku', operator: 'EQ', value: String(sku) }] }],
-        properties: ['hs_sku', 'name', 'price'],
+        filterGroups: [{ filters: [{ propertyName: 'id_producto_odoo', operator: 'EQ', value: String(odooId) }] }],
+        properties: ['id_producto_odoo', 'name', 'price'],
         limit: 1
       })
       const items = (data && data.results) || []
@@ -222,7 +223,7 @@ function createHubspotApiClient({
     } catch (err) { throw normalizeHubspotError(err) }
   }
 
-  async function batchUpsertProducts({ inputs = [], idProperty = 'hs_sku' } = {}) {
+  async function batchUpsertProducts({ inputs = [], idProperty = 'id_producto_odoo' } = {}) {
     const taggedInputs = inputs.map((it) => ({ ...it, idProperty: it.idProperty || idProperty }))
     let data
     try {
@@ -250,6 +251,38 @@ function createHubspotApiClient({
     return { results, errors, numErrors: typeof data.numErrors === 'number' ? data.numErrors : errors.length }
   }
 
+  // (openspec/hubspot-product-odoo-id-key, post-verify fix) `/products/batch/upsert` REQUIRES
+  // idProperty on every input — HubSpot rejects the request otherwise ("Upserts in a single
+  // batch must specify its unique property using idProperty"). Writing onto a product by its
+  // already-known native HubSpot object id (the backfill's use case) needs the separate
+  // batch/update endpoint instead, which always matches by native id and takes no idProperty.
+  async function batchUpdateProducts({ inputs = [] } = {}) {
+    let data
+    try {
+      data = await requestWithRateLimit('post', '/crm/v3/objects/products/batch/update', { inputs })
+    } catch (err) { throw normalizeHubspotError(err) }
+    const rawResults = (data && data.results) || []
+    const rawErrors = (data && data.errors) || []
+    const results = []
+    const errors = []
+    for (const item of rawResults) {
+      if (item && item.status === 'error') {
+        const ctx = item.context || {}
+        const idFromCtx = (ctx.id && Array.isArray(ctx.id) && ctx.id[0]) || ctx.input || null
+        errors.push({
+          id: idFromCtx,
+          message: item.message || (item.errors && item.errors[0] && item.errors[0].message) || 'unknown',
+          category: item.category || null,
+          raw: item
+        })
+      } else if (item && item.id) {
+        results.push(item)
+      }
+    }
+    for (const item of rawErrors) errors.push(item)
+    return { results, errors, numErrors: typeof (data && data.numErrors) === 'number' ? data.numErrors : errors.length }
+  }
+
   async function getCustomProperty(objectType, name) {
     try {
       const res = await requestWithRateLimit('get', `/crm/v3/properties/${objectType}/${name}`)
@@ -269,9 +302,12 @@ function createHubspotApiClient({
     } catch (err) { throw normalizeHubspotError(err) }
   }
 
-  async function searchProducts({ filterGroups = [], properties = [], limit = 100, after = null } = {}) {
+  async function searchProducts({ filterGroups = [], properties = [], limit = 100, after = null, sorts = null } = {}) {
     const body = { filterGroups, properties, limit }
     if (after) body.after = after
+    // Deep-paging without an explicit sort can skip or repeat records — see
+    // docs/todo-sku-sintetico.md. Callers paginating past a single page should pass sorts.
+    if (Array.isArray(sorts) && sorts.length > 0) body.sorts = sorts
     try {
       return await requestWithRateLimit('post', '/crm/v3/objects/products/search', body)
     } catch (err) { throw normalizeHubspotError(err) }
@@ -347,8 +383,8 @@ function createHubspotApiClient({
   return {
     getDeal, getDealStageHistory, getDealAssociations, getDealLineItems, updateDeal,
     getLineItemsFor, getQuote, getQuoteLineItems, getDealQuotes, updateQuote,
-    searchProductByHsSku, createProduct, updateProduct,
-    batchUpsertProducts,
+    searchProductByOdooId, createProduct, updateProduct,
+    batchUpsertProducts, batchUpdateProducts,
     searchProducts,
     searchContactByProperty, createContact, updateContact, batchUpsertContacts,
     getCustomProperty, createCustomProperty, updateCustomProperty, ensureCustomProperty,

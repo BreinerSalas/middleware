@@ -91,8 +91,8 @@ explícita: cada `createXModule({...})` recibe sus colaboradores y expone
 |---|---|
 | `src/server.js` | **Punto de entrada.** Conecta Mongo, aprovisiona propiedades en HubSpot, construye los 4 módulos según flags, arranca los workers, levanta Fastify, maneja `SIGINT`/`SIGTERM`. Es el único lugar donde se decide *qué* corre. |
 | `src/app.js` | Construye la instancia Fastify: content-type parser que preserva `rawBody` (necesario para el HMAC), middleware de correlación, ruta del webhook con su filtro de eventos, y registro condicional de panel/media/estáticos. |
-| `src/config/index.js` | Carga `.env` y **normaliza todo el entorno a un objeto de config tipado por convención**. Falla rápido si faltan `MONGODB_URI`, `HUBSPOT_ACCESS_TOKEN`, `HUBSPOT_CLIENT_SECRET`. Todos los defaults viven aquí. |
-| `src/config/constants.js` | Enums (`JOB_STATUS`, `JOB_KIND`, `SOURCES`, `ENTITIES`) **+ dos IDs literales del portal de HubSpot** (`DEAL_STAGE_CLOSED_WON_ID`, `DEAL_PIPELINE_COMMERCIAL_VISUAL_BRANDING`). |
+| `src/config/index.js` | Carga `.env` y **normaliza todo el entorno a un objeto de config tipado por convención**. Falla rápido si faltan `MONGODB_URI`, `HUBSPOT_ACCESS_TOKEN`, `HUBSPOT_CLIENT_SECRET`, `HS_ALLOWED_STAGE_IDS`, `HS_ALLOWED_PIPELINE_IDS`, `HS_CLOSED_WON_STAGE_ID`. Todos los defaults viven aquí; los tres IDs de portal HubSpot ya no tienen fallback literal (change `hubspot-config-portable`). |
+| `src/config/constants.js` | Enums (`JOB_STATUS`, `JOB_KIND`, `SOURCES`, `ENTITIES`). Ya no contiene IDs literales de portal — ver `hubspot-config-portable`. |
 | `src/lib/logger.js` | Winston con salida JSON de una línea. Los mensajes son claves punteadas y estables (`sale-order-status-sync.incremental.done`) — se usan para grepear logs en producción, **trátalos como contrato**. |
 
 ### 3.2 `src/core/domain/` — entidades y políticas puras
@@ -456,14 +456,13 @@ Ordenados por lo que cuesta arreglarlos:
    explícito si falta; ya no hay default con `id_presupuesto_odoo` quemado en `core`.
 2. ~~**`core/shared/odooDate.js`**~~ — **Resuelto** (change `toolkit-generico`, commit `1d94d3e`).
    Movido a `adapters/outbound/odoo/odooDate.js`; ningún archivo de `core` lo importa.
-3. **`config/constants.js`** — `DEAL_STAGE_CLOSED_WON_ID` y
-   `DEAL_PIPELINE_COMMERCIAL_VISUAL_BRANDING` son IDs de un portal concreto quemados en
-   el código. Ya existen como env (`HS_ALLOWED_STAGE_IDS`, `HS_ALLOWED_PIPELINE_IDS`)
-   usando estos como fallback; el toolkit debería exigirlos y borrar los literales.
-   **Abierto/diferido** — la exploración de `toolkit-generico` encontró 3 copias del literal
-   + 2 call sites que bypassean `config.deals`; borrarlo sin confirmar las env vars de
-   producción puede romper el flujo Deal→Sale Order en vivo. Necesita su propio change,
-   condicionado a esa verificación.
+3. ~~**`config/constants.js`**~~ — **Resuelto** (change `hubspot-config-portable`).
+   `DEAL_STAGE_CLOSED_WON_ID` y `DEAL_PIPELINE_COMMERCIAL_VISUAL_BRANDING` quedaron
+   borrados de `constants.js`; `HS_ALLOWED_STAGE_IDS`, `HS_ALLOWED_PIPELINE_IDS` y el
+   nuevo `HS_CLOSED_WON_STAGE_ID` son ahora `REQUIRED_KEYS` sin fallback embebido.
+   `server.js` y `dealSyncModule.js` leen `config.deals.closedWonStageId`;
+   `HubspotSourceGateway.revertDealStage` falla explícito (punto de uso, no en el
+   constructor) si no se le configuró un valor válido.
 4. ~~**Los tres `*SyncJobModule.js`**~~ — **Resuelto** (change `toolkit-generico`, commits
    `de0f860` factory + `80880ba`/`befd9c7`/`f71b640`/`06f8af9` migración de los 4 wrappers).
    Eran **cuatro** archivos, no tres (`partnerSyncJobModule.js` se sumó después de escrita

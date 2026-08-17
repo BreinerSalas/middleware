@@ -62,6 +62,16 @@ class MongoProductMappingRepository {
     return this.model.findOne({ odooId: Number(odooId) }).lean()
   }
 
+  // (openspec/hubspot-product-odoo-id-key) Tier 2 in the line-item resolution path queries the
+  // mapping by HubSpot product id. Pre-existing `no_sku_no_match` rows store `hubspotId: null`
+  // — those MUST short-circuit to null without a Mongo query so we never "match" them.
+  async findByHubspotId(hubspotId) {
+    if (hubspotId == null) return null
+    const s = String(hubspotId)
+    if (s.length === 0 || s === 'null') return null
+    return this.model.findOne({ hubspotId: s }).lean()
+  }
+
   async listAll() {
     return this.model.find({}).sort({ lastSyncedAt: -1 }).lean()
   }

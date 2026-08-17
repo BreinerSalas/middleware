@@ -30,7 +30,44 @@ describe('ProductMapping (domain)', () => {
   })
 
   it('buildProductMapping rejects missing hsSku', () => {
-    expect(() => buildProductMapping({ odooId: 1, hubspotId: 'Y', action: 'created' })).toThrow(/hsSku/)
+    // (openspec/hubspot-product-odoo-id-key) hsSku is now optional; this case asserts the
+    // OLD contract no longer holds — replaced below by the "accepts null/absent hsSku" cases.
+    expect(() => buildProductMapping({ odooId: 1, hubspotId: 'Y', action: 'created' })).not.toThrow()
+  })
+
+  it('buildProductMapping accepts null hsSku and returns hsSku: null (no-SKU product, openspec/hubspot-product-odoo-id-key)', () => {
+    const m = buildProductMapping({ odooId: 42, hsSku: null, hubspotId: 'H-1', action: 'created' })
+    expect(m.hsSku).toBe(null)
+    expect(m.odooId).toBe(42)
+    expect(m.hubspotId).toBe('H-1')
+    expect(m.action).toBe('created')
+  })
+
+  it('buildProductMapping accepts undefined hsSku (key omitted) and returns hsSku: null', () => {
+    const m = buildProductMapping({ odooId: 42, hubspotId: 'H-1', action: 'updated' })
+    expect(m.hsSku).toBe(null)
+  })
+
+  it('buildProductMapping accepts false hsSku and returns hsSku: null', () => {
+    const m = buildProductMapping({ odooId: 42, hsSku: false, hubspotId: 'H-1', action: 'updated' })
+    expect(m.hsSku).toBe(null)
+  })
+
+  it('buildProductMapping accepts empty-string hsSku and returns hsSku: null', () => {
+    const m = buildProductMapping({ odooId: 42, hsSku: '   ', hubspotId: 'H-1', action: 'updated' })
+    expect(m.hsSku).toBe(null)
+  })
+
+  it('buildProductMapping still requires odooId', () => {
+    expect(() => buildProductMapping({ hsSku: null, hubspotId: 'Y', action: 'created' })).toThrow(/odooId/)
+  })
+
+  it('buildProductMapping still requires hubspotId', () => {
+    expect(() => buildProductMapping({ odooId: 1, hsSku: null, action: 'created' })).toThrow(/hubspotId/)
+  })
+
+  it('buildProductMapping still requires a valid action', () => {
+    expect(() => buildProductMapping({ odooId: 1, hsSku: null, hubspotId: 'Y', action: 'nope' })).toThrow(/action/)
   })
 
   it('buildProductMapping rejects missing hubspotId', () => {
