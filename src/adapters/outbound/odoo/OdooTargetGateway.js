@@ -39,16 +39,32 @@ function applyNameMatch(li, map) {
   return enriched
 }
 
+// (openspec/hubspot-product-odoo-id-key — deal-product-resolution capability, PR 2)
+// Tier 2 enrichment: resolves a HubSpot line item's product via HubSpot-native `hs_product_id`
+// (always populated when the line item was added from the catalog) translated through
+// `product_mapping.findByHubspotId`. Pure, mirrors `applySkuMatch` / `applyNameMatch`. Skips
+// lines already resolved by tier 1 so a stale mapping can never override an authoritative
+// `default_code` match.
+function applyProductMappingMatch(li, map) {
+  if (!li || resolveProductId(li) != null) return li
+  const hid = li.hs_product_id != null ? String(li.hs_product_id) : null
+  if (!hid) return li
+  const odooId = map[hid]
+  if (odooId == null) return li
+  return { ...li, productId: Number(odooId) }
+}
+
 function collectUnresolvedLines(lineItems) {
   const out = []
   for (const li of Array.isArray(lineItems) ? lineItems : []) {
     if (!li || resolveProductId(li) != null) continue
     const hsSku = li.hs_sku == null || String(li.hs_sku) === '' ? null : String(li.hs_sku)
+    const hsProductId = li.hs_product_id == null || String(li.hs_product_id) === '' ? null : String(li.hs_product_id)
     const name = li.name == null || String(li.name).trim() === '' ? null : String(li.name)
     let reason = 'not_found'
     if (li.productResolutionError === 'name_ambiguous') reason = 'name_ambiguous'
-    else if (!hsSku && !name) reason = 'no_name_no_sku'
-    const entry = { lineItemId: li.id != null ? String(li.id) : null, name, hsSku, reason }
+    else if (!hsSku && !hsProductId && !name) reason = 'no_name_no_sku'
+    const entry = { lineItemId: li.id != null ? String(li.id) : null, name, hsSku, hsProductId, reason }
     if (reason === 'name_ambiguous') {
       entry.candidates = Array.isArray(li.productNameCandidates) ? li.productNameCandidates : []
     }
@@ -59,14 +75,15 @@ function collectUnresolvedLines(lineItems) {
 
 function describeUnresolved(u) {
   const sku = u.hsSku ? `"${u.hsSku}"` : 'ninguno'
+  const hid = u.hsProductId ? ` hs_product_id "${u.hsProductId}"` : ''
   const name = u.name ? `"${u.name}"` : 'sin nombre'
-  const base = `line item ${u.lineItemId}: nombre ${name} / hs_sku ${sku}`
+  const base = `line item ${u.lineItemId}: nombre ${name} / hs_sku ${sku}${hid}`
   if (u.reason === 'name_ambiguous') {
     const ids = (u.candidates || []).join(', ')
     return `${base} — ${(u.candidates || []).length} productos de Odoo comparten ese nombre (${ids}); definí hs_sku para desambiguar`
   }
   if (u.reason === 'no_name_no_sku') return `${base} — el line item no tiene hs_sku ni nombre`
-  return `${base} — ningún producto de Odoo coincide por default_code ni por nombre`
+  return `${base} — ningún producto de Odoo coincide por default_code, hs_product_id ni por nombre`
 }
 
 function buildSaleOrderUpdatePayload({ saleOrder, existing } = {}) {
@@ -189,7 +206,7 @@ async function pickCountryExpenseRecord({ countryId, countryName, apiClient, log
 }
 
 class OdooTargetGateway {
-  constructor({ apiClient, hashPayload, logger = null, defaultCustomerId = '', requireProductMatch = true, propertyQuoteCountry = 'pais_de_destino', autoConfirm = false } = {}) {
+  constructor({ apiClient, hashPayload, logger = null, defaultCustomerId = '', requireProductMatch = true, propertyQuoteCountry = 'pais_de_destino', autoConfirm = false, productMappingRepository = null } = {}) {
     if (!apiClient) throw new Error('OdooTargetGateway requires apiClient')
     if (typeof hashPayload !== 'function') throw new Error('OdooTargetGateway requires hashPayload')
     this.apiClient = apiClient
@@ -199,6 +216,11 @@ class OdooTargetGateway {
     this.requireProductMatch = requireProductMatch !== false
     this.propertyQuoteCountry = propertyQuoteCountry || 'pais_de_destino'
     this.autoConfirm = autoConfirm === true
+    // (openspec/hubspot-product-odoo-id-key — deal-product-resolution capability, PR 2)
+    // D4: optional dependency — when not injected, tier 2 self-disables (lookupByHubspotProductId
+    // short-circuits to {}) so the gateway's behaviour is byte-identical to the pre-change
+    // contract. No constructor guard (preserves ~26 existing test fixtures that don't inject it).
+    this.productMappingRepository = productMappingRepository
   }
 
   async upsert({ existingTargetId = null, record, references = {}, correlationId = null } = {}) {
@@ -510,10 +532,15 @@ class OdooTargetGateway {
 
   async resolveProductIds(lineItems, correlationId) {
     if (!Array.isArray(lineItems) || lineItems.length === 0) return []
+    // Tier 1: default_code (numeric or looked up)
     const bySku = await this.lookupByDefaultCode(lineItems, correlationId)
-    const staged = lineItems.map((li) => applySkuMatch(li, bySku))
-    const byName = await this.lookupByName(staged, correlationId)
-    return staged.map((li) => applyNameMatch(li, byName))
+    const staged1 = lineItems.map((li) => applySkuMatch(li, bySku))
+    // Tier 2: hs_product_id via product_mapping (openspec/hubspot-product-odoo-id-key)
+    const byHsProd = await this.lookupByHubspotProductId(staged1, correlationId)
+    const staged2 = staged1.map((li) => applyProductMappingMatch(li, byHsProd))
+    // Tier 3: name fallback (unchanged)
+    const byName = await this.lookupByName(staged2, correlationId)
+    return staged2.map((li) => applyNameMatch(li, byName))
   }
 
   async lookupByDefaultCode(lineItems, correlationId) {
@@ -554,6 +581,40 @@ class OdooTargetGateway {
     } catch (err) {
       if (this.logger) this.logger.warn('odoo.upsert.lookupProductsByName failed', { error: err.message, correlationId })
       throw new TransientSyncError('Odoo product lookup by name failed', { cause: err })
+    }
+  }
+
+  // (openspec/hubspot-product-odoo-id-key — Tier 2, PR 2)
+  // D4: self-disables when no repository is injected (returns {}; preserves pre-change behavior).
+  // D5: on a Mongo blip, throws TransientSyncError so ProcessSyncJobUseCase retries instead of
+  // silently degrading to a fuzzy name match.
+  async lookupByHubspotProductId(lineItems, correlationId) {
+    if (!this.productMappingRepository) return {}
+    if (typeof this.productMappingRepository.findByHubspotId !== 'function') return {}
+    const ids = []
+    const seen = new Set()
+    for (const li of lineItems) {
+      if (!li || resolveProductId(li) != null) continue
+      const hid = li.hs_product_id
+      if (hid == null || String(hid) === '') continue
+      const key = String(hid)
+      if (seen.has(key)) continue
+      seen.add(key)
+      ids.push(key)
+    }
+    if (ids.length === 0) return {}
+    try {
+      const rows = await Promise.all(ids.map((id) => this.productMappingRepository.findByHubspotId(id)))
+      const map = {}
+      rows.forEach((row, i) => {
+        if (row && row.odooId != null) map[ids[i]] = Number(row.odooId)
+      })
+      return map
+    } catch (err) {
+      if (this.logger) {
+        this.logger.warn('odoo.upsert.lookupByHubspotProductId failed', { error: err.message, correlationId })
+      }
+      throw new TransientSyncError('product_mapping lookup by hubspotId failed', { cause: err })
     }
   }
 
@@ -601,4 +662,4 @@ class OdooTargetGateway {
   }
 }
 
-module.exports = { OdooTargetGateway, collectUnresolvedLines, buildSaleOrderUpdatePayload, resolveCountryIdFromPartner, resolveCountryIdFromIsoCode, pickCountryExpenseRecord }
+module.exports = { OdooTargetGateway, collectUnresolvedLines, describeUnresolved, buildSaleOrderUpdatePayload, resolveCountryIdFromPartner, resolveCountryIdFromIsoCode, pickCountryExpenseRecord }
