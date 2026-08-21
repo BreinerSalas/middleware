@@ -48,7 +48,17 @@ function createSaleOrderStatusSyncModule({
           if (row.state === 'cancel') writeBackPayload.numero_orden_fabricacion = null
           await hubspotGateway.writeBack(mapping.sourceId, writeBackPayload)
           if (row.state === 'cancel') {
-            await hubspotGateway.revertDealStage(mapping.sourceId)
+            const alreadyReverted = mapping.metadata && mapping.metadata.lastCancelRevertedWriteDate === row.write_date
+            if (!alreadyReverted) {
+              await hubspotGateway.revertDealStage(mapping.sourceId)
+              await mappingRepository.upsert({
+                sourceId: mapping.sourceId,
+                targetId: mapping.targetId,
+                targetRef: mapping.targetRef,
+                payloadHash: mapping.payloadHash,
+                metadata: { lastCancelRevertedWriteDate: row.write_date }
+              })
+            }
           }
           updated += 1
         } catch (err) {

@@ -17,7 +17,16 @@ function makeSource({ pages = [] } = {}) {
 
 function makeMappingRepository({ bySourceRef = {} } = {}) {
   return {
-    findByTargetId: vi.fn(async (targetId) => bySourceRef[targetId] || null)
+    findByTargetId: vi.fn(async (targetId) => bySourceRef[targetId] || null),
+    upsert: vi.fn(async (mapping) => {
+      const existing = bySourceRef[mapping.targetId] || {}
+      bySourceRef[mapping.targetId] = {
+        ...existing,
+        ...mapping,
+        metadata: { ...(existing.metadata || {}), ...(mapping.metadata || {}) }
+      }
+      return bySourceRef[mapping.targetId]
+    })
   }
 }
 
@@ -131,6 +140,43 @@ describe('saleOrderStatusSyncModule.runIncremental (Fase 6 — docs/plan-cambios
     expect(hubspotGateway.writeBack).toHaveBeenCalledWith('D-1:qQ-1', {
       estado_presupuesto_odoo: 'cancel', estado_facturacion_odoo: 'no', numero_orden_fabricacion: null
     })
+  })
+
+  it('does NOT call revertDealStage again for the same cancelled sale.order on a later run (evita deshacer una corrección manual hecha dentro de la ventana de overlap)', async () => {
+    const bySourceRef = { 501: { sourceId: 'D-1:qQ-1', targetId: '501' } }
+    const mappingRepository = makeMappingRepository({ bySourceRef })
+    const hubspotGateway = makeHubspotGateway()
+    const cursorRepo = makeCursorRepo()
+
+    const odooSourceRun1 = makeSource({ pages: [[so(501, 'cancel', 'no', '2026-08-06 09:00:00')]] })
+    const m1 = createSaleOrderStatusSyncModule({ odooSource: odooSourceRun1, mappingRepository, hubspotGateway, cursorRepo, logger: makeLogger() })
+    await m1.runIncremental({})
+    expect(hubspotGateway.revertDealStage).toHaveBeenCalledTimes(1)
+
+    // Segundo tick: el overlap vuelve a traer la misma fila (write_date sin cambios)
+    // porque el pedido sigue cancelado en Odoo — el usuario ya corrigió y volvió a
+    // pasar el deal a Ganado en el medio, y esto no debe revertirlo de nuevo.
+    const odooSourceRun2 = makeSource({ pages: [[so(501, 'cancel', 'no', '2026-08-06 09:00:00')]] })
+    const m2 = createSaleOrderStatusSyncModule({ odooSource: odooSourceRun2, mappingRepository, hubspotGateway, cursorRepo, logger: makeLogger() })
+    await m2.runIncremental({})
+    expect(hubspotGateway.revertDealStage).toHaveBeenCalledTimes(1)
+  })
+
+  it('calls revertDealStage again if the sale.order is cancelled a second time with a new write_date (nueva cancelación legítima)', async () => {
+    const bySourceRef = { 501: { sourceId: 'D-1:qQ-1', targetId: '501' } }
+    const mappingRepository = makeMappingRepository({ bySourceRef })
+    const hubspotGateway = makeHubspotGateway()
+    const cursorRepo = makeCursorRepo()
+
+    const odooSourceRun1 = makeSource({ pages: [[so(501, 'cancel', 'no', '2026-08-06 09:00:00')]] })
+    const m1 = createSaleOrderStatusSyncModule({ odooSource: odooSourceRun1, mappingRepository, hubspotGateway, cursorRepo, logger: makeLogger() })
+    await m1.runIncremental({})
+
+    const odooSourceRun2 = makeSource({ pages: [[so(501, 'cancel', 'no', '2026-08-07 10:00:00')]] })
+    const m2 = createSaleOrderStatusSyncModule({ odooSource: odooSourceRun2, mappingRepository, hubspotGateway, cursorRepo, logger: makeLogger() })
+    await m2.runIncremental({})
+
+    expect(hubspotGateway.revertDealStage).toHaveBeenCalledTimes(2)
   })
 
   it('does NOT call revertDealStage for states other than cancel', async () => {
