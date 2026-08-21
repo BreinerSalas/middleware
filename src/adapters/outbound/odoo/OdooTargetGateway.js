@@ -102,6 +102,11 @@ function buildSaleOrderUpdatePayload({ saleOrder, existing } = {}) {
     // y el ciclo cancelar/corregir/cerrar-ganado necesita que lleguen a Odoo).
     payload.order_line = [[5, 0, 0], ...saleOrder.order_line]
   }
+  // Igual que country_expense: solo se manda una vez. Si ya existe una línea de
+  // Gastos de Envío, no la volvemos a crear en cada re-sync (docs/gastos-envio-onchange-gap).
+  if (Array.isArray(saleOrder.shipping_expense_ids) && !exp.hasShippingExpense) {
+    payload.shipping_expense_ids = saleOrder.shipping_expense_ids
+  }
   return payload
 }
 
@@ -201,7 +206,8 @@ async function pickCountryExpenseRecord({ countryId, countryName, apiClient, log
     countryName: countryName || null,
     reason: picked.reason || 'ddp_exact_match',
     matches: picked.matches,
-    ambiguous: picked.ambiguous
+    ambiguous: picked.ambiguous,
+    charges: picked.charges || null
   }
 }
 
@@ -253,6 +259,7 @@ class OdooTargetGateway {
         odooCustomerId,
         hsLineItems: enrichedLineItems,
         countryExpenseId: countryExpense.status === 'resolved' ? countryExpense.id : null,
+        shippingExpenseCharges: countryExpense.status === 'resolved' ? countryExpense.charges : null,
         dealId: record.dealId || null,
         quoteId: record.quoteId || null,
         quote: record.quote || null,
@@ -417,7 +424,8 @@ class OdooTargetGateway {
       countryName,
       reason: picked.reason || 'ddp_exact_match',
       matches: picked.matches,
-      ambiguous: picked.ambiguous
+      ambiguous: picked.ambiguous,
+      charges: picked.charges || null
     }
   }
 
@@ -513,7 +521,8 @@ class OdooTargetGateway {
           name: first.name || null,
           state: first.state || null,
           countryExpenseId: first.countryExpenseId != null ? Number(first.countryExpenseId) : null,
-          note: first.note || null
+          note: first.note || null,
+          hasShippingExpense: first.hasShippingExpense === true
         }
       }
       // Retrocompat: tests/fixtures pueden pasar el id pelado (string o número)
@@ -522,7 +531,8 @@ class OdooTargetGateway {
         name: null,
         state: null,
         countryExpenseId: null,
-        note: null
+        note: null,
+        hasShippingExpense: false
       }
     } catch (err) {
       if (this.logger) this.logger.warn('odoo.upsert.searchSalesOrder failed', { error: err.message, correlationId })

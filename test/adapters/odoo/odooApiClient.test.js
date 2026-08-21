@@ -215,8 +215,8 @@ describe('odooApiClient', () => {
       .mockResolvedValueOnce({
         data: {
           result: [
-            { id: 17, name: 'S06613', state: 'draft', country_expense: [78, 'DDP Colombia'] },
-            { id: 18, name: 'S06614', state: 'draft', country_expense: false }
+            { id: 17, name: 'S06613', state: 'draft', country_expense: [78, 'DDP Colombia'], shipping_expense_ids: [8493] },
+            { id: 18, name: 'S06614', state: 'draft', country_expense: false, shipping_expense_ids: [] }
           ]
         },
         status: 200
@@ -228,13 +228,13 @@ describe('odooApiClient', () => {
     })
     const r = await api.searchSalesOrderByOrigin('hs:62939072525')
     expect(r).toEqual([
-      { id: 17, name: 'S06613', state: 'draft', countryExpenseId: 78 },
-      { id: 18, name: 'S06614', state: 'draft', countryExpenseId: null }
+      { id: 17, name: 'S06613', state: 'draft', countryExpenseId: 78, hasShippingExpense: true },
+      { id: 18, name: 'S06614', state: 'draft', countryExpenseId: null, hasShippingExpense: false }
     ])
     expect(post.mock.calls[1][1].params.args).toEqual([
       'db', 4, 'k', 'sale.order', 'search_read',
       [[['origin', '=', 'hs:62939072525']]],
-      { fields: ['id', 'name', 'state', 'country_expense'] }
+      { fields: ['id', 'name', 'state', 'country_expense', 'shipping_expense_ids'] }
     ])
   })
 
@@ -528,8 +528,16 @@ describe('listOperationCosts', () => {
       .mockResolvedValueOnce({
         data: {
           result: [
-            { id: 71, name: 'DDP Mexico', country_id: [156, 'Mexico'], product_id: false },
-            { id: 116, name: 'CIP Mexico', country_id: [156, 'Mexico'], product_id: false }
+            {
+              id: 71, name: 'DDP Mexico', country_id: [156, 'Mexico'], product_id: false,
+              extra_custom_charges: 33, duca_scanner_transmission: 46, destination_procedure: 200,
+              finance_docs_shipping: 40, trsf_cost: 35, received_transfer: 55, financing: 0.085
+            },
+            {
+              id: 116, name: 'CIP Mexico', country_id: [156, 'Mexico'], product_id: false,
+              extra_custom_charges: 0, duca_scanner_transmission: 0, destination_procedure: 0,
+              finance_docs_shipping: 0, trsf_cost: 0, received_transfer: 0, financing: 0
+            }
           ]
         },
         status: 200
@@ -540,12 +548,28 @@ describe('listOperationCosts', () => {
     })
     const r = await api.listOperationCosts()
     expect(r).toEqual([
-      { id: 71, name: 'DDP Mexico', countryId: 156, countryName: 'Mexico', productId: null },
-      { id: 116, name: 'CIP Mexico', countryId: 156, countryName: 'Mexico', productId: null }
+      {
+        id: 71, name: 'DDP Mexico', countryId: 156, countryName: 'Mexico', productId: null,
+        charges: {
+          extraCharges: 33, scannerCharge: 46, destinationProcess: 200,
+          documentsShipping: 40, transferCost: 35, receivedTransfer: 55, financing: 0.085
+        }
+      },
+      {
+        id: 116, name: 'CIP Mexico', countryId: 156, countryName: 'Mexico', productId: null,
+        charges: {
+          extraCharges: 0, scannerCharge: 0, destinationProcess: 0,
+          documentsShipping: 0, transferCost: 0, receivedTransfer: 0, financing: 0
+        }
+      }
     ])
     expect(post.mock.calls[1][1].params.args).toEqual([
       'db', 2, 'k', 'operation.costs', 'search_read', [[]],
-      { fields: ['id', 'name', 'country_id', 'product_id'] }
+      {
+        fields: ['id', 'name', 'country_id', 'product_id',
+          'extra_custom_charges', 'duca_scanner_transmission', 'destination_procedure',
+          'finance_docs_shipping', 'trsf_cost', 'received_transfer', 'financing']
+      }
     ])
   })
 

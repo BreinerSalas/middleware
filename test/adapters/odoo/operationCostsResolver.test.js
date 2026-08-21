@@ -111,4 +111,30 @@ describe('pickOperationCostForCountry', () => {
     expect(result.ambiguous).toBe(true)
     expect(result.reason).toBe('country_name_required')
   })
+
+  it('carries the charges of the resolved record through when only one matches', () => {
+    const withCharges = { ...rec(71, 'DDP Mexico'), charges: { extraCharges: 33, financing: 0.085 } }
+    const result = pickOperationCostForCountry([withCharges], 'Mexico')
+    expect(result.charges).toEqual({ extraCharges: 33, financing: 0.085 })
+  })
+
+  it('carries the charges of the exact DDP match through among multiple records', () => {
+    const records = [
+      { ...rec(116, 'CIP Mexico'), charges: { extraCharges: 999 } },
+      { ...rec(71, 'DDP Mexico'), charges: { extraCharges: 33, financing: 0.085 } }
+    ]
+    const result = pickOperationCostForCountry(records, 'Mexico')
+    expect(result.id).toBe(71)
+    expect(result.charges).toEqual({ extraCharges: 33, financing: 0.085 })
+  })
+
+  it('carries the charges of the fallback lowest-id record through when ambiguous', () => {
+    const records = [
+      { ...rec(116, 'CIP Mexico'), charges: { extraCharges: 12 } },
+      { ...rec(124, 'EXW Mexico con DUCA'), charges: { extraCharges: 99 } }
+    ]
+    const result = pickOperationCostForCountry(records, 'Mexico')
+    expect(result.id).toBe(116)
+    expect(result.charges).toEqual({ extraCharges: 12 })
+  })
 })

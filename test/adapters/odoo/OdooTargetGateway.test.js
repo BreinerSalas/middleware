@@ -11,7 +11,13 @@ function makeApi({
   nameMap = null,
   partnerCountry = { 42: { countryId: 49, countryName: 'Colombia', parentId: null } },
   operationCosts = [
-    { id: 78, name: 'DDP Colombia', countryId: 49, countryName: 'Colombia', productId: null }
+    {
+      id: 78, name: 'DDP Colombia', countryId: 49, countryName: 'Colombia', productId: null,
+      charges: {
+        extraCharges: 33, scannerCharge: 46, destinationProcess: 200,
+        documentsShipping: 40, transferCost: 35, receivedTransfer: 55, financing: 0.085
+      }
+    }
   ]
 } = {}) {
   const api = {
@@ -953,6 +959,64 @@ describe('OdooTargetGateway country_expense resolution', () => {
     })
     const updatePayload = api.updateSalesOrder.mock.calls[0][1]
     expect(updatePayload.note).toBe('Deal: Cool')
+  })
+
+  it('includes shipping_expense_ids in the create payload, mapped from the resolved operation.costs charges (Gastos de Envío onchange gap)', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': 17 } })
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload })
+    await gw.upsert({
+      existingTargetId: null,
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    const soPayload = api.createSalesOrder.mock.calls[0][0]
+    expect(soPayload.shipping_expense_ids).toEqual([[0, 0, {
+      extra_charges: 33,
+      scanner_charge: 46,
+      destination_process: 200,
+      documents_shipping: 40,
+      transfer_cost: 35,
+      received_transfer: 55,
+      financing: 0.085
+    }]])
+  })
+
+  it('omits shipping_expense_ids from update payload when the existing SO already has one', async () => {
+    const api = makeApi({
+      soSearch: [{ id: 17, name: 'S00017', state: 'draft', countryExpenseId: 78, hasShippingExpense: true }],
+      productMap: { 'SKU-1': 17 }
+    })
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload })
+    await gw.upsert({
+      existingTargetId: null,
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    const updatePayload = api.updateSalesOrder.mock.calls[0][1]
+    expect(updatePayload).not.toHaveProperty('shipping_expense_ids')
+  })
+
+  it('sends shipping_expense_ids in update payload when the existing SO has none yet', async () => {
+    const api = makeApi({
+      soSearch: [{ id: 17, name: 'S00017', state: 'draft', countryExpenseId: 78, hasShippingExpense: false }],
+      productMap: { 'SKU-1': 17 }
+    })
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload })
+    await gw.upsert({
+      existingTargetId: null,
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    const updatePayload = api.updateSalesOrder.mock.calls[0][1]
+    expect(updatePayload.shipping_expense_ids).toEqual([[0, 0, {
+      extra_charges: 33,
+      scanner_charge: 46,
+      destination_process: 200,
+      documents_shipping: 40,
+      transfer_cost: 35,
+      received_transfer: 55,
+      financing: 0.085
+    }]])
   })
 
   it('appends [smartflow] marker to note when unresolved on create', async () => {
