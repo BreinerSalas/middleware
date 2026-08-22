@@ -31,9 +31,9 @@ Delivery strategy: **auto-chain** (supersedes the initial `single-pr` preflight 
 
 ## Phase 1: Domain Classifier (Foundation)
 
-- [ ] 1.1 RED — `test/core/domain/quoteCountryValue.test.js`: table test for `absent/unset/legacy_iso/operation_cost_id/unrecognized` incl. `'sin_definir'`, `' CR '`, `'cr'`, `'78'`, `'0'`, `'78abc'`, `null`
-- [ ] 1.2 GREEN — Create `src/core/domain/quoteCountryValue.js`: `QUOTE_COUNTRY_UNSET`, `isUnsetQuoteCountry`, `classifyQuoteCountryValue`
-- [ ] 1.3 REFACTOR — Confirm no other module duplicates this logic
+- [x] 1.1 RED — `test/core/domain/quoteCountryValue.test.js`: table test for `absent/unset/legacy_iso/operation_cost_id/unrecognized` incl. `'sin_definir'`, `' CR '`, `'cr'`, `'78'`, `'0'`, `'78abc'`, `null`
+- [x] 1.2 GREEN — Create `src/core/domain/quoteCountryValue.js`: `QUOTE_COUNTRY_UNSET`, `isUnsetQuoteCountry`, `classifyQuoteCountryValue`
+- [x] 1.3 REFACTOR — Confirm no other module duplicates this logic
 
 ## Phase 2: Gateway Numeric-Id Resolution (D2–D4)
 
