@@ -53,12 +53,12 @@ Delivery strategy: **auto-chain** (supersedes the initial `single-pr` preflight 
 
 ## Phase 4: Property Schema + Catalog Sync Script
 
-- [ ] 4.1 RED — `quotePropertyDefinitions.test.js`: assert label/description drop "(ISO-2)"
-- [ ] 4.2 GREEN — `quotePropertyDefinitions.js` label/description text update
-- [ ] 4.3 RED — Rewrite `sync-quote-country-options.test.js` `buildOptions` block: per-record options, placeholder first, dedupe by id, blank-name fallback, codepoint sort + id tiebreak, `displayOrder`
-- [ ] 4.4 RED — Rewrite `planOptions` block: `EMPTY_OPERATION_COSTS`/`EMPTY_OPERATION_COSTS_OPTIONS` guards, `duplicateLabels` warning; drop `readCountriesByIds` fixtures
-- [ ] 4.5 GREEN — Rewrite `buildOptions({records})`/`planOptions(...)` in `sync-quote-country-options.js`; drop `readCountriesByIds`; update `main()` output (`recordCount`/`duplicateLabels`)
-- [ ] 4.6 REFACTOR — Confirm `applyOptions`/`resolveDryRun` tests stay green except the dead fallback label string
+- [x] 4.1 RED — `quotePropertyDefinitions.test.js`: assert label/description drop "(ISO-2)"
+- [x] 4.2 GREEN — `quotePropertyDefinitions.js` label/description text update
+- [x] 4.3 RED — Rewrite `sync-quote-country-options.test.js` `buildOptions` block: per-record options, placeholder first, dedupe by id, blank-name fallback, codepoint sort + id tiebreak, `displayOrder`
+- [x] 4.4 RED — Rewrite `planOptions` block: `EMPTY_OPERATION_COSTS`/`EMPTY_OPERATION_COSTS_OPTIONS` guards, `duplicateLabels` warning; drop `readCountriesByIds` fixtures
+- [x] 4.5 GREEN — Rewrite `buildOptions({records})`/`planOptions(...)` in `sync-quote-country-options.js`; drop `readCountriesByIds`; update `main()` output (`recordCount`/`duplicateLabels`)
+- [x] 4.6 REFACTOR — Confirm `applyOptions`/`resolveDryRun` tests stay green except the dead fallback label string
 
 ## Phase 5 (optional, deferred): Probe Duplicate-Name Reporting
 

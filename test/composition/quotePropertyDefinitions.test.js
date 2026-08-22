@@ -58,4 +58,10 @@ describe('buildQuotePropertyDefinitions', () => {
     expect(defs[0].options).toEqual([{ label: 'Sin definir', value: 'sin_definir' }])
     expect(defs[0].options[0].value).not.toBe('')
   })
+
+  it('drops the "(ISO-2)" label/description now that the dropdown mirrors operation.costs records, not ISO codes', () => {
+    const defs = buildQuotePropertyDefinitions({})
+    expect(defs[0].label).not.toMatch(/ISO-2/)
+    expect(defs[0].description).not.toMatch(/ISO-2|Código ISO/)
+  })
 })
