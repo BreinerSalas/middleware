@@ -43,6 +43,21 @@ describe('createMustHaveQuoteCountry', () => {
     expect(() => validator({ record })).toThrow(SkipSyncError)
   })
 
+  it('throws SkipSyncError when quote country is the sin_definir sentinel', () => {
+    const { SkipSyncError } = require('../../src/core/domain/errors.js')
+    const record = {
+      id: 'D-1:qQ-1',
+      quoteId: 'Q-1',
+      quote: { id: 'Q-1', properties: { hs_status: 'APPROVAL_NOT_NEEDED', pais_de_destino: 'sin_definir' } }
+    }
+    expect(() => validator({ record })).toThrow(SkipSyncError)
+  })
+
+  it('is still a no-op on the legacy deal path (no quoteId) even when pais_de_destino is sin_definir', () => {
+    const record = { id: 'D-1', properties: { pais_de_destino: 'sin_definir' } }
+    expect(() => validator({ record })).not.toThrow()
+  })
+
   it('honors a custom countryProperty name', () => {
     const v = createMustHaveQuoteCountry({ countryProperty: 'pais_iso' })
     const { SkipSyncError } = require('../../src/core/domain/errors.js')

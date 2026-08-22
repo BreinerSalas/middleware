@@ -1,6 +1,7 @@
 'use strict'
 
 const { createEchoGuard } = require('../../../core/shared/echoGuard')
+const { isUnsetQuoteCountry } = require('../../../core/domain/quoteCountryValue')
 
 const DEFAULT_DEAL_PROPERTY_NAMES = {
   dealname: 'dealname',
@@ -49,7 +50,7 @@ function isEligibleQuote(quote, { countryProperty, allowedStatuses } = {}) {
   }
   const countryProp = countryProperty || DEFAULT_QUOTE_PROPERTY_NAMES.country
   const country = props[countryProp]
-  if (country == null || String(country).trim() === '') {
+  if (country == null || String(country).trim() === '' || isUnsetQuoteCountry(country)) {
     return { eligible: false, reason: 'missing_country' }
   }
   return { eligible: true, reason: 'ok' }
