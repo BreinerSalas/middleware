@@ -4,7 +4,8 @@ const require = createRequire(import.meta.url)
 const {
   OdooTargetGateway,
   resolveCountryIdFromIsoCode,
-  resolveCountryIdFromPartner
+  resolveCountryIdFromPartner,
+  pickCountryExpenseById
 } = require('../../../src/adapters/outbound/odoo/OdooTargetGateway.js')
 const { hashPayload } = require('../../../src/core/shared/hash.js')
 
@@ -108,6 +109,137 @@ describe('resolveCountryIdFromPartner', () => {
   })
 })
 
+describe('pickCountryExpenseById', () => {
+  const records = [
+    { id: 78, name: 'DDP Costa Rica', countryId: 50, countryName: 'Costa Rica', charges: { flete: 12 } }
+  ]
+
+  it('returns a resolved result on a direct id hit, without touching the ISO/partner walk', async () => {
+    const api = makeApi({ operationCosts: records, searchCountryIdsByCodes: true })
+    const r = await pickCountryExpenseById(78, { apiClient: api })
+    expect(r).toEqual({
+      status: 'resolved',
+      id: 78,
+      countryId: 50,
+      countryName: 'Costa Rica',
+      reason: 'quote_operation_cost_id',
+      matches: 1,
+      ambiguous: false,
+      charges: { flete: 12 }
+    })
+    expect(api.searchCountryIdsByCodes).not.toHaveBeenCalled()
+    expect(api.readPartnerCountries).not.toHaveBeenCalled()
+  })
+
+  it('returns quote_operation_cost_id_invalid when the id is not a positive integer', async () => {
+    const api = makeApi({ operationCosts: records, searchCountryIdsByCodes: true })
+    const r = await pickCountryExpenseById(0, { apiClient: api })
+    expect(r.status).toBe('unresolved')
+    expect(r.reason).toBe('quote_operation_cost_id_invalid')
+    expect(api.listOperationCosts).not.toHaveBeenCalled()
+    expect(api.searchCountryIdsByCodes).not.toHaveBeenCalled()
+    expect(api.readPartnerCountries).not.toHaveBeenCalled()
+  })
+
+  it('returns listOperationCosts_not_supported when apiClient lacks the method', async () => {
+    const api = makeApi({ searchCountryIdsByCodes: true })
+    delete api.listOperationCosts
+    const r = await pickCountryExpenseById(78, { apiClient: api })
+    expect(r.reason).toBe('listOperationCosts_not_supported')
+    expect(api.searchCountryIdsByCodes).not.toHaveBeenCalled()
+    expect(api.readPartnerCountries).not.toHaveBeenCalled()
+  })
+
+  it('returns operation_costs_lookup_failed when listOperationCosts throws', async () => {
+    const api = makeApi({ operationCosts: records, searchCountryIdsByCodes: true })
+    api.listOperationCosts = vi.fn(async () => { throw new Error('boom') })
+    const logger = { warn: vi.fn() }
+    const r = await pickCountryExpenseById(78, { apiClient: api, logger })
+    expect(r.reason).toBe('operation_costs_lookup_failed')
+    expect(logger.warn).toHaveBeenCalled()
+    expect(api.searchCountryIdsByCodes).not.toHaveBeenCalled()
+    expect(api.readPartnerCountries).not.toHaveBeenCalled()
+  })
+
+  it('returns operation_cost_id_not_found when no record matches the id', async () => {
+    const api = makeApi({ operationCosts: records, searchCountryIdsByCodes: true })
+    const r = await pickCountryExpenseById(999, { apiClient: api })
+    expect(r.reason).toBe('operation_cost_id_not_found')
+    expect(api.searchCountryIdsByCodes).not.toHaveBeenCalled()
+    expect(api.readPartnerCountries).not.toHaveBeenCalled()
+  })
+})
+
+describe('OdooTargetGateway.upsert — quote-country classifier dispatch', () => {
+  it('kind "unset" resolves empty with quote_country_unset and never walks the partner path', async () => {
+    const api = makeApi({
+      productMap: { 'SKU-1': 17 },
+      partnerCountry: { 42: { countryId: 49, countryName: 'Colombia', parentId: null } },
+      operationCosts: [{ id: 78, name: 'DDP Colombia', countryId: 49, countryName: 'Colombia' }]
+    })
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, requireProductMatch: false })
+    const record = {
+      id: 'D-1:qQ-1',
+      dealId: 'D-1',
+      quoteId: 'Q-1',
+      properties: { id_cliente_odoo: '42' },
+      quote: { id: 'Q-1', properties: { pais_de_destino: 'sin_definir' } }
+    }
+    const result = await gw.upsert({ record, references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] } })
+    expect(result.metadata.countryExpense.status).toBe('unresolved')
+    expect(result.metadata.countryExpense.reason).toBe('quote_country_unset')
+    expect(api.readPartnerCountries).not.toHaveBeenCalled()
+    expect(api.listOperationCosts).not.toHaveBeenCalled()
+  })
+
+  it('kind "unrecognized" resolves empty with quote_country_value_unrecognized, warns, and never walks', async () => {
+    const api = makeApi({
+      productMap: { 'SKU-1': 17 },
+      partnerCountry: { 42: { countryId: 49, countryName: 'Colombia', parentId: null } },
+      operationCosts: [{ id: 78, name: 'DDP Colombia', countryId: 49, countryName: 'Colombia' }]
+    })
+    const logger = { warn: vi.fn(), info: vi.fn() }
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, logger, requireProductMatch: false })
+    const record = {
+      id: 'D-1:qQ-1',
+      dealId: 'D-1',
+      quoteId: 'Q-1',
+      properties: { id_cliente_odoo: '42' },
+      quote: { id: 'Q-1', properties: { pais_de_destino: '78abc' } }
+    }
+    const result = await gw.upsert({ record, references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] } })
+    expect(result.metadata.countryExpense.status).toBe('unresolved')
+    expect(result.metadata.countryExpense.reason).toBe('quote_country_value_unrecognized')
+    expect(logger.warn).toHaveBeenCalled()
+    expect(api.readPartnerCountries).not.toHaveBeenCalled()
+    expect(api.listOperationCosts).not.toHaveBeenCalled()
+  })
+
+  it('kind "operation_cost_id" delegates to pickCountryExpenseById and never walks the ISO/partner path', async () => {
+    const api = makeApi({
+      productMap: { 'SKU-1': 17 },
+      partnerCountry: { 42: { countryId: 49, countryName: 'Colombia', parentId: null } },
+      operationCosts: [{ id: 78, name: 'DDP Costa Rica', countryId: 50, countryName: 'Costa Rica', charges: null }],
+      searchCountryIdsByCodes: true
+    })
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, requireProductMatch: false })
+    const record = {
+      id: 'D-1:qQ-1',
+      dealId: 'D-1',
+      quoteId: 'Q-1',
+      properties: { id_cliente_odoo: '42' },
+      quote: { id: 'Q-1', properties: { pais_de_destino: '78' } }
+    }
+    const result = await gw.upsert({ record, references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] } })
+    expect(result.metadata.countryExpense.status).toBe('resolved')
+    expect(result.metadata.countryExpense.id).toBe(78)
+    expect(result.metadata.countryExpense.reason).toBe('quote_operation_cost_id')
+    expect(result.metadata.countryExpense.ambiguous).toBe(false)
+    expect(api.searchCountryIdsByCodes).not.toHaveBeenCalled()
+    expect(api.readPartnerCountries).not.toHaveBeenCalled()
+  })
+})
+
 describe('OdooTargetGateway.upsert — ISO-driven country_expense', () => {
   const ocCR = [{ id: 78, name: 'DDP Costa Rica', countryId: 50, countryName: 'Costa Rica', productId: null }]
   const ocGT = [{ id: 79, name: 'DDP Guatemala', countryId: 90, countryName: 'Guatemala', productId: null }]
@@ -131,6 +263,7 @@ describe('OdooTargetGateway.upsert — ISO-driven country_expense', () => {
     expect(api.searchCountryIdsByCodes).toHaveBeenCalledWith(['CR'])
     expect(result.metadata.countryExpense.id).toBe(78)
     expect(result.metadata.countryExpense.countryId).toBe(50)
+    expect(result.metadata.countryExpense.reason).toBe('legacy_iso_value')
     expect(api.readPartnerCountries).not.toHaveBeenCalled()
   })
 
@@ -152,10 +285,11 @@ describe('OdooTargetGateway.upsert — ISO-driven country_expense', () => {
       properties: { id_cliente_odoo: '42', dealname: 'Fan-Out Demo' },
       quote: { id: 'Q-9', properties: { pais_de_destino: 'GT', hs_title: 'Cotiz GT' } }
     }
-    await gw.upsert({ record, references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] } })
+    const result = await gw.upsert({ record, references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] } })
     const soPayload = api.createSalesOrder.mock.calls[0][0]
     expect(soPayload.origin).toBe('hs:D-9:qQ-9')
     expect(soPayload.note).toBe('Deal: Fan-Out Demo\nCotización: Cotiz GT (GT)')
+    expect(result.metadata.countryExpense.reason).toBe('legacy_iso_value')
   })
 
   it('degrades to partner walk when quote is missing', async () => {
@@ -257,6 +391,7 @@ describe('OdooTargetGateway.upsert — ISO-driven country_expense', () => {
     const result = await gw.upsert({ record, references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] } })
     expect(result.metadata.countryExpense.status).toBe('resolved')
     expect(result.metadata.countryExpense.ambiguous).toBe(true)
+    expect(result.metadata.countryExpense.reason).toBe('legacy_iso_value')
     const soPayload = api.createSalesOrder.mock.calls[0][0]
     expect(soPayload.note).toContain('[smartflow]')
     expect(soPayload.note).toMatch(/ambigu/i)
@@ -278,6 +413,7 @@ describe('OdooTargetGateway.upsert — ISO-driven country_expense', () => {
     }
     const result = await gw.upsert({ record, references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] } })
     expect(result.metadata.countryExpense.ambiguous).toBe(false)
+    expect(result.metadata.countryExpense.reason).toBe('legacy_iso_value')
     const soPayload = api.createSalesOrder.mock.calls[0][0]
     expect(soPayload.note || '').not.toContain('[smartflow]')
   })
