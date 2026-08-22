@@ -147,4 +147,39 @@ describe('mapDealToSaleOrder', () => {
     })
     expect(payload.saleOrder).not.toHaveProperty('country_expense')
   })
+
+  it('adds one shipping_expense_ids line mapped from shippingExpenseCharges when provided (docs: Gastos de Envío onchange gap)', () => {
+    const payload = mapDealToSaleOrder({
+      hsDeal: { id: 'D-30' },
+      odooCustomerId: '5',
+      hsLineItems: [],
+      shippingExpenseCharges: {
+        extraCharges: 33,
+        scannerCharge: 46,
+        destinationProcess: 200,
+        documentsShipping: 40,
+        transferCost: 35,
+        receivedTransfer: 55,
+        financing: 0.085
+      }
+    })
+    expect(payload.saleOrder.shipping_expense_ids).toEqual([[0, 0, {
+      extra_charges: 33,
+      scanner_charge: 46,
+      destination_process: 200,
+      documents_shipping: 40,
+      transfer_cost: 35,
+      received_transfer: 55,
+      financing: 0.085
+    }]])
+  })
+
+  it('omits shipping_expense_ids when shippingExpenseCharges is null (default)', () => {
+    const payload = mapDealToSaleOrder({
+      hsDeal: { id: 'D-31' },
+      odooCustomerId: '5',
+      hsLineItems: []
+    })
+    expect(payload.saleOrder).not.toHaveProperty('shipping_expense_ids')
+  })
 })

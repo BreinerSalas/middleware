@@ -12,6 +12,7 @@ function mapDealToSaleOrder({
   odooCustomerId,
   hsLineItems = [],
   countryExpenseId = null,
+  shippingExpenseCharges = null,
   origin = null,
   dealId = null,
   quoteId = null,
@@ -65,6 +66,21 @@ function mapDealToSaleOrder({
 
   if (countryExpenseId != null) {
     saleOrder.country_expense = Number(countryExpenseId)
+  }
+
+  // (docs/gastos-envio-onchange-gap) Odoo's own copy-down from operation.costs into a
+  // sale.order.shipping.expense line is a client-side onchange — it never fires on an RPC
+  // create/write, so we replicate the charges ourselves as one shipping_expense_ids line.
+  if (shippingExpenseCharges) {
+    saleOrder.shipping_expense_ids = [[0, 0, {
+      extra_charges: shippingExpenseCharges.extraCharges,
+      scanner_charge: shippingExpenseCharges.scannerCharge,
+      destination_process: shippingExpenseCharges.destinationProcess,
+      documents_shipping: shippingExpenseCharges.documentsShipping,
+      transfer_cost: shippingExpenseCharges.transferCost,
+      received_transfer: shippingExpenseCharges.receivedTransfer,
+      financing: shippingExpenseCharges.financing
+    }]]
   }
 
   return { saleOrder }

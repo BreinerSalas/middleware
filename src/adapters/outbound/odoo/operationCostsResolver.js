@@ -17,6 +17,10 @@ function isExactDdpForCountry(name, normalizedCountry) {
   return normalizeForMatch(m[1]) === normalizedCountry
 }
 
+function chargesOf(record) {
+  return record && record.charges != null ? { charges: record.charges } : {}
+}
+
 function fallbackToLowestId(records, reason) {
   const sorted = [...records].sort((a, b) => Number(a.id) - Number(b.id))
   const chosen = sorted[0]
@@ -26,7 +30,8 @@ function fallbackToLowestId(records, reason) {
     matches: records.length,
     ids: records.map((r) => Number(r.id)),
     ambiguous: true,
-    reason
+    reason,
+    ...chargesOf(chosen)
   }
 }
 
@@ -40,7 +45,8 @@ function pickOperationCostForCountry(records, countryName) {
       name: only.name,
       matches: 1,
       ids: [Number(only.id)],
-      ambiguous: false
+      ambiguous: false,
+      ...chargesOf(only)
     }
   }
 
@@ -57,7 +63,8 @@ function pickOperationCostForCountry(records, countryName) {
       matches: records.length,
       ids: records.map((r) => Number(r.id)),
       ambiguous: false,
-      reason: 'ddp_exact_match'
+      reason: 'ddp_exact_match',
+      ...chargesOf(ddpExact)
     }
   }
 

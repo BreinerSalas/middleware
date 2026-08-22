@@ -235,13 +235,28 @@ function createOdooApiClient({
     ocPromise = (async () => {
       try {
         const result = await executeKw('operation.costs', 'search_read', [[]],
-          { fields: ['id', 'name', 'country_id', 'product_id'] })
+          {
+            fields: ['id', 'name', 'country_id', 'product_id',
+              'extra_custom_charges', 'duca_scanner_transmission', 'destination_procedure',
+              'finance_docs_shipping', 'trsf_cost', 'received_transfer', 'financing']
+          })
         const mapped = (Array.isArray(result) ? result : []).map((r) => ({
           id: Number(r.id),
           name: r.name || null,
           countryId: Array.isArray(r.country_id) ? Number(r.country_id[0]) : null,
           countryName: Array.isArray(r.country_id) ? r.country_id[1] : null,
-          productId: Array.isArray(r.product_id) ? Number(r.product_id[0]) : (r.product_id === false ? null : Number(r.product_id))
+          productId: Array.isArray(r.product_id) ? Number(r.product_id[0]) : (r.product_id === false ? null : Number(r.product_id)),
+          // (docs/gastos-envio-onchange-gap) copied by hand into shipping.expense at create
+          // time — the Odoo onchange that would normally do this never fires on RPC create/write.
+          charges: {
+            extraCharges: Number(r.extra_custom_charges) || 0,
+            scannerCharge: Number(r.duca_scanner_transmission) || 0,
+            destinationProcess: Number(r.destination_procedure) || 0,
+            documentsShipping: Number(r.finance_docs_shipping) || 0,
+            transferCost: Number(r.trsf_cost) || 0,
+            receivedTransfer: Number(r.received_transfer) || 0,
+            financing: Number(r.financing) || 0
+          }
         }))
         ocResult = mapped
         ocAt = now()
@@ -418,13 +433,14 @@ function createOdooApiClient({
     async searchSalesOrderByOrigin(origin) {
       const result = await executeKw('sale.order', 'search_read',
         [[['origin', '=', String(origin)]]],
-        { fields: ['id', 'name', 'state', 'country_expense'] })
+        { fields: ['id', 'name', 'state', 'country_expense', 'shipping_expense_ids'] })
       if (!Array.isArray(result)) return []
       return result.map((r) => ({
         id: Number(r.id),
         name: r.name || null,
         state: r.state || null,
-        countryExpenseId: Array.isArray(r.country_expense) ? Number(r.country_expense[0]) : null
+        countryExpenseId: Array.isArray(r.country_expense) ? Number(r.country_expense[0]) : null,
+        hasShippingExpense: Array.isArray(r.shipping_expense_ids) && r.shipping_expense_ids.length > 0
       }))
     },
     async readPartnerCountries(ids) {
