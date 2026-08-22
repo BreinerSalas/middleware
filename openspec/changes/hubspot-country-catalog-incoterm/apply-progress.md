@@ -5,64 +5,64 @@ Strict TDD
 
 ## Completed Tasks (cumulative)
 
-### Phase 1: Domain Classifier (Foundation) — Unit 1 of 4 chained PRs — COMPLETE
+### Phase 1: Domain Classifier (Foundation) — Unit 1 of 4 chained PRs — COMPLETE (merged, PR #9)
 - [x] 1.1 RED — `test/core/domain/quoteCountryValue.test.js`: table test for `absent/unset/legacy_iso/operation_cost_id/unrecognized` incl. `'sin_definir'`, `' CR '`, `'cr'`, `'78'`, `'0'`, `'78abc'`, `null`
 - [x] 1.2 GREEN — Created `src/core/domain/quoteCountryValue.js`: `QUOTE_COUNTRY_UNSET`, `isUnsetQuoteCountry`, `classifyQuoteCountryValue`
 - [x] 1.3 REFACTOR — Confirmed no other module duplicates this logic (ripgrep for `sin_definir`/ISO regex found only unrelated property-name string literals and the untouched legacy `resolveCountryIdFromIsoCode` in `OdooTargetGateway.js`, out of scope for this unit)
 
-### Phase 2: Gateway Numeric-Id Resolution (D2–D4) — Unit 2 of 4 chained PRs — COMPLETE
+### Phase 2: Gateway Numeric-Id Resolution (D2–D4) — Unit 2 of 4 chained PRs — COMPLETE (merged, PR #10)
 - [x] 2.1 RED — Added `pickCountryExpenseById` hit + 4 error-row tests (invalid id, `listOperationCosts` unsupported, lookup throws, id not found) to `test/adapters/odoo/OdooTargetGateway.countryCode.test.js`; each asserts `searchCountryIdsByCodes`/`readPartnerCountries` never called
 - [x] 2.2 GREEN — Added + exported `pickCountryExpenseById` in `OdooTargetGateway.js`, matching the design's error table and the existing `pickCountryExpenseRecord` result shape/conventions (try/catch + `logger.warn`, `empty` template)
 - [x] 2.3 RED — Added 3 dispatch tests in the same file: `unset` kind → `reason:'quote_country_unset'`, no walk; `unrecognized` → `reason:'quote_country_value_unrecognized'` + `logger.warn`, no walk; `operation_cost_id` → delegates to `pickCountryExpenseById` (asserts `searchCountryIdsByCodes`/`readPartnerCountries` never called)
-- [x] 2.4 RED — Added `reason:'legacy_iso_value'` (D4) assertions to the 4 existing successful-ISO-pick tests (`prefers ISO from record.quote...`, `wires origin/note...`, `adds a distinct ambiguous-note marker...`, `adds no smartflow marker...`); left `partner_walk_after_iso_miss` (2 tests) and `quote_country_iso_not_found` (1 test) assertions untouched, exactly as written before this batch
-- [x] 2.5 GREEN — Rewrote `resolveCountryExpenseFromQuote`'s dispatch head in `OdooTargetGateway.js` to classify `quote.properties[this.propertyQuoteCountry]` via `classifyQuoteCountryValue` first, then branch by `kind`; the legacy ISO block is kept verbatim except the successful-pick branch now returns `{ ...picked, reason: 'legacy_iso_value' }` instead of `picked` as-is (D4); the `partner_walk_after_iso_miss` branch is untouched
-- [x] 2.6 REFACTOR — Ran the focused test file (25/25 green) then the full suite (1116/1116 green, up from the 1108 baseline by exactly the 8 new tests); no other file changed
+- [x] 2.4 RED — Added `reason:'legacy_iso_value'` (D4) assertions to the 4 existing successful-ISO-pick tests; left `partner_walk_after_iso_miss` (2 tests) and `quote_country_iso_not_found` (1 test) assertions untouched
+- [x] 2.5 GREEN — Rewrote `resolveCountryExpenseFromQuote`'s dispatch head in `OdooTargetGateway.js` to classify `quote.properties[this.propertyQuoteCountry]` via `classifyQuoteCountryValue` first, then branch by `kind`; legacy ISO block kept verbatim except the successful-pick branch now returns `{ ...picked, reason: 'legacy_iso_value' }`
+- [x] 2.6 REFACTOR — Focused file 25/25 green, then full suite 1116/1116 green (up from 1108 by exactly the 8 new tests)
 
-## Remaining Tasks (not started — future units)
-- [ ] Phase 3: Eligibility & Validator Guards (D5) — PR 3, needs Unit 1 merged
-- [ ] Phase 4: Property Schema + Catalog Sync Script — PR 4, needs Units 1–2 shipped
+### Phase 3: Eligibility & Validator Guards (D5) — Unit 3 of 4 chained PRs — COMPLETE (PR #11, open)
+- [x] 3.1 RED — Added `sin_definir` case to `HubspotSourceGateway.quote.test.js`: `isEligibleQuote` → `eligible:false, reason:'missing_country'`
+- [x] 3.2 GREEN — `HubspotSourceGateway.js` `isEligibleQuote` now also checks `isUnsetQuoteCountry(country)` alongside the existing null/blank check
+- [x] 3.3 RED — Added `sin_definir` → `SkipSyncError` case and an explicit no-quoteId + `sin_definir` no-op case to `validators.quote.test.js`
+- [x] 3.4 GREEN — `validators.js` `createMustHaveQuoteCountry` now also checks `isUnsetQuoteCountry(country)`; the pre-existing `!record.quoteId` early return (legacy/deal path no-op) is untouched
+
+## Remaining Tasks (not started)
+- [ ] Phase 4: Property Schema + Catalog Sync Script — PR 4, needs Units 1–2 shipped (both merged)
 - [ ] Phase 5 (optional, deferred): Probe Duplicate-Name Reporting
 
-## Files Changed (this batch — Unit 2)
+## Files Changed
+
+### Unit 1 batch
 | File | Action | What Was Done |
 |------|--------|----------------|
-| `src/adapters/outbound/odoo/OdooTargetGateway.js` | Modified | Added `require('../../../core/domain/quoteCountryValue')`; added module-level exported `pickCountryExpenseById(operationCostId, {apiClient, logger, correlationId})`; rewrote `resolveCountryExpenseFromQuote`'s dispatch head to branch on `classifyQuoteCountryValue(raw).kind` (`unset`/`unrecognized`/`operation_cost_id`/`legacy_iso`/`absent`); tagged the legacy-ISO successful pick with `reason:'legacy_iso_value'`; exported `pickCountryExpenseById` in `module.exports` |
-| `test/adapters/odoo/OdooTargetGateway.countryCode.test.js` | Modified | Added `pickCountryExpenseById` import; added `describe('pickCountryExpenseById', ...)` (5 tests: hit + 4 error rows); added `describe('OdooTargetGateway.upsert — quote-country classifier dispatch', ...)` (3 tests: unset/unrecognized/operation_cost_id); added `reason:'legacy_iso_value'` assertions to the 4 pre-existing successful-ISO-pick tests |
-| `openspec/changes/hubspot-country-catalog-incoterm/tasks.md` | Modified | Marked 2.1–2.6 `[x]` |
+| `src/core/domain/quoteCountryValue.js` | Created | Pure classifier: `QUOTE_COUNTRY_UNSET`, `isUnsetQuoteCountry`, `classifyQuoteCountryValue` |
+| `test/core/domain/quoteCountryValue.test.js` | Created | 23 table-driven unit tests |
 
-No changes to `HubspotSourceGateway.js`, `validators.js`, `quotePropertyDefinitions.js`, or `sync-quote-country-options.js` — out of scope for this unit per the launch instructions.
+### Unit 2 batch
+| File | Action | What Was Done |
+|------|--------|----------------|
+| `src/adapters/outbound/odoo/OdooTargetGateway.js` | Modified | Added `require('../../../core/domain/quoteCountryValue')`; added module-level exported `pickCountryExpenseById(operationCostId, {apiClient, logger, correlationId})`; rewrote `resolveCountryExpenseFromQuote`'s dispatch head to branch on `classifyQuoteCountryValue(raw).kind`; tagged the legacy-ISO successful pick with `reason:'legacy_iso_value'`; exported `pickCountryExpenseById` |
+| `test/adapters/odoo/OdooTargetGateway.countryCode.test.js` | Modified | Added `pickCountryExpenseById` import; added 5 hit/error tests + 3 dispatch tests; added `reason:'legacy_iso_value'` assertions to 4 pre-existing tests |
+
+No changes to `HubspotSourceGateway.js`, `validators.js`, `quotePropertyDefinitions.js`, or `sync-quote-country-options.js` in Unit 2 — out of scope for that unit.
+
+### Unit 3 batch
+| File | Action | What Was Done |
+|------|--------|----------------|
+| `src/adapters/outbound/hubspot/HubspotSourceGateway.js` | Modified | Added `require` of `isUnsetQuoteCountry`; `isEligibleQuote`'s country check now also treats `sin_definir` as missing (`reason:'missing_country'` unchanged) |
+| `src/composition/validators.js` | Modified | Added `require` of `isUnsetQuoteCountry`; `createMustHaveQuoteCountry` now also treats `sin_definir` as missing; the `!record.quoteId` early-return no-op is untouched |
+| `test/adapters/hubspot/HubspotSourceGateway.quote.test.js` | Modified | Added 1 test |
+| `test/composition/validators.quote.test.js` | Modified | Added 2 tests |
+
+Only additive one-line guard changes in both Unit 3 production files — no rewrites.
 
 ## TDD Cycle Evidence
 
-| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
-|------|-----------|-------|------------|-----|-------|-------------|----------|
-| 2.1 | `test/adapters/odoo/OdooTargetGateway.countryCode.test.js` | Unit | ✅ 17/17 (baseline before edits) | ✅ Written — referenced not-yet-exported `pickCountryExpenseById`; confirmed failure via `TypeError: pickCountryExpenseById is not a function` (import destructure resolves to `undefined`) | ✅ Passed after 2.2 | ✅ 5 cases (hit + 4 distinct error rows) | N/A — task is the test itself |
-| 2.2 | `src/adapters/outbound/odoo/OdooTargetGateway.js` | Unit | ✅ (from 2.1's RED) | ✅ (from 2.1) | ✅ `npx vitest run test/adapters/odoo/OdooTargetGateway.countryCode.test.js` → 25/25 passed | ✅ Covered by 2.1's 5 cases | ✅ Clean — reused existing `empty` template pattern, try/catch + `logger.warn` convention |
-| 2.3 | `test/adapters/odoo/OdooTargetGateway.countryCode.test.js` | Unit | ✅ (running total after 2.1/2.2) | ✅ Written — asserted `reason:'quote_country_unset'`/`quote_country_value_unrecognized'`/`quote_operation_cost_id'` against the pre-2.5 dispatch (still branching only on truthy ISO); confirmed failure: all 3 assertions returned the old ISO-branch/partner-walk results instead | ✅ Passed after 2.5 | ✅ 3 cases (unset, unrecognized, operation_cost_id), each also asserting no-walk via `not.toHaveBeenCalled()` | N/A — task is the test itself |
-| 2.4 | `test/adapters/odoo/OdooTargetGateway.countryCode.test.js` | Unit | ✅ (running total) | ✅ Written — added `reason:'legacy_iso_value'` expectations to 4 tests still returning `'ddp_exact_match'`/`'no_ddp_exact_match'`; confirmed failure via 4 `AssertionError: expected 'ddp_exact_match' to be 'legacy_iso_value'`-style diffs | ✅ Passed after 2.5 | ➖ Single reason string per test — spec has one successful-tag outcome | N/A — task is the test itself |
-| 2.5 | `src/adapters/outbound/odoo/OdooTargetGateway.js` | Unit | ✅ (from 2.1–2.4 RED, 12 failing total before this step) | ✅ (from 2.3/2.4) | ✅ `npx vitest run test/adapters/odoo/OdooTargetGateway.countryCode.test.js` → 25/25 passed (0 failing, up from 12 failing) | ✅ Covered by 2.3's 3 dispatch cases + 2.4's 4 reason-tag cases | ✅ Clean — dispatch reads as a flat if-chain matching the design's kind table; legacy ISO block body kept byte-identical apart from the one-line reason override |
-| 2.6 | N/A (audit task) | N/A | N/A | N/A | N/A | N/A | ✅ Full suite: `npx vitest run` → 101 files, 1116 tests, all passed (was 1108 before this batch; net +8 = the 5 `pickCountryExpenseById` tests + 3 dispatch tests; the 4 reason-tag additions were new assertions inside already-existing tests, not new test cases) |
+| Task | Test File | Layer | RED | GREEN | TRIANGULATE |
+|------|-----------|-------|-----|-------|-------------|
+| 1.1–1.3 | `quoteCountryValue.test.js` | Unit | ✅ | ✅ 23/23 | ✅ 23 cases across all 5 kinds |
+| 2.1–2.6 | `OdooTargetGateway.countryCode.test.js` | Unit | ✅ | ✅ 25/25 | ✅ 5+3 cases + 4 reason-tag assertions |
+| 3.1–3.4 | `HubspotSourceGateway.quote.test.js` + `validators.quote.test.js` | Unit | ✅ | ✅ 24/24 + 8/8 | ✅ throw case + no-op-preserved case |
 
-### Test Summary
-- Total tests written this batch: 8 new test cases + 4 new assertions added to pre-existing tests
-- Total tests passing (focused file): 25/25
-- Total tests passing (full suite): 1116/1116
-- Layers used: Unit (8 new)
-- Approval tests (refactoring): None — this was additive dispatch-head rewrite, not a behavior-preserving refactor; the D4 reason-tag change is an intentional, spec-approved behavior change on the successful ISO branch only
-- Pure functions created: 1 (`pickCountryExpenseById` — async but has no side effects beyond the injected `apiClient`/`logger`, mirrors `pickCountryExpenseRecord`'s existing style)
-
-## Work Unit Evidence
-
-| Evidence | Value |
-|---|---|
-| Focused test command and exact result | `npx vitest run test/adapters/odoo/OdooTargetGateway.countryCode.test.js` → 1 file, 25 tests, all passed (baseline was 17/17 before this batch) |
-| Runtime harness command/scenario and exact result | N/A — mocked `apiClient` fixture only, no live I/O boundary in this unit (per tasks.md Unit 2 row) |
-| Rollback boundary | Revert `resolveCountryExpenseFromQuote`/`pickCountryExpenseById` in `OdooTargetGateway.js` and the corresponding test additions in `OdooTargetGateway.countryCode.test.js`; the legacy ISO path body is untouched apart from the one-line reason override, and no other production file was touched |
-
-## Full-Suite Regression Check
-`npx vitest run` (full suite) → 101 files, 1116 tests, **all passed**. No test outside `OdooTargetGateway.countryCode.test.js` was modified. The only intentional behavior/assertion changes are the 4 `reason:'legacy_iso_value'` additions (D4); `partner_walk_after_iso_miss` and `quote_country_iso_not_found` assertions are verbatim-unchanged from before this batch.
-
-### Exact diff of reason-string assertion changes (D4)
+### Exact diff of D4 reason-string assertion changes (Unit 2)
 ```diff
 @@ prefers ISO from record.quote over the partner walk
      expect(result.metadata.countryExpense.countryId).toBe(50)
@@ -87,19 +87,26 @@ No changes to `HubspotSourceGateway.js`, `validators.js`, `quotePropertyDefiniti
 +    expect(result.metadata.countryExpense.reason).toBe('legacy_iso_value')
      const soPayload = api.createSalesOrder.mock.calls[0][0]
 ```
-No assertions on `partner_walk_after_iso_miss` (lines asserting it in "falls back to partner walk when ISO does not resolve in Odoo" and "works without searchCountryIdsByCodes") or `quote_country_iso_not_found` (in "creates SO with status=unresolved...") were touched.
+No assertions on `partner_walk_after_iso_miss` or `quote_country_iso_not_found` were touched.
+
+## Full-Suite Regression Check
+- Unit 1 alone: 101 files, 1108 tests, all passed.
+- Unit 2 alone (branched from Unit 1): 101 files, 1116 tests, all passed (+8).
+- Unit 3 alone (branched from Unit 1, sibling of Unit 2): 101 files, 1111 tests, all passed (+3 vs. Unit-1-only baseline; Unit 2's +8 correctly absent on that branch, not a regression).
+- After merging Units 1+2 to `main`: verified 1116/1116 by the orchestrator before commit.
 
 ## Deviations from Design
-None — implementation matches design.md's dispatch table, `pickCountryExpenseById` error table, and D2–D4 decisions exactly. `operationCostsResolver.js` and the no-quote `resolveCountryExpense` legacy path were not touched, per the explicit non-goal.
+None across all three units — each matches design.md's decisions (D2–D5) exactly. `operationCostsResolver.js` and the no-quote `resolveCountryExpense` legacy path were not touched, per the explicit non-goal.
 
 ## Issues Found
 None.
 
 ## Workload / PR Boundary
 - Mode: stacked-to-main, chained PR slice (auto-chain, resolved 2026-08-22)
-- Current work unit: Unit 2 of 4 — Gateway Numeric-Id Resolution
-- Boundary: starts and ends with `src/adapters/outbound/odoo/OdooTargetGateway.js` + `test/adapters/odoo/OdooTargetGateway.countryCode.test.js`; depends on Unit 1's already-merged `src/core/domain/quoteCountryValue.js`; does not touch Phase 3/4/5 files
-- Estimated review budget impact: well under the 400-line guard (~150 lines net across the two touched files)
+- Unit 1: `src/core/domain/quoteCountryValue.js` + test only. Merged as PR #9.
+- Unit 2: `OdooTargetGateway.js` + its countryCode test only, ~150 net lines. Merged as PR #10.
+- Unit 3: `HubspotSourceGateway.js` + `validators.js` + their 2 test files, ~30 net lines. PR #11, open.
+- Unit 4 (next): Property schema + catalog sync script rewrite — needs Units 1–2 (both merged now).
 
 ## Status
-9/9 tasks across Units 1–2 complete (Phases 1–2 of 5 phases). Ready for verify (Unit 2 scope) or for sdd-apply to continue with Phase 3 on the next branch.
+Units 1–3 complete (16/20 tasks, Phases 1–3 of 5). Unit 1 and Unit 2 merged to `main`. Unit 3 open as PR #11. Ready for `sdd-apply` to continue with Phase 4 (Unit 4) on a fresh branch off updated `main`.

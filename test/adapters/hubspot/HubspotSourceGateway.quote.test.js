@@ -95,6 +95,15 @@ describe('isEligibleQuote', () => {
     expect(r.reason).toBe('missing_country')
   })
 
+  it('returns eligible=false with reason=missing_country when country is the sin_definir sentinel', () => {
+    const r = isEligibleQuote(
+      { id: 'Q-1', properties: { hs_status: 'APPROVAL_NOT_NEEDED', [countryProperty]: 'sin_definir' } },
+      { countryProperty, allowedStatuses }
+    )
+    expect(r.eligible).toBe(false)
+    expect(r.reason).toBe('missing_country')
+  })
+
   it('returns eligible=false with reason=missing_status when status is missing', () => {
     const r = isEligibleQuote(
       { id: 'Q-1', properties: { [countryProperty]: 'GT' } },

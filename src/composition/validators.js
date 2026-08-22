@@ -1,6 +1,7 @@
 'use strict'
 
 const { SkipSyncError } = require('../core/domain/errors')
+const { isUnsetQuoteCountry } = require('../core/domain/quoteCountryValue')
 
 function normalizeAllowlist(allowed = []) {
   if (!Array.isArray(allowed)) return []
@@ -37,7 +38,7 @@ function createMustHaveQuoteCountry({ countryProperty = 'pais_de_destino' } = {}
     if (!record || !record.quoteId) return
     const quoteProps = (record.quote && record.quote.properties) || {}
     const country = quoteProps[prop]
-    if (country == null || String(country).trim() === '') {
+    if (country == null || String(country).trim() === '' || isUnsetQuoteCountry(country)) {
       throw new SkipSyncError(`Quote has no ${prop} (country code)`, {
         detail: { sourceId: record.id, quoteId: record.quoteId, missingProperty: prop }
       })

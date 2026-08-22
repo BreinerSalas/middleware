@@ -46,10 +46,10 @@ Delivery strategy: **auto-chain** (supersedes the initial `single-pr` preflight 
 
 ## Phase 3: Eligibility & Validator Guards (D5)
 
-- [ ] 3.1 RED — `HubspotSourceGateway.quote.test.js`: `pais_de_destino:'sin_definir'` → `isEligibleQuote` false, `reason:'missing_country'`
-- [ ] 3.2 GREEN — `HubspotSourceGateway.js:52` `isEligibleQuote` uses `isUnsetQuoteCountry` alongside presence check
-- [ ] 3.3 RED — `validators.quote.test.js`: quote `pais_de_destino:'sin_definir'` → `SkipSyncError`; no-`quoteId` record still no-op
-- [ ] 3.4 GREEN — `validators.js` `createMustHaveQuoteCountry` treats `isUnsetQuoteCountry` as missing too
+- [x] 3.1 RED — `HubspotSourceGateway.quote.test.js`: `pais_de_destino:'sin_definir'` → `isEligibleQuote` false, `reason:'missing_country'`
+- [x] 3.2 GREEN — `HubspotSourceGateway.js:52` `isEligibleQuote` uses `isUnsetQuoteCountry` alongside presence check
+- [x] 3.3 RED — `validators.quote.test.js`: quote `pais_de_destino:'sin_definir'` → `SkipSyncError`; no-`quoteId` record still no-op
+- [x] 3.4 GREEN — `validators.js` `createMustHaveQuoteCountry` treats `isUnsetQuoteCountry` as missing too
 
 ## Phase 4: Property Schema + Catalog Sync Script
 
