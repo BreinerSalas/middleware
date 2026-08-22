@@ -2,13 +2,14 @@
 'use strict'
 
 /**
- * Syncs the dropdown of countries on the HubSpot Quote property
- * (HS_PROPERTY_QUOTE_COUNTRY, default 'pais_de_destino') from the set of
- * res.country records that have an operation.costs configured in Odoo.
+ * Syncs the dropdown of the HubSpot Quote property
+ * (HS_PROPERTY_QUOTE_COUNTRY, default 'pais_de_destino') to mirror the live
+ * operation.costs catalog in Odoo: one option per record, keyed by the
+ * record's numeric id, labeled with its literal name (e.g. "DDP Costa Rica").
  *
  * Reads:
  *   - config (HS_PROPERTY_QUOTE_COUNTRY, ODOO_*, HUBSPOT_*)
- *   - Odoo: listOperationCosts() + readCountriesByIds(country ids)
+ *   - Odoo: listOperationCosts()
  *   - HubSpot: GET /crm/v3/properties/quotes/<prop>
  *
  * Writes:
@@ -25,8 +26,16 @@ const { createOdooApiClient } = require('../src/adapters/outbound/odoo/odooApiCl
 const { createHubspotApiClient } = require('../src/adapters/outbound/hubspot/hubspotApiClient')
 const { parseArgs } = require('./sync-products.lib')
 
-function buildOptions({ countries, countriesWithOpCosts, usedIsos }) {
-  const seen = new Set()
+// Raw codepoint compare (NOT localeCompare — locale-dependent collation is
+// non-deterministic across CI/runtime ICU builds). Ties (identical labels)
+// break on ascending numeric id so output ordering is fully deterministic.
+function compareOptionRecords(a, b) {
+  if (a.label < b.label) return -1
+  if (a.label > b.label) return 1
+  return a.id - b.id
+}
+
+function buildOptions({ records }) {
   // HubSpot rejects enumeration options with a blank ('') value on both create
   // and update ("cannot have options with blank values") — a real, non-empty
   // sentinel is required even for the "no answer yet" placeholder.
@@ -34,60 +43,81 @@ function buildOptions({ countries, countriesWithOpCosts, usedIsos }) {
   // displayOrder is sent explicitly on every option: when a PATCH omits it,
   // HubSpot auto-assigns it alphabetically by label — confirmed live, where
   // "Sin definir" landed between SX and TT instead of staying first. Pinning
-  // it to 0 keeps the placeholder first regardless of which country labels
+  // it to 0 keeps the placeholder first regardless of which labels
   // alphabetically surround it.
   const options = [{ label: 'Sin definir', value: 'sin_definir', displayOrder: 0 }]
-  for (const iso of usedIsos) {
-    if (seen.has(iso)) continue
-    seen.add(iso)
-    const country = countries && countries[iso]
-    const label = country && country.name ? `${iso} — ${country.name}` : iso
-    options.push({ label, value: iso, displayOrder: options.length })
+
+  const seenIds = new Set()
+  const candidates = []
+  for (const rec of (Array.isArray(records) ? records : [])) {
+    if (!rec) continue
+    const id = Number(rec.id)
+    if (!Number.isInteger(id) || id <= 0) continue
+    if (seenIds.has(id)) continue
+    seenIds.add(id)
+    const rawName = rec.name
+    const label = rawName != null && String(rawName).trim() !== ''
+      ? String(rawName).trim()
+      : `operation.costs #${id}`
+    candidates.push({ id, label })
+  }
+  candidates.sort(compareOptionRecords)
+
+  for (const { id, label } of candidates) {
+    options.push({ label, value: String(id), displayOrder: options.length })
   }
   return options
 }
 
 async function planOptions({ apiClient, hubspot, propertyName, logger }) {
   const ocs = await apiClient.listOperationCosts()
-  const countryIdsWithOc = new Set()
-  for (const oc of (Array.isArray(ocs) ? ocs : [])) {
-    if (oc && oc.countryId != null) countryIdsWithOc.add(Number(oc.countryId))
-  }
+  const records = Array.isArray(ocs) ? ocs : []
 
-  // No fixed ISO allow-list: whatever countries operation.costs actually has
-  // configured in Odoo is what gets published — the dropdown is exactly as
-  // wide (or narrow) as the real business data, and needs no code change
-  // when Odoo gains or loses a country.
-  if (countryIdsWithOc.size === 0) {
+  // The catalog is the only source of truth: whatever live operation.costs
+  // records Odoo returns is exactly what gets published — the dropdown needs
+  // no code change when Odoo gains, loses, or renames a record.
+  if (records.length === 0) {
     const err = new Error(
-      'sync-quote-country-options: Odoo returned no operation.costs records with a country — ' +
-      'refusing to publish an empty country list. Check ODOO_CLIENT_MODE=http and connectivity.'
+      'sync-quote-country-options: Odoo returned no operation.costs records — ' +
+      'refusing to publish an empty catalog. Check ODOO_CLIENT_MODE=http and connectivity.'
     )
     err.code = 'EMPTY_OPERATION_COSTS'
     throw err
   }
 
-  const countriesById = await apiClient.readCountriesByIds([...countryIdsWithOc]) || {}
-  const countryMap = {}
-  for (const id of countryIdsWithOc) {
-    const entry = countriesById[id]
-    if (entry && entry.code) countryMap[entry.code] = { id, name: entry.name }
-  }
+  const options = buildOptions({ records })
 
-  // A non-empty operation.costs with country ids but nothing resolved means
-  // the id->country lookup itself came back empty (stub mode, or a swallowed
-  // connectivity failure), not "Odoo genuinely has zero of these countries" —
-  // refuse rather than silently publishing a blind list.
-  if (Object.keys(countryMap).length === 0) {
+  // A non-empty operation.costs whose records all lack a valid positive
+  // integer id means every record was filtered out during buildOptions — the
+  // placeholder alone is not a usable dropdown. Refuse rather than silently
+  // publishing just "Sin definir".
+  if (options.length <= 1) {
     const err = new Error(
-      'sync-quote-country-options: Odoo returned no res.country rows for the countries used in operation.costs — ' +
-      'refusing to publish a blind country list. Check ODOO_CLIENT_MODE=http and connectivity.'
+      'sync-quote-country-options: none of the operation.costs records produced a valid option ' +
+      '(all lacked a positive integer id) — refusing to publish a placeholder-only dropdown.'
     )
-    err.code = 'EMPTY_COUNTRY_MAP'
+    err.code = 'EMPTY_OPERATION_COSTS_OPTIONS'
     throw err
   }
 
-  const usedIsos = Object.keys(countryMap).sort()
+  const labelCounts = new Map()
+  for (const rec of records) {
+    if (!rec) continue
+    const id = Number(rec.id)
+    if (!Number.isInteger(id) || id <= 0) continue
+    const rawName = rec.name
+    const label = rawName != null && String(rawName).trim() !== ''
+      ? String(rawName).trim()
+      : `operation.costs #${id}`
+    labelCounts.set(label, (labelCounts.get(label) || 0) + 1)
+  }
+  const duplicateLabels = [...labelCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([label]) => label)
+    .sort()
+  if (duplicateLabels.length > 0 && logger) {
+    logger.warn('sync-quote-country-options: duplicate operation.costs names detected', { duplicateLabels })
+  }
 
   let currentProperty = null
   let propertyLookupFailed = false
@@ -98,8 +128,7 @@ async function planOptions({ apiClient, hubspot, propertyName, logger }) {
     if (logger) logger.warn('sync-quote-country-options: property lookup failed', { propertyName, error: err.message })
   }
 
-  const options = buildOptions({ countries: countryMap, countriesWithOpCosts: new Set(usedIsos), usedIsos })
-  return { options, usedIsos, countryMap, currentProperty, propertyLookupFailed }
+  return { options, records, duplicateLabels, currentProperty, propertyLookupFailed }
 }
 
 async function applyOptions({ hubspot, propertyName, options, currentProperty, propertyLookupFailed = false, dryRun, logger }) {
@@ -120,7 +149,7 @@ async function applyOptions({ hubspot, propertyName, options, currentProperty, p
     throw err
   }
   const body = {
-    label: (currentProperty && currentProperty.label) || 'País de destino (ISO-2)',
+    label: (currentProperty && currentProperty.label) || 'País de destino',
     type: 'enumeration',
     fieldType: 'select',
     groupName: (currentProperty && currentProperty.groupName) || 'quoteinformation',
@@ -145,8 +174,8 @@ async function main() {
     process.stdout.write([
       'Usage: node scripts/sync-quote-country-options.js [--dry-run] [--country-prop=<name>]',
       '',
-      'Syncs the dropdown of countries on the HubSpot Quote property',
-      'with the set of res.country records that have operation.costs configured.',
+      'Syncs the HubSpot Quote property dropdown to mirror the live',
+      'operation.costs catalog in Odoo, one option per record.',
       ''
     ].join('\n'))
     return
@@ -179,8 +208,8 @@ async function main() {
     const out = {
       propertyName,
       dryRun,
-      usedIsos: plan.usedIsos,
-      resolvedCountries: plan.countryMap,
+      recordCount: plan.records.length,
+      duplicateLabels: plan.duplicateLabels,
       options: plan.options,
       currentOptions: plan.currentProperty && plan.currentProperty.options ? plan.currentProperty.options : null,
       result

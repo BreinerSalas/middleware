@@ -3,10 +3,9 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const { planOptions, applyOptions, buildOptions, resolveDryRun } = require('../../scripts/sync-quote-country-options.js')
 
-function makeApiClient({ operationCosts = [], countriesById = {} } = {}) {
+function makeApiClient({ operationCosts = [] } = {}) {
   return {
-    listOperationCosts: vi.fn(async () => operationCosts),
-    readCountriesByIds: vi.fn(async () => countriesById)
+    listOperationCosts: vi.fn(async () => operationCosts)
   }
 }
 
@@ -18,117 +17,177 @@ function makeHubspot({ existingOptions = null } = {}) {
 
 describe('buildOptions', () => {
   it('always prepends a "Sin definir" placeholder pinned to displayOrder 0', () => {
-    const opts = buildOptions({ countries: {}, countriesWithOpCosts: new Set(), usedIsos: ['GT'] })
+    const opts = buildOptions({ records: [] })
     expect(opts[0]).toEqual({ label: 'Sin definir', value: 'sin_definir', displayOrder: 0 })
   })
 
-  it('appends ISO codes with the country name when available, with sequential displayOrder', () => {
+  it('appends one option per record, value = String(id), label = literal name, sequential displayOrder', () => {
     const opts = buildOptions({
-      countries: { GT: { name: 'Guatemala' }, CR: { name: 'Costa Rica' } },
-      countriesWithOpCosts: new Set(['GT', 'CR']),
-      usedIsos: ['CR', 'GT']
+      records: [
+        { id: 12, name: 'DDP Costa Rica' },
+        { id: 7, name: 'EXW Guatemala' }
+      ]
     })
+    // Sorted by label codepoint compare: 'DDP...' < 'EXW...'
     expect(opts).toEqual([
       { label: 'Sin definir', value: 'sin_definir', displayOrder: 0 },
-      { label: 'CR — Costa Rica', value: 'CR', displayOrder: 1 },
-      { label: 'GT — Guatemala', value: 'GT', displayOrder: 2 }
+      { label: 'DDP Costa Rica', value: '12', displayOrder: 1 },
+      { label: 'EXW Guatemala', value: '7', displayOrder: 2 }
     ])
   })
 
-  it('falls back to the ISO code when the country name is unknown', () => {
+  it('falls back to "operation.costs #<id>" when the record name is blank/falsy', () => {
     const opts = buildOptions({
-      countries: {},
-      countriesWithOpCosts: new Set(),
-      usedIsos: ['MX']
+      records: [
+        { id: 3, name: '' },
+        { id: 4, name: null }
+      ]
     })
     expect(opts).toEqual([
       { label: 'Sin definir', value: 'sin_definir', displayOrder: 0 },
-      { label: 'MX', value: 'MX', displayOrder: 1 }
+      { label: 'operation.costs #3', value: '3', displayOrder: 1 },
+      { label: 'operation.costs #4', value: '4', displayOrder: 2 }
     ])
   })
 
-  // HubSpot auto-assigns displayOrder alphabetically by label when a PATCH
-  // omits it — confirmed live: with 35 countries, "Sin definir" landed between
-  // SX and TT instead of staying first. Sending an explicit displayOrder pins
-  // the placeholder regardless of how many country labels alphabetically
-  // surround it.
-  it('pins "Sin definir" first even when country labels would alphabetically sort around it', () => {
+  it('dedupes by record id (defensive — ids should already be unique)', () => {
     const opts = buildOptions({
-      countries: { SR: { name: 'Suriname' }, SV: { name: 'El Salvador' }, SX: { name: 'Sint Maarten' } },
-      countriesWithOpCosts: new Set(['SR', 'SV', 'SX']),
-      usedIsos: ['SR', 'SV', 'SX']
+      records: [
+        { id: 5, name: 'DDP Costa Rica' },
+        { id: 5, name: 'DDP Costa Rica' }
+      ]
     })
-    expect(opts[0]).toEqual({ label: 'Sin definir', value: 'sin_definir', displayOrder: 0 })
+    expect(opts).toEqual([
+      { label: 'Sin definir', value: 'sin_definir', displayOrder: 0 },
+      { label: 'DDP Costa Rica', value: '5', displayOrder: 1 }
+    ])
+  })
+
+  it('drops records without a positive integer id', () => {
+    const opts = buildOptions({
+      records: [
+        { id: 0, name: 'Zero id' },
+        { id: -1, name: 'Negative id' },
+        { id: null, name: 'Null id' },
+        { id: 9, name: 'Valid' }
+      ]
+    })
+    expect(opts).toEqual([
+      { label: 'Sin definir', value: 'sin_definir', displayOrder: 0 },
+      { label: 'Valid', value: '9', displayOrder: 1 }
+    ])
+  })
+
+  it('sorts by raw codepoint comparison on label (not localeCompare), tie-breaking on id ascending', () => {
+    // Uppercase vs lowercase: codepoint compare puts all uppercase letters
+    // before all lowercase ones ('A'=65 < 'a'=97), unlike locale-aware sort.
+    const opts = buildOptions({
+      records: [
+        { id: 2, name: 'ddp costa rica' },
+        { id: 1, name: 'DDP Costa Rica' }
+      ]
+    })
+    expect(opts.map((o) => o.value)).toEqual(['sin_definir', '1', '2'])
+  })
+
+  it('tie-breaks equal labels by ascending id', () => {
+    const opts = buildOptions({
+      records: [
+        { id: 20, name: 'DDP Costa Rica' },
+        { id: 10, name: 'DDP Costa Rica' }
+      ]
+    })
+    expect(opts.map((o) => o.value)).toEqual(['sin_definir', '10', '20'])
+  })
+
+  it('countryId is not required — records without one stay selectable', () => {
+    const opts = buildOptions({
+      records: [{ id: 8, name: 'No country id' }]
+    })
+    expect(opts).toEqual([
+      { label: 'Sin definir', value: 'sin_definir', displayOrder: 0 },
+      { label: 'No country id', value: '8', displayOrder: 1 }
+    ])
   })
 })
 
 describe('planOptions', () => {
-  it('resolves the ISO for every countryId present in operation.costs', async () => {
+  it('builds one option per live operation.costs record', async () => {
     const apiClient = makeApiClient({
       operationCosts: [
-        { countryId: 90, countryName: 'Guatemala' },
-        { countryId: 50, countryName: 'Costa Rica' },
-        { countryId: 96, countryName: 'Honduras' }
-      ],
-      countriesById: {
-        50: { code: 'CR', name: 'Costa Rica' },
-        90: { code: 'GT', name: 'Guatemala' },
-        96: { code: 'HN', name: 'Honduras' }
-      }
+        { id: 90, name: 'DDP Guatemala', countryId: 90, countryName: 'Guatemala' },
+        { id: 50, name: 'CIP Costa Rica', countryId: 50, countryName: 'Costa Rica' }
+      ]
     })
     const hubspot = makeHubspot()
     const plan = await planOptions({ apiClient, hubspot, propertyName: 'pais_de_destino' })
-    expect(plan.usedIsos.sort()).toEqual(['CR', 'GT', 'HN'])
-    expect(plan.options.find((o) => o.value === 'GT')).toEqual({ label: 'GT — Guatemala', value: 'GT', displayOrder: 2 })
+    expect(plan.records).toHaveLength(2)
+    expect(plan.options.find((o) => o.value === '90')).toEqual({ label: 'DDP Guatemala', value: '90', displayOrder: plan.options.findIndex((o) => o.value === '90') })
+    expect(plan.options).toHaveLength(3) // placeholder + 2 records
   })
 
-  // Regression for the old hardcoded ISO_CODES allow-list: it silently capped
-  // the dropdown at 7 countries (CR/GT/HN/SV/NI/PA/MX) no matter how many
-  // operation.costs Odoo actually had configured — the live business list has
-  // 35. There is no fixed list anymore: whatever operation.costs resolves to
-  // is what gets published, uncapped.
-  it('is not capped to a fixed set of countries — reflects every country operation.costs actually has', async () => {
-    const countryIds = Array.from({ length: 35 }, (_, i) => 1000 + i)
-    const operationCosts = countryIds.map((id, i) => ({ countryId: id, countryName: `Country ${i}` }))
-    const countriesById = {}
-    const expectedIsos = []
-    countryIds.forEach((id, i) => {
-      const iso = `C${String(i).padStart(2, '0')}`
-      countriesById[id] = { code: iso, name: `Country ${i}` }
-      expectedIsos.push(iso)
-    })
-    const apiClient = makeApiClient({ operationCosts, countriesById })
+  it('is not capped to a fixed set of countries — one option per live record, however many', async () => {
+    const operationCosts = Array.from({ length: 35 }, (_, i) => ({ id: 1000 + i, name: `Operation Cost ${i}` }))
+    const apiClient = makeApiClient({ operationCosts })
     const hubspot = makeHubspot()
     const plan = await planOptions({ apiClient, hubspot, propertyName: 'pais_de_destino' })
-    expect(plan.usedIsos.length).toBe(35)
-    expect(plan.usedIsos.sort()).toEqual(expectedIsos.sort())
+    expect(plan.records).toHaveLength(35)
+    expect(plan.options).toHaveLength(36) // placeholder + 35 records
   })
 
-  it('refuses to plan when Odoo resolves no res.country rows for the countries used in operation.costs', async () => {
-    // A non-empty operation.costs with country ids but an empty resolution
-    // means the id->country lookup itself came back empty (stub mode, or a
-    // swallowed connectivity failure), not "Odoo genuinely has zero of these
-    // countries" — refuse rather than silently publishing a blind list.
+  it('reports duplicateLabels (non-blocking) when two or more live records share the same literal name', async () => {
     const apiClient = makeApiClient({
-      operationCosts: [{ countryId: 90, countryName: 'Guatemala' }],
-      countriesById: {}
+      operationCosts: [
+        { id: 1, name: 'DDP Costa Rica' },
+        { id: 2, name: 'DDP Costa Rica' },
+        { id: 3, name: 'EXW Guatemala' }
+      ]
     })
     const hubspot = makeHubspot()
-    await expect(planOptions({ apiClient, hubspot, propertyName: 'pais_de_destino' }))
-      .rejects.toThrow(/no res\.country rows/)
+    const logger = { warn: vi.fn(), info: vi.fn() }
+    const plan = await planOptions({ apiClient, hubspot, propertyName: 'pais_de_destino', logger })
+    expect(plan.duplicateLabels).toEqual(['DDP Costa Rica'])
+    expect(logger.warn).toHaveBeenCalled()
+    // Non-blocking: both options still render, with identical labels
+    expect(plan.options.filter((o) => o.label === 'DDP Costa Rica')).toHaveLength(2)
   })
 
-  it('refuses to plan when operation.costs has no country at all', async () => {
-    const apiClient = makeApiClient({ operationCosts: [], countriesById: {} })
+  it('duplicateLabels is empty when no live record shares a literal name', async () => {
+    const apiClient = makeApiClient({
+      operationCosts: [
+        { id: 1, name: 'DDP Costa Rica' },
+        { id: 2, name: 'EXW Guatemala' }
+      ]
+    })
     const hubspot = makeHubspot()
-    await expect(planOptions({ apiClient, hubspot, propertyName: 'pais_de_destino' }))
-      .rejects.toThrow()
+    const plan = await planOptions({ apiClient, hubspot, propertyName: 'pais_de_destino' })
+    expect(plan.duplicateLabels).toEqual([])
+  })
+
+  it('refuses to plan when Odoo returns zero operation.costs records (EMPTY_OPERATION_COSTS)', async () => {
+    const apiClient = makeApiClient({ operationCosts: [] })
+    const hubspot = makeHubspot()
+    const err = await planOptions({ apiClient, hubspot, propertyName: 'pais_de_destino' }).catch((e) => e)
+    expect(err).toBeInstanceOf(Error)
+    expect(err.code).toBe('EMPTY_OPERATION_COSTS')
+  })
+
+  it('refuses to plan when operation.costs records exist but none produce a valid option (EMPTY_OPERATION_COSTS_OPTIONS)', async () => {
+    const apiClient = makeApiClient({
+      operationCosts: [
+        { id: 0, name: 'Zero id' },
+        { id: null, name: 'Null id' }
+      ]
+    })
+    const hubspot = makeHubspot()
+    const err = await planOptions({ apiClient, hubspot, propertyName: 'pais_de_destino' }).catch((e) => e)
+    expect(err).toBeInstanceOf(Error)
+    expect(err.code).toBe('EMPTY_OPERATION_COSTS_OPTIONS')
   })
 
   it('reports propertyLookupFailed when the HubSpot property read throws', async () => {
     const apiClient = makeApiClient({
-      operationCosts: [{ countryId: 90, countryName: 'Guatemala' }],
-      countriesById: { 90: { code: 'GT', name: 'Guatemala' } }
+      operationCosts: [{ id: 90, name: 'DDP Guatemala' }]
     })
     const hubspot = { getCustomProperty: vi.fn(async () => { throw new Error('403') }) }
     const plan = await planOptions({ apiClient, hubspot, propertyName: 'pais_de_destino' })
@@ -143,7 +202,7 @@ describe('applyOptions — dry-run', () => {
     const r = await applyOptions({
       hubspot,
       propertyName: 'pais_de_destino',
-      options: [{ label: 'Sin definir', value: 'sin_definir', displayOrder: 0 }, { label: 'GT — Guatemala', value: 'GT', displayOrder: 1 }],
+      options: [{ label: 'Sin definir', value: 'sin_definir', displayOrder: 0 }, { label: 'DDP Guatemala', value: '90', displayOrder: 1 }],
       currentProperty: { options: [] },
       dryRun: true
     })
@@ -156,7 +215,7 @@ describe('applyOptions — dry-run', () => {
     const r = await applyOptions({
       hubspot,
       propertyName: 'pais_de_destino',
-      options: [{ label: 'Sin definir', value: 'sin_definir', displayOrder: 0 }, { label: 'GT — Guatemala', value: 'GT', displayOrder: 1 }],
+      options: [{ label: 'Sin definir', value: 'sin_definir', displayOrder: 0 }, { label: 'DDP Guatemala', value: '90', displayOrder: 1 }],
       currentProperty: { label: 'Pais', groupName: 'quoteinformation', options: [] },
       dryRun: false
     })
@@ -164,7 +223,7 @@ describe('applyOptions — dry-run', () => {
     const call = hubspot._update.mock.calls[0]
     expect(call[0]).toBe('quotes')
     expect(call[1]).toBe('pais_de_destino')
-    expect(call[2].options).toEqual([{ label: 'Sin definir', value: 'sin_definir', displayOrder: 0 }, { label: 'GT — Guatemala', value: 'GT', displayOrder: 1 }])
+    expect(call[2].options).toEqual([{ label: 'Sin definir', value: 'sin_definir', displayOrder: 0 }, { label: 'DDP Guatemala', value: '90', displayOrder: 1 }])
   })
 
   it('refuses to write when the property lookup failed (would silently revert label/groupName)', async () => {
