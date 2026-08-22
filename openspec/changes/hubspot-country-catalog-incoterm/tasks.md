@@ -37,12 +37,12 @@ Delivery strategy: **auto-chain** (supersedes the initial `single-pr` preflight 
 
 ## Phase 2: Gateway Numeric-Id Resolution (D2–D4)
 
-- [ ] 2.1 RED — `OdooTargetGateway.countryCode.test.js`: `pickCountryExpenseById` hit + 4 error rows (invalid id, `listOperationCosts` unsupported, lookup throws, id not found); assert `searchCountryIdsByCodes`/`readPartnerCountries` never called
-- [ ] 2.2 GREEN — Add + export `pickCountryExpenseById` in `OdooTargetGateway.js` per design error table
-- [ ] 2.3 RED — Same file: `unset` kind → `reason:'quote_country_unset'` no walk; `unrecognized` → `reason:'quote_country_value_unrecognized'` + `logger.warn`, no walk; `operation_cost_id` → delegates to `pickCountryExpenseById`
-- [ ] 2.4 RED — Update existing successful-ISO-pick assertion to `reason:'legacy_iso_value'` (D4); leave `partner_walk_after_iso_miss`/`quote_country_iso_not_found` assertions untouched
-- [ ] 2.5 GREEN — Rewrite `resolveCountryExpenseFromQuote` dispatch head using `classifyQuoteCountryValue`; keep legacy ISO block verbatim except the D4 reason tag
-- [ ] 2.6 REFACTOR — Confirm all pre-existing ISO tests stay green except the D4 reason assertion
+- [x] 2.1 RED — `OdooTargetGateway.countryCode.test.js`: `pickCountryExpenseById` hit + 4 error rows (invalid id, `listOperationCosts` unsupported, lookup throws, id not found); assert `searchCountryIdsByCodes`/`readPartnerCountries` never called
+- [x] 2.2 GREEN — Add + export `pickCountryExpenseById` in `OdooTargetGateway.js` per design error table
+- [x] 2.3 RED — Same file: `unset` kind → `reason:'quote_country_unset'` no walk; `unrecognized` → `reason:'quote_country_value_unrecognized'` + `logger.warn`, no walk; `operation_cost_id` → delegates to `pickCountryExpenseById`
+- [x] 2.4 RED — Update existing successful-ISO-pick assertion to `reason:'legacy_iso_value'` (D4); leave `partner_walk_after_iso_miss`/`quote_country_iso_not_found` assertions untouched
+- [x] 2.5 GREEN — Rewrite `resolveCountryExpenseFromQuote` dispatch head using `classifyQuoteCountryValue`; keep legacy ISO block verbatim except the D4 reason tag
+- [x] 2.6 REFACTOR — Confirm all pre-existing ISO tests stay green except the D4 reason assertion
 
 ## Phase 3: Eligibility & Validator Guards (D5)
 
