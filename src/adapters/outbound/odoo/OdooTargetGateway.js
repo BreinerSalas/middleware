@@ -4,6 +4,7 @@ const { mapDealToSaleOrder, resolveProductId } = require('./dealToSaleOrderMappe
 const { normalizeProductName } = require('./productNameKey')
 const { pickOperationCostForCountry } = require('./operationCostsResolver')
 const { SkipSyncError, TransientSyncError } = require('../../../core/domain/errors')
+const { classifyQuoteCountryValue } = require('../../../core/domain/quoteCountryValue')
 
 function applySkuMatch(li, map) {
   if (!li) return li
@@ -208,6 +209,48 @@ async function pickCountryExpenseRecord({ countryId, countryName, apiClient, log
     matches: picked.matches,
     ambiguous: picked.ambiguous,
     charges: picked.charges || null
+  }
+}
+
+async function pickCountryExpenseById(operationCostId, { apiClient, logger = null, correlationId = null } = {}) {
+  const empty = {
+    status: 'unresolved',
+    id: null,
+    countryId: null,
+    countryName: null,
+    reason: null,
+    matches: 0,
+    ambiguous: false
+  }
+  const numericId = operationCostId != null && Number.isFinite(Number(operationCostId)) && Number(operationCostId) > 0
+    ? Number(operationCostId)
+    : null
+  if (numericId == null) {
+    return { ...empty, reason: 'quote_operation_cost_id_invalid' }
+  }
+  if (!apiClient || typeof apiClient.listOperationCosts !== 'function') {
+    return { ...empty, reason: 'listOperationCosts_not_supported' }
+  }
+  let records = []
+  try {
+    records = await apiClient.listOperationCosts() || []
+  } catch (err) {
+    if (logger) logger.warn('odoo.upsert.listOperationCosts failed', { error: err.message, correlationId })
+    return { ...empty, reason: 'operation_costs_lookup_failed' }
+  }
+  const rec = records.find((r) => r && Number(r.id) === numericId)
+  if (!rec) {
+    return { ...empty, reason: 'operation_cost_id_not_found' }
+  }
+  return {
+    status: 'resolved',
+    id: rec.id,
+    countryId: rec.countryId ?? null,
+    countryName: rec.countryName || null,
+    reason: 'quote_operation_cost_id',
+    matches: 1,
+    ambiguous: false,
+    charges: rec.charges || null
   }
 }
 
@@ -440,8 +483,30 @@ class OdooTargetGateway {
       ambiguous: false
     }
     const countryProp = this.propertyQuoteCountry || 'pais_de_destino'
-    const iso = quote && quote.properties ? quote.properties[countryProp] : null
-    if (iso) {
+    const raw = quote && quote.properties ? quote.properties[countryProp] : null
+    const classified = classifyQuoteCountryValue(raw)
+
+    if (classified.kind === 'unset') {
+      return { ...empty, reason: 'quote_country_unset' }
+    }
+
+    if (classified.kind === 'unrecognized') {
+      if (this.logger) {
+        this.logger.warn('odoo.upsert.quoteCountry.unrecognized', { value: classified.value, correlationId })
+      }
+      return { ...empty, reason: 'quote_country_value_unrecognized' }
+    }
+
+    if (classified.kind === 'operation_cost_id') {
+      return await pickCountryExpenseById(classified.operationCostId, {
+        apiClient: this.apiClient,
+        logger: this.logger,
+        correlationId
+      })
+    }
+
+    if (classified.kind === 'legacy_iso') {
+      const iso = classified.value
       const resolved = await resolveCountryIdFromIsoCode(iso, { apiClient: this.apiClient, logger: this.logger })
       if (resolved.countryId) {
         const picked = await pickCountryExpenseRecord({
@@ -451,7 +516,7 @@ class OdooTargetGateway {
           logger: this.logger,
           correlationId
         })
-        if (picked.status === 'resolved') return picked
+        if (picked.status === 'resolved') return { ...picked, reason: 'legacy_iso_value' }
         return { ...empty, countryId: resolved.countryId, countryName: resolved.countryName, reason: picked.reason || 'no_operation_cost_for_country' }
       }
       // ISO no resolvío — cae al partner walk con marca diagnóstica
@@ -474,7 +539,8 @@ class OdooTargetGateway {
       }
       return { ...empty, countryId: fromPartner.countryId, countryName: fromPartner.countryName, reason: 'partner_walk_after_iso_miss' }
     }
-    // Sin ISO en la quote — comportamiento legacy
+
+    // kind === 'absent' — Sin valor en la quote, comportamiento legacy
     return await this.resolveCountryExpense(odooCustomerId, correlationId)
   }
 
@@ -672,4 +738,4 @@ class OdooTargetGateway {
   }
 }
 
-module.exports = { OdooTargetGateway, collectUnresolvedLines, describeUnresolved, buildSaleOrderUpdatePayload, resolveCountryIdFromPartner, resolveCountryIdFromIsoCode, pickCountryExpenseRecord }
+module.exports = { OdooTargetGateway, collectUnresolvedLines, describeUnresolved, buildSaleOrderUpdatePayload, resolveCountryIdFromPartner, resolveCountryIdFromIsoCode, pickCountryExpenseRecord, pickCountryExpenseById }
