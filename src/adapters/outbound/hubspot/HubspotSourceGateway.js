@@ -32,7 +32,7 @@ function parseSourceId(sourceId) {
   return { dealId, quoteId }
 }
 
-function isEligibleQuote(quote, { countryProperty, allowedStatuses } = {}) {
+function isEligibleQuote(quote, { countryProperty, allowedStatuses, incotermProperty, documentTypeProperty } = {}) {
   if (!quote || typeof quote !== 'object') {
     return { eligible: false, reason: 'missing_quote' }
   }
@@ -53,6 +53,21 @@ function isEligibleQuote(quote, { countryProperty, allowedStatuses } = {}) {
   if (country == null || String(country).trim() === '' || isUnsetQuoteCountry(country)) {
     return { eligible: false, reason: 'missing_country' }
   }
+  // incotermProperty/documentTypeProperty are opt-in: omitting them keeps
+  // legacy callers (and older tests) that only care about status/country
+  // working unchanged.
+  if (incotermProperty) {
+    const incoterm = props[incotermProperty]
+    if (incoterm == null || String(incoterm).trim() === '' || isUnsetQuoteCountry(incoterm)) {
+      return { eligible: false, reason: 'missing_incoterm' }
+    }
+  }
+  if (documentTypeProperty) {
+    const documentType = props[documentTypeProperty]
+    if (documentType == null || String(documentType).trim() === '' || isUnsetQuoteCountry(documentType)) {
+      return { eligible: false, reason: 'missing_document_type' }
+    }
+  }
   return { eligible: true, reason: 'ok' }
 }
 
@@ -60,13 +75,21 @@ async function listEligibleQuotes({ dealId, sourceGateway }) {
   if (!sourceGateway || typeof sourceGateway.apiClient.getDealQuotes !== 'function') {
     throw new Error('listEligibleQuotes requires a sourceGateway with apiClient.getDealQuotes')
   }
-  const quotes = await sourceGateway.apiClient.getDealQuotes(dealId)
+  const properties = buildQuotePropertiesToFetch({
+    propertyQuoteCountry: sourceGateway.propertyQuoteCountry,
+    propertyOdooQuoteId: sourceGateway.propertyQuoteOdooQuoteId,
+    propertyQuoteIncoterm: sourceGateway.propertyQuoteIncoterm,
+    propertyQuoteDocumentType: sourceGateway.propertyQuoteDocumentType
+  })
+  const quotes = await sourceGateway.apiClient.getDealQuotes(dealId, properties)
   const result = { eligible: [], skipped: [], currencies: [] }
   const currencySet = new Set()
   for (const q of (Array.isArray(quotes) ? quotes : [])) {
     const verdict = isEligibleQuote(q, {
       countryProperty: sourceGateway.propertyQuoteCountry,
-      allowedStatuses: sourceGateway.quoteEligibleStatuses
+      allowedStatuses: sourceGateway.quoteEligibleStatuses,
+      incotermProperty: sourceGateway.propertyQuoteIncoterm,
+      documentTypeProperty: sourceGateway.propertyQuoteDocumentType
     })
     if (verdict.eligible) {
       result.eligible.push(q)
@@ -99,7 +122,10 @@ function buildDealPropertiesToFetch(opts = {}) {
 function buildQuotePropertiesToFetch(opts = {}) {
   const country = opts.propertyQuoteCountry || DEFAULT_QUOTE_PROPERTY_NAMES.country
   const quoteId = opts.propertyOdooQuoteId || DEFAULT_DEAL_PROPERTY_NAMES.quote
-  return ['hs_status', 'hs_title', 'hs_currency', 'hs_quote_amount', country, quoteId]
+  const props = ['hs_status', 'hs_title', 'hs_currency', 'hs_quote_amount', country, quoteId]
+  if (opts.propertyQuoteIncoterm) props.push(opts.propertyQuoteIncoterm)
+  if (opts.propertyQuoteDocumentType) props.push(opts.propertyQuoteDocumentType)
+  return props
 }
 
 const DEFAULT_DEAL_PROPERTIES_TO_FETCH = buildDealPropertiesToFetch()
@@ -112,6 +138,8 @@ class HubspotSourceGateway {
     propertyOdooQuoteId,
     propertyQuoteOdooQuoteId,
     propertyQuoteCountry,
+    propertyQuoteIncoterm,
+    propertyQuoteDocumentType,
     propertyManufacturingOrder,
     propertyQuoteState,
     propertyQuoteInvoiceStatus,
@@ -134,6 +162,12 @@ class HubspotSourceGateway {
     // config/index.js's own fallback for HS_PROPERTY_QUOTE_ODOO_QUOTE_ID).
     this.propertyQuoteOdooQuoteId = propertyQuoteOdooQuoteId || this.propertyOdooQuoteId
     this.propertyQuoteCountry = propertyQuoteCountry || DEFAULT_QUOTE_PROPERTY_NAMES.country
+    // Opt-in (no hardcoded default, unlike propertyQuoteCountry): callers that
+    // don't pass these keep the pre-Incoterm/tipo-de-documento eligibility
+    // behavior unchanged. Production wiring (dealSyncModule) always passes
+    // config.hubspot's own defaulted values, so real jobs enforce both.
+    this.propertyQuoteIncoterm = propertyQuoteIncoterm || null
+    this.propertyQuoteDocumentType = propertyQuoteDocumentType || null
     this.quoteEligibleStatuses = Array.isArray(quoteEligibleStatuses) && quoteEligibleStatuses.length > 0
       ? quoteEligibleStatuses
       : DEFAULT_QUOTE_ELIGIBLE_STATUSES
@@ -159,7 +193,9 @@ class HubspotSourceGateway {
     if (quoteId) {
       const quoteProps = buildQuotePropertiesToFetch({
         propertyQuoteCountry: this.propertyQuoteCountry,
-        propertyOdooQuoteId: this.propertyQuoteOdooQuoteId
+        propertyOdooQuoteId: this.propertyQuoteOdooQuoteId,
+        propertyQuoteIncoterm: this.propertyQuoteIncoterm,
+        propertyQuoteDocumentType: this.propertyQuoteDocumentType
       })
       const quote = await this.apiClient.getQuote(quoteId, quoteProps)
       record.quote = { id: quote.id, properties: quote.properties || {} }

@@ -396,6 +396,33 @@ describe('config', () => {
     })
   })
 
+  describe('hubspot.propertyQuoteIncoterm / propertyQuoteDocumentType (Incoterm + tipo de documento)', () => {
+    const baseEnv = {
+      ...PORTAL_ENV,
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret'
+    }
+
+    it('defaults propertyQuoteIncoterm to incoterm_cotizacion and propertyQuoteDocumentType to tipo_documento_cotizacion', () => {
+      const cfg = load({ env: baseEnv })
+      expect(cfg.hubspot.propertyQuoteIncoterm).toBe('incoterm_cotizacion')
+      expect(cfg.hubspot.propertyQuoteDocumentType).toBe('tipo_documento_cotizacion')
+    })
+
+    it('parses HS_PROPERTY_QUOTE_INCOTERM and HS_PROPERTY_QUOTE_DOCUMENT_TYPE overrides', () => {
+      const cfg = load({
+        env: {
+          ...baseEnv,
+          HS_PROPERTY_QUOTE_INCOTERM: 'incoterm_custom',
+          HS_PROPERTY_QUOTE_DOCUMENT_TYPE: 'tipo_doc_custom'
+        }
+      })
+      expect(cfg.hubspot.propertyQuoteIncoterm).toBe('incoterm_custom')
+      expect(cfg.hubspot.propertyQuoteDocumentType).toBe('tipo_doc_custom')
+    })
+  })
+
   describe('hubspot.propertyOdooProductId (openspec/hubspot-product-odoo-id-key — id_producto_odoo key)', () => {
     const baseEnv = {
       ...PORTAL_ENV,

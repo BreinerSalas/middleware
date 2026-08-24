@@ -182,4 +182,52 @@ describe('mapDealToSaleOrder', () => {
     })
     expect(payload.saleOrder).not.toHaveProperty('shipping_expense_ids')
   })
+
+  it('includes incoterm in saleOrder when incotermId is provided', () => {
+    const payload = mapDealToSaleOrder({
+      hsDeal: { id: 'D-40' },
+      odooCustomerId: '5',
+      hsLineItems: [],
+      incotermId: 11
+    })
+    expect(payload.saleOrder.incoterm).toBe(11)
+  })
+
+  it('coerces string incotermId to a number', () => {
+    const payload = mapDealToSaleOrder({
+      hsDeal: { id: 'D-40' },
+      odooCustomerId: '5',
+      hsLineItems: [],
+      incotermId: '11'
+    })
+    expect(payload.saleOrder.incoterm).toBe(11)
+  })
+
+  it('omits incoterm when incotermId is null (default)', () => {
+    const payload = mapDealToSaleOrder({
+      hsDeal: { id: 'D-41' },
+      odooCustomerId: '5',
+      hsLineItems: []
+    })
+    expect(payload.saleOrder).not.toHaveProperty('incoterm')
+  })
+
+  it('includes operation_type_sv in saleOrder when documentTypeCode is provided', () => {
+    const payload = mapDealToSaleOrder({
+      hsDeal: { id: 'D-42' },
+      odooCustomerId: '5',
+      hsLineItems: [],
+      documentTypeCode: '01'
+    })
+    expect(payload.saleOrder.operation_type_sv).toBe('01')
+  })
+
+  it('omits operation_type_sv when documentTypeCode is null (default)', () => {
+    const payload = mapDealToSaleOrder({
+      hsDeal: { id: 'D-43' },
+      odooCustomerId: '5',
+      hsLineItems: []
+    })
+    expect(payload.saleOrder).not.toHaveProperty('operation_type_sv')
+  })
 })

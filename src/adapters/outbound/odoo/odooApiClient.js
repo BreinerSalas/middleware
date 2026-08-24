@@ -89,6 +89,9 @@ function createOdooApiClient({
       async listOperationCosts() {
         return []
       },
+      async listIncoterms() {
+        return []
+      },
       async createManufacturingOrder(payload) {
         moCounter += 1
         return { id: `stub-mrp-${moCounter}`, ref: `STUB/${moCounter}`, state: 'draft', raw: payload }
@@ -266,6 +269,31 @@ function createOdooApiClient({
       }
     })()
     return ocPromise
+  }
+
+  let icPromise = null
+  let icResult = null
+  let icAt = 0
+  async function listIncoterms() {
+    if (icPromise) return icPromise
+    if (icResult && (now() - icAt) < operationCostsTtlMs) return icResult
+    icPromise = (async () => {
+      try {
+        const result = await executeKw('account.incoterms', 'search_read', [[]],
+          { fields: ['id', 'name', 'code'] })
+        const mapped = (Array.isArray(result) ? result : []).map((r) => ({
+          id: Number(r.id),
+          name: r.name || null,
+          code: r.code || null
+        }))
+        icResult = mapped
+        icAt = now()
+        return mapped
+      } finally {
+        icPromise = null
+      }
+    })()
+    return icPromise
   }
 
   // countryCache: code -> { entry, at } — each code carries its own TTL stamp.
@@ -565,6 +593,7 @@ function createOdooApiClient({
         { fields: ['id', 'name', 'default_code', 'list_price'], offset, limit })
     },
     listOperationCosts,
+    listIncoterms,
     searchCountryIdsByCodes,
     readCountriesByIds,
 

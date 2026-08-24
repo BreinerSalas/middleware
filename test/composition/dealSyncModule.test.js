@@ -155,6 +155,44 @@ describe('composition/dealSyncModule end-to-end', () => {
     expect(module._internals.sourceGateway.closedWonStageId).toBe(otherTenantClosedWonId)
   })
 
+  it('wires config.hubspot.propertyQuoteIncoterm/propertyQuoteDocumentType into both gateways and into the default validators (SKIPPED when a quote job is missing them)', async () => {
+    const module = createDealSyncModule({
+      config: {
+        mongodbUri: 'mongodb://x',
+        hubspot: {
+          accessToken: 't', apiBase: 'https://api.hubapi.com',
+          propertyOdooCustomerId: 'a', propertyOdooOrderId: 'b',
+          propertyQuoteCountry: 'pais_de_destino',
+          propertyQuoteIncoterm: 'incoterm_cotizacion',
+          propertyQuoteDocumentType: 'tipo_documento_cotizacion'
+        },
+        odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
+        deals: { allowedStageIds: [CIERRE_GANADO], allowedPipelineIds: [CVB] },
+        server: { port: 0, nodeEnv: 'test' },
+        logging: { level: 'error' },
+        worker: { concurrency: 1, pollIntervalMs: 50 },
+        retry: { maxAttempts: 8, maxDelayMs: 60_000 }
+      },
+      logger: null,
+      recoverOrphansOnStart: false
+    })
+    expect(module._internals.sourceGateway.propertyQuoteIncoterm).toBe('incoterm_cotizacion')
+    expect(module._internals.sourceGateway.propertyQuoteDocumentType).toBe('tipo_documento_cotizacion')
+    expect(module._internals.targetGateway.propertyQuoteIncoterm).toBe('incoterm_cotizacion')
+    expect(module._internals.targetGateway.propertyQuoteDocumentType).toBe('tipo_documento_cotizacion')
+
+    const record = {
+      id: 'D-INCOTERM-1:qQ-1',
+      quoteId: 'Q-1',
+      properties: { id_cliente_odoo: '42', dealstage: CIERRE_GANADO, pipeline: CVB },
+      // pais_de_destino set, incoterm_cotizacion/tipo_documento_cotizacion missing
+      quote: { id: 'Q-1', properties: { hs_status: 'APPROVAL_NOT_NEEDED', pais_de_destino: '78' } }
+    }
+    const validators = require('../../src/composition/validators.js')
+    const incotermValidator = validators.createMustHaveQuoteIncoterm({ incotermProperty: 'incoterm_cotizacion' })
+    expect(() => incotermValidator({ record })).toThrow(/incoterm_cotizacion/)
+  })
+
   it('runs full pipeline: enqueue -> process -> writeback', async () => {
     const r = await moduleUnderTest.enqueueWebhook({ rawBody: { objectId: 'D-1' }, objectId: 'D-1', eventType: 'deal.creation' })
     expect(r.job).toBeTruthy()

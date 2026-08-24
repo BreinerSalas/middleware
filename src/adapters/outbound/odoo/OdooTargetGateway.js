@@ -94,6 +94,15 @@ function buildSaleOrderUpdatePayload({ saleOrder, existing } = {}) {
   if (saleOrder.country_expense != null && !exp.countryExpenseId) {
     payload.country_expense = saleOrder.country_expense
   }
+  // Unlike country_expense (set-once), incoterm/operation_type_sv resend on
+  // every re-sync: the salesperson may correct their choice before the SO is
+  // finalized.
+  if (saleOrder.incoterm != null) {
+    payload.incoterm = saleOrder.incoterm
+  }
+  if (saleOrder.operation_type_sv != null) {
+    payload.operation_type_sv = saleOrder.operation_type_sv
+  }
   if (saleOrder.note && !exp.note) {
     payload.note = saleOrder.note
   }
@@ -254,8 +263,45 @@ async function pickCountryExpenseById(operationCostId, { apiClient, logger = nul
   }
 }
 
+async function resolveIncotermFromQuote(quote, { apiClient, logger = null, incotermProperty = 'incoterm_cotizacion' } = {}) {
+  const empty = { status: 'unresolved', id: null, code: null, reason: null }
+  const raw = quote && quote.properties ? quote.properties[incotermProperty] : null
+  if (raw == null || String(raw).trim() === '' || String(raw).trim().toLowerCase() === 'sin_definir') {
+    return { ...empty, reason: 'quote_incoterm_unset' }
+  }
+  const trimmed = String(raw).trim()
+  const numericId = /^\d+$/.test(trimmed) && Number(trimmed) > 0 ? Number(trimmed) : null
+  if (numericId == null) {
+    if (logger) logger.warn('odoo.upsert.quoteIncoterm.unrecognized', { value: trimmed })
+    return { ...empty, reason: 'quote_incoterm_value_unrecognized' }
+  }
+  if (!apiClient || typeof apiClient.listIncoterms !== 'function') {
+    return { ...empty, reason: 'listIncoterms_not_supported' }
+  }
+  let records = []
+  try {
+    records = await apiClient.listIncoterms() || []
+  } catch (err) {
+    if (logger) logger.warn('odoo.upsert.listIncoterms failed', { error: err.message })
+    return { ...empty, reason: 'incoterms_lookup_failed' }
+  }
+  const rec = records.find((r) => r && Number(r.id) === numericId)
+  if (!rec) {
+    return { ...empty, reason: 'incoterm_id_not_found' }
+  }
+  return { status: 'resolved', id: rec.id, code: rec.code || null, reason: 'quote_incoterm_id' }
+}
+
+function resolveDocumentTypeFromQuote(quote, { documentTypeProperty = 'tipo_documento_cotizacion' } = {}) {
+  const raw = quote && quote.properties ? quote.properties[documentTypeProperty] : null
+  if (raw == null || String(raw).trim() === '' || String(raw).trim().toLowerCase() === 'sin_definir') {
+    return null
+  }
+  return String(raw).trim()
+}
+
 class OdooTargetGateway {
-  constructor({ apiClient, hashPayload, logger = null, defaultCustomerId = '', requireProductMatch = true, propertyQuoteCountry = 'pais_de_destino', autoConfirm = false, productMappingRepository = null } = {}) {
+  constructor({ apiClient, hashPayload, logger = null, defaultCustomerId = '', requireProductMatch = true, propertyQuoteCountry = 'pais_de_destino', propertyQuoteIncoterm = 'incoterm_cotizacion', propertyQuoteDocumentType = 'tipo_documento_cotizacion', autoConfirm = false, productMappingRepository = null } = {}) {
     if (!apiClient) throw new Error('OdooTargetGateway requires apiClient')
     if (typeof hashPayload !== 'function') throw new Error('OdooTargetGateway requires hashPayload')
     this.apiClient = apiClient
@@ -264,6 +310,8 @@ class OdooTargetGateway {
     this.defaultCustomerId = defaultCustomerId ? String(defaultCustomerId) : ''
     this.requireProductMatch = requireProductMatch !== false
     this.propertyQuoteCountry = propertyQuoteCountry || 'pais_de_destino'
+    this.propertyQuoteIncoterm = propertyQuoteIncoterm || 'incoterm_cotizacion'
+    this.propertyQuoteDocumentType = propertyQuoteDocumentType || 'tipo_documento_cotizacion'
     this.autoConfirm = autoConfirm === true
     // (openspec/hubspot-product-odoo-id-key — deal-product-resolution capability, PR 2)
     // D4: optional dependency — when not injected, tier 2 self-disables (lookupByHubspotProductId
@@ -295,6 +343,13 @@ class OdooTargetGateway {
       ? await this.resolveCountryExpenseFromQuote(record.quote, odooCustomerId, correlationId)
       : await this.resolveCountryExpense(odooCustomerId, correlationId)
 
+    const incotermResult = record && record.quote
+      ? await resolveIncotermFromQuote(record.quote, { apiClient: this.apiClient, logger: this.logger, incotermProperty: this.propertyQuoteIncoterm })
+      : { status: 'unresolved', id: null, code: null, reason: 'no_quote' }
+    const documentTypeCode = record && record.quote
+      ? resolveDocumentTypeFromQuote(record.quote, { documentTypeProperty: this.propertyQuoteDocumentType })
+      : null
+
     let payload
     try {
       payload = mapDealToSaleOrder({
@@ -303,6 +358,8 @@ class OdooTargetGateway {
         hsLineItems: enrichedLineItems,
         countryExpenseId: countryExpense.status === 'resolved' ? countryExpense.id : null,
         shippingExpenseCharges: countryExpense.status === 'resolved' ? countryExpense.charges : null,
+        incotermId: incotermResult.status === 'resolved' ? incotermResult.id : null,
+        documentTypeCode,
         dealId: record.dealId || null,
         quoteId: record.quoteId || null,
         quote: record.quote || null,
@@ -352,6 +409,13 @@ class OdooTargetGateway {
           matches: countryExpense.matches,
           ambiguous: countryExpense.ambiguous
         },
+        incoterm: {
+          status: incotermResult.status,
+          id: incotermResult.id,
+          code: incotermResult.code,
+          reason: incotermResult.reason
+        },
+        documentType: documentTypeCode,
         confirmation,
         manufacturingOrder
       }
@@ -738,4 +802,4 @@ class OdooTargetGateway {
   }
 }
 
-module.exports = { OdooTargetGateway, collectUnresolvedLines, describeUnresolved, buildSaleOrderUpdatePayload, resolveCountryIdFromPartner, resolveCountryIdFromIsoCode, pickCountryExpenseRecord, pickCountryExpenseById }
+module.exports = { OdooTargetGateway, collectUnresolvedLines, describeUnresolved, buildSaleOrderUpdatePayload, resolveCountryIdFromPartner, resolveCountryIdFromIsoCode, pickCountryExpenseRecord, pickCountryExpenseById, resolveIncotermFromQuote, resolveDocumentTypeFromQuote }

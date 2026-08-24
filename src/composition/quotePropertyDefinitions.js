@@ -6,6 +6,8 @@ function buildQuotePropertyDefinitions(cfgHubspot = {}) {
   const manufacturingOrderProperty = cfgHubspot.propertyManufacturingOrder || 'numero_orden_fabricacion'
   const quoteStateProperty = cfgHubspot.propertyQuoteState || 'estado_presupuesto_odoo'
   const quoteInvoiceStatusProperty = cfgHubspot.propertyQuoteInvoiceStatus || 'estado_facturacion_odoo'
+  const incotermProperty = cfgHubspot.propertyQuoteIncoterm || 'incoterm_cotizacion'
+  const documentTypeProperty = cfgHubspot.propertyQuoteDocumentType || 'tipo_documento_cotizacion'
   // Build the dropdown options from the configured list. The actual options
   // are populated/refreshed by scripts/sync-quote-country-options.js — here
   // we just declare the schema with a single placeholder so the property
@@ -58,6 +60,31 @@ function buildQuotePropertyDefinitions(cfgHubspot = {}) {
       fieldType: 'text',
       groupName: 'quoteinformation',
       description: 'sale.order.invoice_status tal cual lo reporta Odoo. El middleware lo actualiza vía polling incremental (Fase 6).'
+    },
+    {
+      name: incotermProperty,
+      label: 'Incoterm',
+      type: 'enumeration',
+      fieldType: 'select',
+      groupName: 'quoteinformation',
+      description: 'Catálogo de account.incoterms de Odoo. El dropdown se sincroniza desde Odoo vía scripts/sync-quote-incoterm-options.js.',
+      options: [
+        { label: 'Sin definir', value: 'sin_definir' }
+      ]
+    },
+    {
+      name: documentTypeProperty,
+      label: 'Tipo de documento',
+      type: 'enumeration',
+      fieldType: 'select',
+      groupName: 'quoteinformation',
+      description: 'sale.order.operation_type_sv en Odoo. Valores fijos definidos en el campo selection de Odoo.',
+      options: [
+        { label: 'Sin definir', value: 'sin_definir' },
+        { label: 'Factura', value: '01' },
+        { label: 'Comprobante de crédito fiscal', value: '03' },
+        { label: 'Facturas de exportación', value: '11' }
+      ]
     }
   ]
 }

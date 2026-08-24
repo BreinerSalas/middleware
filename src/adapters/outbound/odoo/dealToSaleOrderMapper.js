@@ -13,6 +13,8 @@ function mapDealToSaleOrder({
   hsLineItems = [],
   countryExpenseId = null,
   shippingExpenseCharges = null,
+  incotermId = null,
+  documentTypeCode = null,
   origin = null,
   dealId = null,
   quoteId = null,
@@ -66,6 +68,14 @@ function mapDealToSaleOrder({
 
   if (countryExpenseId != null) {
     saleOrder.country_expense = Number(countryExpenseId)
+  }
+
+  if (incotermId != null) {
+    saleOrder.incoterm = Number(incotermId)
+  }
+
+  if (documentTypeCode != null) {
+    saleOrder.operation_type_sv = documentTypeCode
   }
 
   // (docs/gastos-envio-onchange-gap) Odoo's own copy-down from operation.costs into a
