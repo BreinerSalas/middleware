@@ -61,10 +61,21 @@ function buildOptions({ records }) {
       : `operation.costs #${id}`
     candidates.push({ id, label })
   }
+  // HubSpot rejects a property update outright when two options share a
+  // label ("Property option labels must be unique") — the operation.costs
+  // catalog does have literal-name collisions (e.g. two "DDP Panamá" records
+  // for different rollout dates), so a colliding label gets its id appended
+  // to stay unique without touching the ones that don't collide.
+  const labelCounts = new Map()
+  for (const { label } of candidates) {
+    labelCounts.set(label, (labelCounts.get(label) || 0) + 1)
+  }
+
   candidates.sort(compareOptionRecords)
 
   for (const { id, label } of candidates) {
-    options.push({ label, value: String(id), displayOrder: options.length })
+    const finalLabel = labelCounts.get(label) > 1 ? `${label} (${id})` : label
+    options.push({ label: finalLabel, value: String(id), displayOrder: options.length })
   }
   return options
 }
