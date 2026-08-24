@@ -22,6 +22,7 @@ function makeDeps({
   enqueueResult = (sourceId) => ({ job: { _id: `J-${sourceId}`, sourceId }, deduped: false }),
   validators = [],
   markCompleted = null,
+  markSkipped = null,
   audit = null
 } = {}) {
   return {
@@ -34,7 +35,8 @@ function makeDeps({
       execute: vi.fn(async ({ sourceId }) => enqueueResult(sourceId))
     },
     jobRepository: {
-      markCompleted: vi.fn(markCompleted || (async () => ({ ...DEAL_JOB_BASE, status: JOB_STATUS.COMPLETED })))
+      markCompleted: vi.fn(markCompleted || (async () => ({ ...DEAL_JOB_BASE, status: JOB_STATUS.COMPLETED }))),
+      markSkipped: vi.fn(markSkipped || (async () => ({ ...DEAL_JOB_BASE, status: JOB_STATUS.SKIPPED })))
     },
     auditTrail: {
       record: vi.fn(audit || (async () => true))
@@ -54,6 +56,22 @@ describe('PlanDealSyncUseCase', () => {
     expect(deps.auditTrail.record).toHaveBeenCalled() // validators.passed audit before partition
     const expandedAudit = deps.auditTrail.record.mock.calls.find((c) => c[0] && c[0].event === 'deal.expanded')
     expect(expandedAudit).toBeUndefined()
+  })
+
+  it('returns mode=skipped (not fallback) when the deal HAS quotes but none are currently eligible — falling back would silently guess country/incoterm/document-type and duplicate the Sale Order later once a quote becomes eligible (its origin differs from the fallback path\'s)', async () => {
+    const eligibility = {
+      eligible: [],
+      skipped: [{ quoteId: 'Q-1', reason: 'missing_incoterm' }, { quoteId: 'Q-2', reason: 'missing_document_type' }],
+      currencies: []
+    }
+    const deps = makeDeps({ eligibility })
+    const uc = new PlanDealSyncUseCase(deps)
+    const result = await uc.execute({ job: DEAL_JOB_BASE })
+    expect(result.mode).toBe('skipped')
+    expect(deps.jobRepository.markSkipped).toHaveBeenCalledWith('J-DEAL-1', expect.any(Error))
+    expect(deps.enqueueSyncJobUseCase.execute).not.toHaveBeenCalled()
+    const skipAudit = deps.auditTrail.record.mock.calls.find((c) => c[0] && c[0].event === 'job.skipped')
+    expect(skipAudit).toBeTruthy()
   })
 
   it('returns mode=expanded and enqueues one job per eligible quote', async () => {

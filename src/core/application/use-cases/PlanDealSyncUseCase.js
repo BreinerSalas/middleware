@@ -87,7 +87,29 @@ class PlanDealSyncUseCase {
     const { eligible, skipped, currencies } = partition
 
     if (eligible.length === 0) {
-      return { mode: 'fallback', eligibleCount: 0, skippedCount: skipped.length, skipped, currencies }
+      // The deal genuinely has zero quotes: no quote-based origin will ever be
+      // computed for it, so falling back to the legacy per-deal path is safe.
+      if (skipped.length === 0) {
+        return { mode: 'fallback', eligibleCount: 0, skippedCount: 0, skipped, currencies }
+      }
+      // The deal DOES have quotes, just none currently eligible (missing
+      // country/incoterm/document-type, or not yet approved). Falling back
+      // here would (a) silently guess via the legacy DDP-default/partner-walk
+      // heuristics instead of respecting the mandatory-fields contract, and
+      // (b) create a Sale Order under the deal-only origin (`hs:<dealId>`)
+      // that becomes an orphaned duplicate once the quote becomes eligible
+      // and gets its own origin (`hs:<dealId>:q<quoteId>`) later. Skip instead.
+      const err = new SkipSyncError(
+        `Deal has ${skipped.length} quote(s), none currently eligible (${skipped.map((s) => s.reason).join(', ')})`,
+        { detail: { sourceId: dealIdFinal, skipped } }
+      )
+      await this.jobRepository.markSkipped(jobId, err)
+      await this.auditTrail.record({
+        jobId, sourceId: dealIdFinal, correlationId,
+        event: 'job.skipped', success: false,
+        detail: { reason: err.reason || err.message, phase: 'plan.no_eligible_quotes', skipped }
+      })
+      return { mode: 'skipped', error: err, reason: err.reason || err.message, skipped }
     }
 
     if (currencies.length > 1) {
