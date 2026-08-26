@@ -122,6 +122,42 @@ describe('productSyncModule - persistence (openspec/hubspot-product-odoo-id-key 
     expect(out.every((r) => !r.failed)).toBe(true)
   })
 
+  it('detects a duplicate HubSpot create for an odooId that already has a mapping — does not overwrite the mapping, logs loudly (2026-08-22 production incident: batchUpsertProducts repeatedly reported created:true for already-linked Odoo products, spawning duplicate HubSpot products with id_producto_odoo missing)', async () => {
+    const odooSource = makeSource({ count: 1, listAll: async () => [p(42, 'A-42', 'Product 42', 100)] })
+    const gateway = makeGateway({
+      batchUpsertByOdooIds: async () => ({
+        results: [
+          { id: 'HUB-NEW-DUPLICATE', properties: {}, new: true, createdAt: 'T', updatedAt: 'T' }
+        ],
+        errors: [],
+        skipped: []
+      })
+    })
+    const mappingRepo = makeMappingRepo()
+    mappingRepo.findByOdooId = vi.fn(async (odooId) =>
+      String(odooId) === '42' ? { odooId: 42, hubspotId: 'HUB-ORIGINAL', lastAction: 'created' } : null
+    )
+    const logger = makeLogger()
+    const runRepo = makeRunRepo()
+    const m = createProductSyncModule({
+      config: {}, odooSource, hubspotGateway: gateway,
+      mappingRepo, runRepo, logger
+    })
+    await m.runOnce({})
+
+    // The pre-existing mapping (odooId 42 -> HUB-ORIGINAL) must never be overwritten by the
+    // spurious duplicate (HUB-NEW-DUPLICATE) — bulkUpsertMany must not receive it.
+    if (mappingRepo.bulkUpsertMany.mock.calls.length > 0) {
+      const items = mappingRepo.bulkUpsertMany.mock.calls[0][0].items
+      expect(items).not.toContainEqual(expect.objectContaining({ odooId: 42, hubspotId: 'HUB-NEW-DUPLICATE' }))
+    }
+    // The anomaly must be surfaced loudly, not silently swallowed.
+    expect(logger.error).toHaveBeenCalledWith(
+      'product-sync.duplicate_create_detected',
+      expect.objectContaining({ odooId: 42, existingHubspotId: 'HUB-ORIGINAL', newHubspotId: 'HUB-NEW-DUPLICATE' })
+    )
+  })
+
   it('dryRun=true does not persist any mappings and does not start a run', async () => {
     const odooSource = makeSource({ count: 2, listAll: async () => [p(1, 'A-1'), p(2, false, 'NoSku')] })
     const gateway = makeGateway()
