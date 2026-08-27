@@ -85,14 +85,20 @@ describe('reconcileOrphans (openspec/hubspot-product-odoo-id-key, orphan-reconci
     )
   })
 
-  it('quarantines when the name is ambiguous in Odoo (matches > 1) — never writes', async () => {
+  // (sdd/hubspot-product-reverse-discovery, Phase 2) Superseded by Track A price
+  // disambiguation: odooMatches >= 2 no longer quarantines flatly as `ambiguous_in_odoo` —
+  // it falls through to a price compare first (see test/composition/productOrphanReconcileModule.test.js
+  // for the full Track A matrix). With no price data available to disambiguate (this fake
+  // odooApi has no `readProductPrices`), zero candidates match and it quarantines
+  // `price_no_match_in_odoo` — still never writes.
+  it('quarantines when the name is ambiguous in Odoo (matches > 1) and price cannot disambiguate — never writes', async () => {
     const hubspotApi = makeHubspotApi({
       orphans: [{ id: 'HUB-1', properties: { name: 'COMMON NAME' } }]
     })
     const odooApi = makeOdooApi({ 'common name': { id: 1, matches: 2, ids: [1, 2] } })
     const mappingRepo = makeMappingRepo()
     const result = await reconcileOrphans({ hubspotApi, odooApi, mappingRepo, logger: makeLogger(), dryRun: false })
-    expect(result.quarantined).toContainEqual(expect.objectContaining({ hubspotId: 'HUB-1', reason: 'ambiguous_in_odoo' }))
+    expect(result.quarantined).toContainEqual(expect.objectContaining({ hubspotId: 'HUB-1', reason: 'price_no_match_in_odoo' }))
     expect(hubspotApi.batchUpdateProducts).not.toHaveBeenCalled()
     expect(mappingRepo.upsert).not.toHaveBeenCalled()
   })
@@ -184,7 +190,12 @@ describe('reconcileOrphans (openspec/hubspot-product-odoo-id-key, orphan-reconci
     expect(mappingRepo.upsert).not.toHaveBeenCalled()
   })
 
-  it('quarantines on a HubSpot write failure but keeps processing the remaining orphans', async () => {
+  // (sdd/hubspot-product-reverse-discovery, design D6) Write order inverted: mappingRepo.upsert
+  // now runs BEFORE the HubSpot write. A HubSpot failure no longer means "nothing happened" —
+  // the Mongo mapping is already durable (self-healing: a later run's findByOdooId collision
+  // guard sees `existing.hubspotId === hubspotId` and retries the HubSpot write cleanly). The
+  // reason code changed from `hubspot_write_conflict` to `hubspot_write_pending` to reflect that.
+  it('quarantines hubspot_write_pending on a HubSpot write failure, keeps the Mongo mapping (self-healing), and keeps processing remaining orphans', async () => {
     const orphans = [
       { id: 'HUB-CONFLICT', properties: { name: 'CONFLICT PRODUCT' } },
       { id: 'HUB-OK', properties: { name: 'FINE PRODUCT' } }
@@ -211,9 +222,13 @@ describe('reconcileOrphans (openspec/hubspot-product-odoo-id-key, orphan-reconci
     const result = await reconcileOrphans({ hubspotApi, odooApi, mappingRepo, logger: makeLogger(), dryRun: false })
 
     expect(result.quarantined).toContainEqual(
-      expect.objectContaining({ hubspotId: 'HUB-CONFLICT', reason: 'hubspot_write_conflict' })
+      expect.objectContaining({ hubspotId: 'HUB-CONFLICT', reason: 'hubspot_write_pending' })
     )
     expect(result.promoted).toContainEqual(expect.objectContaining({ odooId: 2, hubspotId: 'HUB-OK' }))
+    // Mongo-first: the mapping was written even though the HubSpot call failed afterwards.
+    expect(mappingRepo.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ odooId: 1, hubspotId: 'HUB-CONFLICT', action: 'backfilled' })
+    )
   })
 
   it('--limit caps how many orphans are fetched/processed', async () => {
