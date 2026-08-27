@@ -152,6 +152,7 @@ async function main() {
   const { createHubspotApiClient } = require('../src/adapters/outbound/hubspot/hubspotApiClient')
   const { createOdooApiClient } = require('../src/adapters/outbound/odoo/odooApiClient')
   const { MongoProductMappingRepository } = require('../src/adapters/outbound/mongo/MongoProductMappingRepository')
+  const { MongoProductOrphanRepository } = require('../src/adapters/outbound/mongo/MongoProductOrphanRepository')
   const { connectMongo, disconnectMongo } = require('../src/adapters/outbound/mongo/connection')
 
   const args = require('./sync-products.lib').parseArgs(process.argv.slice(2))
@@ -174,6 +175,10 @@ async function main() {
     apiKey: cfg.odoo.apiKey
   })
   const mappingRepo = new MongoProductMappingRepository({ logger })
+  // (sdd/hubspot-product-reverse-discovery, Phase 3) Real Mongo-backed quarantine + archive
+  // audit persistence — recordArchivePending's presence is what unlocks real archiving in the
+  // decision pipeline instead of quarantining with archive_deferred_no_audit_repo (design D7).
+  const orphanRepo = new MongoProductOrphanRepository({ logger })
 
   // Mongo doesn't natively support find-by-list-of-actions; the repo wraps that. Provide a
   // minimal helper for the backfill that filters in-memory after a listAll.
@@ -190,7 +195,7 @@ async function main() {
 
   try {
     if (reconcile) {
-      const result = await reconcileOrphans({ hubspotApi, odooApi, mappingRepo, logger, dryRun, limit })
+      const result = await reconcileOrphans({ hubspotApi, odooApi, mappingRepo, orphanRepo, logger, dryRun, limit })
       if (result.quarantined.length > 0) {
         process.stderr.write(JSON.stringify({ level: 'warn', msg: 'reconcile.quarantine', items: result.quarantined }) + '\n')
       }
