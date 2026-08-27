@@ -109,6 +109,22 @@ describe('buildOptions', () => {
       { label: 'No country id', value: '8', displayOrder: 1 }
     ])
   })
+
+  it('disambiguates duplicate literal names by appending "(id)" — HubSpot rejects duplicate option labels outright', () => {
+    const opts = buildOptions({
+      records: [
+        { id: 122, name: 'DDP Panamá' },
+        { id: 67, name: 'DDP Panamá' },
+        { id: 5, name: 'DDP Costa Rica' }
+      ]
+    })
+    expect(opts).toEqual([
+      { label: 'Sin definir', value: 'sin_definir', displayOrder: 0 },
+      { label: 'DDP Costa Rica', value: '5', displayOrder: 1 },
+      { label: 'DDP Panamá (67)', value: '67', displayOrder: 2 },
+      { label: 'DDP Panamá (122)', value: '122', displayOrder: 3 }
+    ])
+  })
 })
 
 describe('planOptions', () => {
@@ -135,7 +151,7 @@ describe('planOptions', () => {
     expect(plan.options).toHaveLength(36) // placeholder + 35 records
   })
 
-  it('reports duplicateLabels (non-blocking) when two or more live records share the same literal name', async () => {
+  it('reports duplicateLabels for visibility while disambiguating the rendered option labels with "(id)"', async () => {
     const apiClient = makeApiClient({
       operationCosts: [
         { id: 1, name: 'DDP Costa Rica' },
@@ -148,8 +164,12 @@ describe('planOptions', () => {
     const plan = await planOptions({ apiClient, hubspot, propertyName: 'pais_de_destino', logger })
     expect(plan.duplicateLabels).toEqual(['DDP Costa Rica'])
     expect(logger.warn).toHaveBeenCalled()
-    // Non-blocking: both options still render, with identical labels
-    expect(plan.options.filter((o) => o.label === 'DDP Costa Rica')).toHaveLength(2)
+    // Options carry unique labels (HubSpot rejects duplicates outright) even
+    // though duplicateLabels still flags the underlying literal-name clash.
+    const labels = plan.options.map((o) => o.label)
+    expect(labels).toContain('DDP Costa Rica (1)')
+    expect(labels).toContain('DDP Costa Rica (2)')
+    expect(new Set(labels).size).toBe(labels.length)
   })
 
   it('duplicateLabels is empty when no live record shares a literal name', async () => {

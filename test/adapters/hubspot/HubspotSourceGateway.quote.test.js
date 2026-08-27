@@ -104,6 +104,57 @@ describe('isEligibleQuote', () => {
     expect(r.reason).toBe('missing_country')
   })
 
+  it('returns eligible=false with reason=missing_incoterm when incoterm not set', () => {
+    const r = isEligibleQuote(
+      { id: 'Q-1', properties: { hs_status: 'APPROVAL_NOT_NEEDED', [countryProperty]: 'GT' } },
+      { countryProperty, allowedStatuses, incotermProperty: 'incoterm_cotizacion' }
+    )
+    expect(r.eligible).toBe(false)
+    expect(r.reason).toBe('missing_incoterm')
+  })
+
+  it('returns eligible=false with reason=missing_incoterm when incoterm is the sin_definir sentinel', () => {
+    const r = isEligibleQuote(
+      { id: 'Q-1', properties: { hs_status: 'APPROVAL_NOT_NEEDED', [countryProperty]: 'GT', incoterm_cotizacion: 'sin_definir' } },
+      { countryProperty, allowedStatuses, incotermProperty: 'incoterm_cotizacion' }
+    )
+    expect(r.eligible).toBe(false)
+    expect(r.reason).toBe('missing_incoterm')
+  })
+
+  it('returns eligible=false with reason=missing_document_type when tipo de documento not set', () => {
+    const r = isEligibleQuote(
+      { id: 'Q-1', properties: { hs_status: 'APPROVAL_NOT_NEEDED', [countryProperty]: 'GT', incoterm_cotizacion: '11' } },
+      { countryProperty, allowedStatuses, incotermProperty: 'incoterm_cotizacion', documentTypeProperty: 'tipo_documento_cotizacion' }
+    )
+    expect(r.eligible).toBe(false)
+    expect(r.reason).toBe('missing_document_type')
+  })
+
+  it('returns eligible=true when status, country, incoterm and tipo de documento are all set', () => {
+    const r = isEligibleQuote(
+      {
+        id: 'Q-1',
+        properties: {
+          hs_status: 'APPROVAL_NOT_NEEDED',
+          [countryProperty]: 'GT',
+          incoterm_cotizacion: '11',
+          tipo_documento_cotizacion: '01'
+        }
+      },
+      { countryProperty, allowedStatuses, incotermProperty: 'incoterm_cotizacion', documentTypeProperty: 'tipo_documento_cotizacion' }
+    )
+    expect(r).toEqual({ eligible: true, reason: 'ok' })
+  })
+
+  it('ignores incoterm/documentType checks entirely when those property names are not passed (back-compat)', () => {
+    const r = isEligibleQuote(
+      { id: 'Q-1', properties: { hs_status: 'APPROVAL_NOT_NEEDED', [countryProperty]: 'GT' } },
+      { countryProperty, allowedStatuses }
+    )
+    expect(r).toEqual({ eligible: true, reason: 'ok' })
+  })
+
   it('returns eligible=false with reason=missing_status when status is missing', () => {
     const r = isEligibleQuote(
       { id: 'Q-1', properties: { [countryProperty]: 'GT' } },
@@ -166,6 +217,50 @@ describe('listEligibleQuotes', () => {
     const { eligible, currencies } = await listEligibleQuotes({ dealId: 'D-1', sourceGateway: gw })
     expect(eligible).toHaveLength(2)
     expect(currencies.sort()).toEqual(['GTQ', 'USD'])
+  })
+
+  it('excludes a quote missing incoterm/tipo de documento when the gateway is configured with those properties (mandatory, like country)', async () => {
+    const api = makeApiClient({
+      getDealQuotes: async () => [
+        { id: 'Q-1', properties: { hs_status: 'APPROVAL_NOT_NEEDED', pais_de_destino: '78', incoterm_cotizacion: '11', tipo_documento_cotizacion: '01' } },
+        { id: 'Q-2', properties: { hs_status: 'APPROVAL_NOT_NEEDED', pais_de_destino: '79', incoterm_cotizacion: 'sin_definir', tipo_documento_cotizacion: '01' } },
+        { id: 'Q-3', properties: { hs_status: 'APPROVAL_NOT_NEEDED', pais_de_destino: '80', incoterm_cotizacion: '11' } }
+      ]
+    })
+    const gw = new HubspotSourceGateway({
+      apiClient: api,
+      propertyOdooCustomerId: 'a',
+      propertyOdooOrderId: 'b',
+      propertyOdooQuoteId: 'c',
+      propertyQuoteCountry: 'pais_de_destino',
+      propertyQuoteIncoterm: 'incoterm_cotizacion',
+      propertyQuoteDocumentType: 'tipo_documento_cotizacion',
+      quoteEligibleStatuses: ['APPROVAL_NOT_NEEDED']
+    })
+    const { eligible, skipped } = await listEligibleQuotes({ dealId: 'D-1', sourceGateway: gw })
+    expect(eligible.map((q) => q.id)).toEqual(['Q-1'])
+    expect(skipped).toEqual([
+      { quoteId: 'Q-2', reason: 'missing_incoterm' },
+      { quoteId: 'Q-3', reason: 'missing_document_type' }
+    ])
+  })
+
+  it('requests the full quote properties list (incoterm/documentType included) so getDealQuotes returns real HubSpot values, not stale defaults', async () => {
+    const api = makeApiClient({ getDealQuotes: async () => [] })
+    const gw = new HubspotSourceGateway({
+      apiClient: api,
+      propertyOdooCustomerId: 'a',
+      propertyOdooOrderId: 'b',
+      propertyOdooQuoteId: 'c',
+      propertyQuoteCountry: 'pais_de_destino',
+      propertyQuoteIncoterm: 'incoterm_cotizacion',
+      propertyQuoteDocumentType: 'tipo_documento_cotizacion',
+      quoteEligibleStatuses: ['APPROVAL_NOT_NEEDED']
+    })
+    await listEligibleQuotes({ dealId: 'D-1', sourceGateway: gw })
+    expect(api.getDealQuotes).toHaveBeenCalledWith('D-1', expect.arrayContaining([
+      'pais_de_destino', 'incoterm_cotizacion', 'tipo_documento_cotizacion'
+    ]))
   })
 
   it('returns empty eligible + empty skipped when the deal has no quotes', async () => {

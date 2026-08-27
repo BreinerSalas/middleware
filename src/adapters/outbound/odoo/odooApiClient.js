@@ -71,6 +71,9 @@ function createOdooApiClient({
       async readProductUoms(_ids) {
         return {}
       },
+      async readProductPrices(_ids) {
+        return {}
+      },
       async countProductsWithDefaultCode() {
         return 0
       },
@@ -87,6 +90,9 @@ function createOdooApiClient({
         return {}
       },
       async listOperationCosts() {
+        return []
+      },
+      async listIncoterms() {
         return []
       },
       async createManufacturingOrder(payload) {
@@ -266,6 +272,31 @@ function createOdooApiClient({
       }
     })()
     return ocPromise
+  }
+
+  let icPromise = null
+  let icResult = null
+  let icAt = 0
+  async function listIncoterms() {
+    if (icPromise) return icPromise
+    if (icResult && (now() - icAt) < operationCostsTtlMs) return icResult
+    icPromise = (async () => {
+      try {
+        const result = await executeKw('account.incoterms', 'search_read', [[]],
+          { fields: ['id', 'name', 'code'] })
+        const mapped = (Array.isArray(result) ? result : []).map((r) => ({
+          id: Number(r.id),
+          name: r.name || null,
+          code: r.code || null
+        }))
+        icResult = mapped
+        icAt = now()
+        return mapped
+      } finally {
+        icPromise = null
+      }
+    })()
+    return icPromise
   }
 
   // countryCache: code -> { entry, at } — each code carries its own TTL stamp.
@@ -547,6 +578,25 @@ function createOdooApiClient({
       }
       return map
     },
+    // (sdd/hubspot-product-reverse-discovery, design D5) Mirrors `readProductUoms`: one
+    // batched `product.product` read for Track A's price-disambiguation compare against
+    // the orphan's HubSpot `price` (see `priceCents.pricesMatchInCents`).
+    async readProductPrices(ids) {
+      const cleaned = Array.isArray(ids)
+        ? [...new Set(ids.map(Number).filter((n) => Number.isFinite(n)))]
+        : []
+      if (cleaned.length === 0) return {}
+      const result = await executeKw('product.product', 'read', [cleaned], { fields: ['id', 'list_price'] })
+      const map = {}
+      if (Array.isArray(result)) {
+        for (const r of result) {
+          if (r && r.id != null) {
+            map[Number(r.id)] = Number(r.list_price)
+          }
+        }
+      }
+      return map
+    },
     async countProductsWithDefaultCode() {
       return executeKw('product.product', 'search_count',
         [[['default_code', '!=', false]]], {})
@@ -565,6 +615,7 @@ function createOdooApiClient({
         { fields: ['id', 'name', 'default_code', 'list_price'], offset, limit })
     },
     listOperationCosts,
+    listIncoterms,
     searchCountryIdsByCodes,
     readCountriesByIds,
 

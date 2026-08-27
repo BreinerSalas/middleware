@@ -644,6 +644,64 @@ describe('listOperationCosts memoization + TTL', () => {
     expect(r[0].id).toBe(71)
   })
 
+  describe('listIncoterms', () => {
+  it('http mode search_reads account.incoterms and maps the result shape', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({
+        data: {
+          result: [
+            { id: 11, name: 'DELIVERED DUTY PAID', code: 'DDP' },
+            { id: 1, name: 'EX WORKS', code: 'EXW' }
+          ]
+        },
+        status: 200
+      })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+    })
+    const r = await api.listIncoterms()
+    expect(r).toEqual([
+      { id: 11, name: 'DELIVERED DUTY PAID', code: 'DDP' },
+      { id: 1, name: 'EX WORKS', code: 'EXW' }
+    ])
+    expect(post.mock.calls[1][1].params.args).toEqual([
+      'db', 2, 'k', 'account.incoterms', 'search_read', [[]],
+      { fields: ['id', 'name', 'code'] }
+    ])
+  })
+
+  it('stub mode returns empty array', async () => {
+    const api = createOdooApiClient({ mode: 'stub' })
+    expect(await api.listIncoterms()).toEqual([])
+  })
+
+  it('caches within TTL and refetches after expiry (same TTL knob as listOperationCosts)', async () => {
+    let nowMs = 1000
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+      .mockResolvedValueOnce({ data: { result: [{ id: 1, name: 'EX WORKS', code: 'EXW' }] }, status: 200 })
+      .mockResolvedValueOnce({ data: { result: [{ id: 2, name: 'FREE CARRIER', code: 'FCA' }] }, status: 200 })
+    const api = createOdooApiClient({
+      mode: 'http', baseUrl: 'https://odoo.example.com',
+      db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post },
+      operationCostsTtlMs: 100,
+      now: () => nowMs
+    })
+    const r1 = await api.listIncoterms()
+    expect(r1[0].id).toBe(1)
+    nowMs = 1099
+    const r2 = await api.listIncoterms()
+    expect(r2[0].id).toBe(1)
+    expect(post).toHaveBeenCalledTimes(2)
+    nowMs = 1101
+    const r3 = await api.listIncoterms()
+    expect(r3[0].id).toBe(2)
+    expect(post).toHaveBeenCalledTimes(3)
+  })
+})
+
   it('stub mode readProductImage returns null', async () => {
     const api = createOdooApiClient({ mode: 'stub' })
     expect(await api.readProductImage(123)).toBeNull()

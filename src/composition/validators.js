@@ -46,6 +46,39 @@ function createMustHaveQuoteCountry({ countryProperty = 'pais_de_destino' } = {}
   }
 }
 
+// Opt-in (no hardcoded default, unlike createMustHaveQuoteCountry): a caller
+// that doesn't pass incotermProperty gets a permanent no-op, matching
+// isEligibleQuote's opt-in incotermProperty/documentTypeProperty handling.
+// Production wiring (dealSyncModule) always passes config.hubspot's own
+// defaulted property name, so real jobs enforce it.
+function createMustHaveQuoteIncoterm({ incotermProperty = null } = {}) {
+  if (!incotermProperty) return function mustHaveQuoteIncoterm() {}
+  return function mustHaveQuoteIncoterm({ record } = {}) {
+    if (!record || !record.quoteId) return
+    const quoteProps = (record.quote && record.quote.properties) || {}
+    const incoterm = quoteProps[incotermProperty]
+    if (incoterm == null || String(incoterm).trim() === '' || isUnsetQuoteCountry(incoterm)) {
+      throw new SkipSyncError(`Quote has no ${incotermProperty} (incoterm)`, {
+        detail: { sourceId: record.id, quoteId: record.quoteId, missingProperty: incotermProperty }
+      })
+    }
+  }
+}
+
+function createMustHaveQuoteDocumentType({ documentTypeProperty = null } = {}) {
+  if (!documentTypeProperty) return function mustHaveQuoteDocumentType() {}
+  return function mustHaveQuoteDocumentType({ record } = {}) {
+    if (!record || !record.quoteId) return
+    const quoteProps = (record.quote && record.quote.properties) || {}
+    const documentType = quoteProps[documentTypeProperty]
+    if (documentType == null || String(documentType).trim() === '' || isUnsetQuoteCountry(documentType)) {
+      throw new SkipSyncError(`Quote has no ${documentTypeProperty} (tipo de documento)`, {
+        detail: { sourceId: record.id, quoteId: record.quoteId, missingProperty: documentTypeProperty }
+      })
+    }
+  }
+}
+
 function mustBeClosedWon({ record } = {}) {
   const props = (record && record.properties) || {}
   const stage = props.dealstage
@@ -97,5 +130,7 @@ module.exports = {
   createMustHaveOdooCustomerId,
   createMustHaveDealStage,
   createMustBeInPipeline,
-  createMustHaveQuoteCountry
+  createMustHaveQuoteCountry,
+  createMustHaveQuoteIncoterm,
+  createMustHaveQuoteDocumentType
 }

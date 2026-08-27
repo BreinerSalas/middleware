@@ -50,6 +50,19 @@ describe('reconcileOrphans (openspec/hubspot-product-odoo-id-key, orphan-reconci
     expect(call.filterGroups[0].filters.every((f) => f.operator === 'NOT_HAS_PROPERTY')).toBe(true)
   })
 
+  // (sdd/hubspot-product-reverse-discovery, Phase 1) Track A/B need `price` and
+  // `id_producto_odoo` on every orphan row, not just `name`, to disambiguate and to guard
+  // against a race where the orphan gets an id_producto_odoo between the initial filtered
+  // search and processing.
+  it('requests name, price and id_producto_odoo properties on the orphan search', async () => {
+    const hubspotApi = makeHubspotApi({ orphans: [] })
+    const odooApi = makeOdooApi({})
+    const mappingRepo = makeMappingRepo()
+    await reconcileOrphans({ hubspotApi, odooApi, mappingRepo, logger: makeLogger(), dryRun: false })
+    const call = hubspotApi.searchProducts.mock.calls[0][0]
+    expect(call.properties).toEqual(expect.arrayContaining(['name', 'price', 'id_producto_odoo']))
+  })
+
   it('promotes an orphan whose name matches exactly one Odoo product AND one HubSpot product', async () => {
     const hubspotApi = makeHubspotApi({
       orphans: [{ id: '46671077999', properties: { name: 'WALMART QUAD - CON PUSHERS' } }]

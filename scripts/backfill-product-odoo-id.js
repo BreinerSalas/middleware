@@ -150,7 +150,7 @@ async function fetchAllOrphans(hubspotApi, { pageSize = 100, limit = null } = {}
   while (true) {
     const res = await hubspotApi.searchProducts({
       filterGroups: ORPHAN_FILTER_GROUPS,
-      properties: ['name'],
+      properties: ['name', 'price', 'id_producto_odoo'],
       limit: pageSize,
       after,
       sorts: ORPHAN_SORT

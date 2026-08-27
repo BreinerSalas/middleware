@@ -21,7 +21,9 @@ const {
   createMustHaveOdooCustomerId,
   createMustHaveDealStage,
   createMustBeInPipeline,
-  createMustHaveQuoteCountry
+  createMustHaveQuoteCountry,
+  createMustHaveQuoteIncoterm,
+  createMustHaveQuoteDocumentType
 } = require('./validators')
 const { JOB_KIND } = require('../config/constants')
 
@@ -72,6 +74,8 @@ function createDealSyncModule({
     propertyOdooQuoteId: config.hubspot.propertyOdooQuoteId,
     propertyQuoteOdooQuoteId: config.hubspot.propertyQuoteOdooQuoteId,
     propertyQuoteCountry: config.hubspot.propertyQuoteCountry,
+    propertyQuoteIncoterm: config.hubspot.propertyQuoteIncoterm,
+    propertyQuoteDocumentType: config.hubspot.propertyQuoteDocumentType,
     propertyManufacturingOrder: config.hubspot.propertyManufacturingOrder,
     propertyQuoteState: config.hubspot.propertyQuoteState,
     propertyQuoteInvoiceStatus: config.hubspot.propertyQuoteInvoiceStatus,
@@ -91,6 +95,8 @@ function createDealSyncModule({
     hashPayload,
     defaultCustomerId: config.odoo.defaultCustomerId,
     propertyQuoteCountry: config.hubspot.propertyQuoteCountry,
+    propertyQuoteIncoterm: config.hubspot.propertyQuoteIncoterm,
+    propertyQuoteDocumentType: config.hubspot.propertyQuoteDocumentType,
     // En modo stub el cliente devuelve {} en todo lookup, asi que product_id es
     // siempre null; exigir match ahi convertiria cada corrida local en SKIPPED.
     requireProductMatch: config.odoo.mode === 'http',
@@ -114,7 +120,9 @@ function createDealSyncModule({
     // No-op on the deal (fallback) path; on a quote job it re-checks the
     // country property right before processing, since listEligibleQuotes only
     // guaranteed it was present at planning time.
-    createMustHaveQuoteCountry({ countryProperty: config.hubspot.propertyQuoteCountry })
+    createMustHaveQuoteCountry({ countryProperty: config.hubspot.propertyQuoteCountry }),
+    createMustHaveQuoteIncoterm({ incotermProperty: config.hubspot.propertyQuoteIncoterm }),
+    createMustHaveQuoteDocumentType({ documentTypeProperty: config.hubspot.propertyQuoteDocumentType })
   ]
   const _validators = Array.isArray(validators) ? validators : defaultValidators
 

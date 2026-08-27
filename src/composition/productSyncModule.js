@@ -164,24 +164,52 @@ function createProductSyncModule({
     return results
   }
 
+  // (2026-08-22 production incident) batchUpsertProducts' idProperty-based matching can
+  // intermittently fail to find an Odoo product's existing HubSpot record and create a
+  // duplicate instead of updating it — silently, with no batch-level error, and with
+  // id_producto_odoo left unset on the new duplicate (confirmed against production data: the
+  // same ~9 Odoo products were re-"created" on every 1-minute incremental run for 10+ minutes
+  // straight). A `created: true` result for an odooId that already has a mapping pointing at a
+  // DIFFERENT hubspotId is proof of exactly this: never let it silently overwrite the correct
+  // mapping — that would point the source of truth at throwaway HubSpot clutter and hide the
+  // anomaly. Surface it loudly instead; the existing mapping is left untouched.
+  async function detectDuplicateCreate(result) {
+    if (!result.created || typeof mappingRepo.findByOdooId !== 'function') return false
+    let existing = null
+    try {
+      existing = await mappingRepo.findByOdooId(result.sourceId)
+    } catch (err) {
+      log('error', 'product-sync.mappingRepo.findByOdooId failed', { odooId: result.sourceId, error: err.message })
+      return false
+    }
+    if (existing && existing.hubspotId && String(existing.hubspotId) !== String(result.hubspotId)) {
+      log('error', 'product-sync.duplicate_create_detected', {
+        odooId: result.sourceId, existingHubspotId: existing.hubspotId, newHubspotId: result.hubspotId
+      })
+      return true
+    }
+    return false
+  }
+
   async function persistMappings(results) {
     if (!mappingRepo) return
-    const toPersist = results
-      .filter((r) => r.hubspotId && r.sourceId != null && !r.failed && !r.dryRun && !r.skipped)
-      .map((r) => {
-        const sku = r.sku
-        const normalizedHsSku = (sku == null || sku === false || (typeof sku === 'string' && sku.trim() === ''))
-          ? null
-          : String(sku)
-        return {
-          odooId: r.sourceId,
-          hsSku: normalizedHsSku,
-          hubspotId: r.hubspotId,
-          action: r.action || (r.created ? 'created' : 'updated')
-        }
+    const candidates = results.filter((r) => r.hubspotId && r.sourceId != null && !r.failed && !r.dryRun && !r.skipped)
+    const toPersist = []
+    for (const r of candidates) {
+      if (await detectDuplicateCreate(r)) continue
+      const sku = r.sku
+      const normalizedHsSku = (sku == null || sku === false || (typeof sku === 'string' && sku.trim() === ''))
+        ? null
+        : String(sku)
+      toPersist.push({
+        odooId: r.sourceId,
+        hsSku: normalizedHsSku,
+        hubspotId: r.hubspotId,
+        action: r.action || (r.created ? 'created' : 'updated')
       })
-      // (openspec/hubspot-product-odoo-id-key) NO `hsSku`-truthy filter — every product with a
-      // hubspotId is persisted, including no-SKU products (hsSku: null).
+    }
+    // (openspec/hubspot-product-odoo-id-key) NO `hsSku`-truthy filter — every product with a
+    // hubspotId is persisted, including no-SKU products (hsSku: null).
     if (toPersist.length === 0) return
     try {
       await mappingRepo.bulkUpsertMany({ items: toPersist })
