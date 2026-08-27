@@ -276,6 +276,13 @@ de `productmappings` en Mongo debería quedar en ≈11 529.
   no tiene. Sirve para lo del paso 5 (`findByOdooId`) y nada más.
 - **No cablear el product sync en `src/server.js` ni exponer un endpoint HTTP.** Sería una
   superficie de trabajo largo sin autenticar. CLI está bien por ahora.
+  **Revisitada (no revertida en silencio) por `sdd/hubspot-product-reverse-discovery` (PR5,
+  2026-08-27):** el motor de reconciliación de huérfanos (`productOrphanReconcileModule.js`)
+  sí se cablea en `src/server.js` vía `createTickJobModule`, igual que `productSyncJobModule` —
+  no como endpoint HTTP nuevo, sino como job interno flag-gated (`PRODUCT_ORPHAN_RECONCILE_JOB_ENABLED`,
+  default `false`), reusando el mismo poller/locking/watchdog que ya corre en el proceso. El CLI
+  (`scripts/backfill-product-odoo-id.js --reconcile-orphans`) sigue disponible para corridas
+  manuales. Ver el design de ese change (decisión D9) para el detalle completo.
 - **No borrar ni archivar los 5 348 productos sin SKU** en vez de adoptarlos: es destructivo en
   el CRM del cliente y deja huérfanos los line items existentes.
 - **Conflar "SKU" con "id interno de Odoo" es aceptable**, con la advertencia de colisión de

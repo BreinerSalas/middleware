@@ -499,4 +499,54 @@ describe('config', () => {
       expect(cfg.manufacturingOrderRetrySync.orphanWatchdogMs).toBe(900000)
     })
   })
+
+  describe('productOrphanReconcile (sdd/hubspot-product-reverse-discovery, Phase 5 — scheduled orphan reconciliation job)', () => {
+    const baseEnv = {
+      ...PORTAL_ENV,
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret'
+    }
+
+    it('defaults to disabled with a daily tick interval, 1h orphan watchdog, limit 200, and both tracks enabled', () => {
+      const cfg = load({ env: baseEnv })
+      expect(cfg.productOrphanReconcile.jobEnabled).toBe(false)
+      expect(cfg.productOrphanReconcile.tickIntervalMs).toBe(86400000)
+      expect(cfg.productOrphanReconcile.orphanWatchdogMs).toBe(3600000)
+      expect(cfg.productOrphanReconcile.limit).toBe(200)
+      expect(cfg.productOrphanReconcile.trackAEnabled).toBe(true)
+      expect(cfg.productOrphanReconcile.trackBEnabled).toBe(true)
+    })
+
+    it('parses PRODUCT_ORPHAN_RECONCILE_JOB_ENABLED=true to enable the scheduled job', () => {
+      const cfg = load({ env: { ...baseEnv, PRODUCT_ORPHAN_RECONCILE_JOB_ENABLED: 'true' } })
+      expect(cfg.productOrphanReconcile.jobEnabled).toBe(true)
+    })
+
+    it('parses PRODUCT_ORPHAN_RECONCILE_TICK_INTERVAL_MS, _ORPHAN_WATCHDOG_MS and _LIMIT overrides', () => {
+      const cfg = load({
+        env: {
+          ...baseEnv,
+          PRODUCT_ORPHAN_RECONCILE_TICK_INTERVAL_MS: '15000',
+          PRODUCT_ORPHAN_RECONCILE_ORPHAN_WATCHDOG_MS: '900000',
+          PRODUCT_ORPHAN_RECONCILE_LIMIT: '50'
+        }
+      })
+      expect(cfg.productOrphanReconcile.tickIntervalMs).toBe(15000)
+      expect(cfg.productOrphanReconcile.orphanWatchdogMs).toBe(900000)
+      expect(cfg.productOrphanReconcile.limit).toBe(50)
+    })
+
+    it('parses PRODUCT_ORPHAN_RECONCILE_TRACK_A_ENABLED=false and _TRACK_B_ENABLED=false to disable either track', () => {
+      const cfg = load({
+        env: {
+          ...baseEnv,
+          PRODUCT_ORPHAN_RECONCILE_TRACK_A_ENABLED: 'false',
+          PRODUCT_ORPHAN_RECONCILE_TRACK_B_ENABLED: 'false'
+        }
+      })
+      expect(cfg.productOrphanReconcile.trackAEnabled).toBe(false)
+      expect(cfg.productOrphanReconcile.trackBEnabled).toBe(false)
+    })
+  })
 })

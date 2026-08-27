@@ -52,7 +52,13 @@ const OPTIONAL_KEYS = [
   'PARTNER_SYNC_ORPHAN_WATCHDOG_MS',
   'PARTNER_SYNC_PAGE_SIZE',
   'HS_PROPERTY_ODOO_PARTNER_ID',
-  'HS_PROPERTY_ODOO_PRODUCT_ID'
+  'HS_PROPERTY_ODOO_PRODUCT_ID',
+  'PRODUCT_ORPHAN_RECONCILE_JOB_ENABLED',
+  'PRODUCT_ORPHAN_RECONCILE_TICK_INTERVAL_MS',
+  'PRODUCT_ORPHAN_RECONCILE_ORPHAN_WATCHDOG_MS',
+  'PRODUCT_ORPHAN_RECONCILE_LIMIT',
+  'PRODUCT_ORPHAN_RECONCILE_TRACK_A_ENABLED',
+  'PRODUCT_ORPHAN_RECONCILE_TRACK_B_ENABLED'
 ]
 
 function parseCsvList(raw) {
@@ -166,6 +172,18 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       tickIntervalMs: Number(env.PARTNER_SYNC_TICK_INTERVAL_MS || 60000),
       orphanWatchdogMs: Number(env.PARTNER_SYNC_ORPHAN_WATCHDOG_MS || 30 * 60 * 1000),
       pageSize: Number(env.PARTNER_SYNC_PAGE_SIZE || 100)
+    },
+    // (sdd/hubspot-product-reverse-discovery, design D9) Flag-gated, default OFF: revisits
+    // docs/todo-sku-sintetico.md's "CLI-only, no server wiring" decision for the orphan
+    // reconciliation engine specifically. Daily tick + bounded per-tick limit to respect the
+    // shared HubSpot rps:15/burst:20 budget alongside the other scheduled jobs.
+    productOrphanReconcile: {
+      jobEnabled: String(env.PRODUCT_ORPHAN_RECONCILE_JOB_ENABLED || 'false').toLowerCase() === 'true',
+      tickIntervalMs: Number(env.PRODUCT_ORPHAN_RECONCILE_TICK_INTERVAL_MS || 24 * 60 * 60 * 1000),
+      orphanWatchdogMs: Number(env.PRODUCT_ORPHAN_RECONCILE_ORPHAN_WATCHDOG_MS || 60 * 60 * 1000),
+      limit: Number(env.PRODUCT_ORPHAN_RECONCILE_LIMIT || 200),
+      trackAEnabled: String(env.PRODUCT_ORPHAN_RECONCILE_TRACK_A_ENABLED || 'true').toLowerCase() === 'true',
+      trackBEnabled: String(env.PRODUCT_ORPHAN_RECONCILE_TRACK_B_ENABLED || 'true').toLowerCase() === 'true'
     }
   }
 }

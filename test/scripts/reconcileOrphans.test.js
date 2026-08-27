@@ -239,4 +239,17 @@ describe('reconcileOrphans (openspec/hubspot-product-odoo-id-key, orphan-reconci
     const result = await reconcileOrphans({ hubspotApi, odooApi, mappingRepo, logger: makeLogger(), dryRun: true, limit: 3 })
     expect(result.scanned).toBe(3)
   })
+
+  // (sdd/hubspot-product-reverse-discovery, Phase 5 — spec: "CLI still works standalone")
+  // The CLI's require graph must never route through the scheduled job wrapper: the job is an
+  // independent entrypoint composed only from src/server.js, and the CLI must keep running
+  // exactly as before whether or not PRODUCT_ORPHAN_RECONCILE_JOB_ENABLED is set.
+  it('does not depend on the scheduled job module (productOrphanReconcileJobModule)', () => {
+    const scriptSource = require('node:fs').readFileSync(
+      require.resolve('../../scripts/backfill-product-odoo-id.js'),
+      'utf8'
+    )
+    expect(scriptSource).not.toMatch(/productOrphanReconcileJobModule/)
+    expect(scriptSource).not.toMatch(/require\(['"].*\/server(\.js)?['"]\)/)
+  })
 })
