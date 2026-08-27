@@ -48,6 +48,22 @@ async function panelRoutesImpl(fastify, opts) {
     return reply.send({ ok: true, items })
   })
 
+  // (sdd/hubspot-product-reverse-discovery, Phase 4) Read-only surface over Phase 3's
+  // quarantine/archive audit collections. Same {page,pageSize,q} shape as /product-mappings.
+  fastify.get('/api/panel/product-quarantine', requireAuth, async (req, reply) => {
+    if (!productRepository) return reply.code(503).send({ ok: false, error: 'product_repository_not_ready' })
+    const { page = 1, pageSize = 25, q = null } = req.query || {}
+    const result = await productRepository.listOrphanQuarantine({ page: Number(page) || 1, pageSize: Number(pageSize) || 25, q })
+    return reply.send({ ok: true, ...result })
+  })
+
+  fastify.get('/api/panel/product-archives', requireAuth, async (req, reply) => {
+    if (!productRepository) return reply.code(503).send({ ok: false, error: 'product_repository_not_ready' })
+    const { page = 1, pageSize = 25, q = null } = req.query || {}
+    const result = await productRepository.listOrphanArchives({ page: Number(page) || 1, pageSize: Number(pageSize) || 25, q })
+    return reply.send({ ok: true, ...result })
+  })
+
   fastify.get('/api/panel/logs', requireAuth, async (req, reply) => {
     const { page = 1, pageSize = 25, event = null, success, q = null } = req.query || {}
     const successBool = typeof success === 'string' ? (success === 'true') : success

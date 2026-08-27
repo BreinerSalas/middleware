@@ -7,8 +7,11 @@ const mongoose = require('mongoose')
 
 const { createPanelRoutes } = require('../../../src/adapters/inbound/http/panel.routes.js')
 const { MongoPanelRepository } = require('../../../src/adapters/outbound/mongo/MongoPanelRepository.js')
+const { MongoProductPanelRepository } = require('../../../src/adapters/outbound/mongo/MongoProductPanelRepository.js')
 const { MappingModel } = require('../../../src/adapters/outbound/mongo/schemas/mapping.schema.js')
 const { AuditModel } = require('../../../src/adapters/outbound/mongo/schemas/audit.schema.js')
+const { ProductOrphanQuarantineModel } = require('../../../src/adapters/outbound/mongo/schemas/productOrphanQuarantine.schema.js')
+const { ProductOrphanArchiveModel } = require('../../../src/adapters/outbound/mongo/schemas/productOrphanArchive.schema.js')
 
 let mongoServer
 let repo
@@ -39,7 +42,7 @@ beforeEach(async () => {
 
 afterEach(async () => { while (apps.length) { try { await apps.pop().close() } catch (_) {} } })
 
-async function buildApp({ httpClient = null, transport = null, config: cfgOverride = null } = {}) {
+async function buildApp({ httpClient = null, transport = null, config: cfgOverride = null, productRepository = null } = {}) {
   const Fastify = require('fastify')
   const app = Fastify({ logger: false })
   const useConfig = cfgOverride || config
@@ -58,6 +61,7 @@ async function buildApp({ httpClient = null, transport = null, config: cfgOverri
   }
   await app.register(createPanelRoutes, {
     panelRepository: repo,
+    productRepository,
     healthCheck: fakeHealthCheck,
     config: useConfig
   })
@@ -225,6 +229,89 @@ describe('panel.routes', () => {
       const res = await request(app.server).post('/api/panel/mappings/clear').set('x-panel-token', 'topsecret').send({ confirm: true })
       expect(res.status).toBe(200)
       expect(res.body.removed).toBe(2)
+    })
+  })
+
+  describe('GET /api/panel/product-quarantine', () => {
+    it('returns 503 when productRepository is not provided', async () => {
+      const app = await buildApp()
+      const res = await request(app.server).get('/api/panel/product-quarantine').set('x-panel-token', 'topsecret')
+      expect(res.status).toBe(503)
+      expect(res.body.error).toBe('product_repository_not_ready')
+    })
+
+    it('returns 401 without token even when productRepository is provided', async () => {
+      const productRepository = new MongoProductPanelRepository()
+      const app = await buildApp({ productRepository })
+      const res = await request(app.server).get('/api/panel/product-quarantine')
+      expect(res.status).toBe(401)
+    })
+
+    it('returns paginated quarantine entries', async () => {
+      for (let i = 0; i < 3; i += 1) {
+        await ProductOrphanQuarantineModel.create({
+          hubspotId: `HUB-${i}`, name: `Widget ${i}`, reason: 'no_name',
+          firstSeenAt: new Date(`2026-01-0${i + 1}T00:00:00Z`), lastSeenAt: new Date(`2026-01-0${i + 1}T00:00:00Z`)
+        })
+      }
+      const productRepository = new MongoProductPanelRepository()
+      const app = await buildApp({ productRepository })
+      const res = await request(app.server).get('/api/panel/product-quarantine?page=1&pageSize=2').set('x-panel-token', 'topsecret')
+      expect(res.status).toBe(200)
+      expect(res.body.items).toHaveLength(2)
+      expect(res.body.total).toBe(3)
+      expect(res.body.page).toBe(1)
+      expect(res.body.pageSize).toBe(2)
+    })
+
+    it('filters by q', async () => {
+      await ProductOrphanQuarantineModel.create({ hubspotId: 'HUB-1', name: 'Findable', reason: 'no_name', firstSeenAt: new Date(), lastSeenAt: new Date() })
+      await ProductOrphanQuarantineModel.create({ hubspotId: 'HUB-2', name: 'Other', reason: 'ambiguous_in_hubspot', firstSeenAt: new Date(), lastSeenAt: new Date() })
+      const productRepository = new MongoProductPanelRepository()
+      const app = await buildApp({ productRepository })
+      const res = await request(app.server).get('/api/panel/product-quarantine?q=Findable').set('x-panel-token', 'topsecret')
+      expect(res.body.total).toBe(1)
+    })
+  })
+
+  describe('GET /api/panel/product-archives', () => {
+    it('returns 503 when productRepository is not provided', async () => {
+      const app = await buildApp()
+      const res = await request(app.server).get('/api/panel/product-archives').set('x-panel-token', 'topsecret')
+      expect(res.status).toBe(503)
+      expect(res.body.error).toBe('product_repository_not_ready')
+    })
+
+    it('returns 401 without token even when productRepository is provided', async () => {
+      const productRepository = new MongoProductPanelRepository()
+      const app = await buildApp({ productRepository })
+      const res = await request(app.server).get('/api/panel/product-archives')
+      expect(res.status).toBe(401)
+    })
+
+    it('returns paginated archive entries', async () => {
+      for (let i = 0; i < 3; i += 1) {
+        await ProductOrphanArchiveModel.create({
+          hubspotId: `HUB-A-${i}`, name: `Dup ${i}`, status: 'archived', requestedAt: new Date(`2026-01-0${i + 1}T00:00:00Z`)
+        })
+      }
+      const productRepository = new MongoProductPanelRepository()
+      const app = await buildApp({ productRepository })
+      const res = await request(app.server).get('/api/panel/product-archives?page=1&pageSize=2').set('x-panel-token', 'topsecret')
+      expect(res.status).toBe(200)
+      expect(res.body.items).toHaveLength(2)
+      expect(res.body.total).toBe(3)
+      expect(res.body.page).toBe(1)
+      expect(res.body.pageSize).toBe(2)
+    })
+
+    it('filters by q', async () => {
+      await ProductOrphanArchiveModel.create({ hubspotId: 'HUB-A-1', name: 'Dup', status: 'archived', requestedAt: new Date() })
+      await ProductOrphanArchiveModel.create({ hubspotId: 'HUB-A-2', name: 'Other', status: 'failed', requestedAt: new Date() })
+      const productRepository = new MongoProductPanelRepository()
+      const app = await buildApp({ productRepository })
+      const res = await request(app.server).get('/api/panel/product-archives?q=failed').set('x-panel-token', 'topsecret')
+      expect(res.body.total).toBe(1)
     })
   })
 })
