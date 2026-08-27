@@ -37,6 +37,9 @@ const { createPartnerSyncJobModule } = require('./composition/partnerSyncJobModu
 const { MongoPartnerMappingRepository } = require('./adapters/outbound/mongo/MongoPartnerMappingRepository')
 const { MongoPartnerSyncRunRepository } = require('./adapters/outbound/mongo/MongoPartnerSyncRunRepository')
 const { runProductsProvisioningGate } = require('./composition/productsProvisioningGate')
+const { createProductOrphanReconcileModule } = require('./composition/productOrphanReconcileModule')
+const { createProductOrphanReconcileJobModule } = require('./composition/productOrphanReconcileJobModule')
+const { MongoProductOrphanRepository } = require('./adapters/outbound/mongo/MongoProductOrphanRepository')
 
 async function start({ config = null } = {}) {
   const cfg = config || load()
@@ -197,6 +200,32 @@ async function start({ config = null } = {}) {
     })
   }
 
+  let productOrphanReconcileJobModule = null
+  if (cfg.productOrphanReconcile && cfg.productOrphanReconcile.jobEnabled) {
+    const orphanOdooApi = createOdooApiClient({
+      mode: cfg.odoo.mode, baseUrl: cfg.odoo.baseUrl, db: cfg.odoo.db, login: cfg.odoo.login, apiKey: cfg.odoo.apiKey
+    })
+    const orphanHubspotApi = createHubspotApiClient({ baseUrl: cfg.hubspot.apiBase, accessToken: cfg.hubspot.accessToken })
+    const productOrphanReconcileModule = createProductOrphanReconcileModule({
+      hubspotApi: orphanHubspotApi,
+      odooApi: orphanOdooApi,
+      mappingRepo: new MongoProductMappingRepository({ logger }),
+      orphanRepo: new MongoProductOrphanRepository({ logger }),
+      logger,
+      trackAEnabled: cfg.productOrphanReconcile.trackAEnabled,
+      trackBEnabled: cfg.productOrphanReconcile.trackBEnabled
+    })
+    productOrphanReconcileJobModule = createProductOrphanReconcileJobModule({
+      config: cfg,
+      logger,
+      jobRepository: new MongoJobRepository({ logger }),
+      productOrphanReconcileModule,
+      limit: cfg.productOrphanReconcile.limit,
+      tickIntervalMs: cfg.productOrphanReconcile.tickIntervalMs,
+      orphanWatchdogMs: cfg.productOrphanReconcile.orphanWatchdogMs
+    })
+  }
+
   const staticRoot = path.resolve(__dirname, 'panel')
   const app = createApp({ config: cfg, logger, dealSyncModule, staticRoot })
 
@@ -205,6 +234,7 @@ async function start({ config = null } = {}) {
   if (saleOrderStatusSyncJobModule) await saleOrderStatusSyncJobModule.startWorker()
   if (manufacturingOrderRetrySyncJobModule) await manufacturingOrderRetrySyncJobModule.startWorker()
   if (partnerSyncJobModule) await partnerSyncJobModule.startWorker()
+  if (productOrphanReconcileJobModule) await productOrphanReconcileJobModule.startWorker()
   await app.listen({ port: cfg.server.port, host: '0.0.0.0' })
   logger.info('server.started', { port: cfg.server.port })
 
@@ -216,6 +246,7 @@ async function start({ config = null } = {}) {
     if (saleOrderStatusSyncJobModule) { try { await saleOrderStatusSyncJobModule.stopWorker() } catch (_) { /* noop */ } }
     if (manufacturingOrderRetrySyncJobModule) { try { await manufacturingOrderRetrySyncJobModule.stopWorker() } catch (_) { /* noop */ } }
     if (partnerSyncJobModule) { try { await partnerSyncJobModule.stopWorker() } catch (_) { /* noop */ } }
+    if (productOrphanReconcileJobModule) { try { await productOrphanReconcileJobModule.stopWorker() } catch (_) { /* noop */ } }
     try { await disconnectMongo({ logger }) } catch (_) { /* noop */ }
     process.exit(0)
   }
@@ -230,7 +261,8 @@ async function start({ config = null } = {}) {
     productSyncJobModule,
     saleOrderStatusSyncJobModule,
     manufacturingOrderRetrySyncJobModule,
-    partnerSyncJobModule
+    partnerSyncJobModule,
+    productOrphanReconcileJobModule
   }
 }
 
