@@ -71,6 +71,9 @@ function createOdooApiClient({
       async readProductUoms(_ids) {
         return {}
       },
+      async readProductPrices(_ids) {
+        return {}
+      },
       async countProductsWithDefaultCode() {
         return 0
       },
@@ -570,6 +573,25 @@ function createOdooApiClient({
         for (const r of result) {
           if (r && r.id != null && Array.isArray(r.uom_id) && r.uom_id.length > 0) {
             map[Number(r.id)] = Number(r.uom_id[0])
+          }
+        }
+      }
+      return map
+    },
+    // (sdd/hubspot-product-reverse-discovery, design D5) Mirrors `readProductUoms`: one
+    // batched `product.product` read for Track A's price-disambiguation compare against
+    // the orphan's HubSpot `price` (see `priceCents.pricesMatchInCents`).
+    async readProductPrices(ids) {
+      const cleaned = Array.isArray(ids)
+        ? [...new Set(ids.map(Number).filter((n) => Number.isFinite(n)))]
+        : []
+      if (cleaned.length === 0) return {}
+      const result = await executeKw('product.product', 'read', [cleaned], { fields: ['id', 'list_price'] })
+      const map = {}
+      if (Array.isArray(result)) {
+        for (const r of result) {
+          if (r && r.id != null) {
+            map[Number(r.id)] = Number(r.list_price)
           }
         }
       }

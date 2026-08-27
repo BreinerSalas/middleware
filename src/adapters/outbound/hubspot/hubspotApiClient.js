@@ -283,6 +283,34 @@ function createHubspotApiClient({
     return { results, errors, numErrors: typeof (data && data.numErrors) === 'number' ? data.numErrors : errors.length }
   }
 
+  // (sdd/hubspot-product-reverse-discovery, design D2) Track B archives a duplicate
+  // HubSpot product via HubSpot's own soft-delete (recycle bin, restorable) instead of a
+  // hard DELETE. The endpoint returns an empty body on 204 success — do not treat that as
+  // a missing/invalid response.
+  async function batchArchiveProducts({ inputs = [] } = {}) {
+    if (inputs.length === 0) return { archived: 0, errors: [] }
+    let data
+    try {
+      data = await requestWithRateLimit('post', '/crm/v3/objects/products/batch/archive', { inputs })
+    } catch (err) { throw normalizeHubspotError(err) }
+    const rawErrors = (data && data.errors) || []
+    return { archived: inputs.length - rawErrors.length, errors: rawErrors }
+  }
+
+  // (sdd/hubspot-product-reverse-discovery, design D3) Referenced-orphan check ahead of a
+  // Track B archive: any existing deal/quote line item pointing at this product blocks the
+  // archive. `limit: 1` keeps the call bounded — only `total` matters, not the row itself.
+  async function searchLineItemsByProductId(productId) {
+    let data
+    try {
+      data = await requestWithRateLimit('post', '/crm/v3/objects/line_items/search', {
+        filterGroups: [{ filters: [{ propertyName: 'hs_product_id', operator: 'EQ', value: String(productId) }] }],
+        limit: 1
+      })
+    } catch (err) { throw normalizeHubspotError(err) }
+    return { total: (data && data.total) || 0, results: (data && data.results) || [] }
+  }
+
   async function getCustomProperty(objectType, name) {
     try {
       const res = await requestWithRateLimit('get', `/crm/v3/properties/${objectType}/${name}`)
@@ -384,8 +412,8 @@ function createHubspotApiClient({
     getDeal, getDealStageHistory, getDealAssociations, getDealLineItems, updateDeal,
     getLineItemsFor, getQuote, getQuoteLineItems, getDealQuotes, updateQuote,
     searchProductByOdooId, createProduct, updateProduct,
-    batchUpsertProducts, batchUpdateProducts,
-    searchProducts,
+    batchUpsertProducts, batchUpdateProducts, batchArchiveProducts,
+    searchProducts, searchLineItemsByProductId,
     searchContactByProperty, createContact, updateContact, batchUpsertContacts,
     getCustomProperty, createCustomProperty, updateCustomProperty, ensureCustomProperty,
     _http: http,
