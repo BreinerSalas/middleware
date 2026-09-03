@@ -120,30 +120,30 @@ describe('saleOrderStatusSyncModule.runIncremental (Fase 6 — docs/plan-cambios
     expect(cursorRepo.set).toHaveBeenCalledWith('sale-order-status-sync', '2026-08-06 08:59:00')
   })
 
-  it('calls revertDealStage when the sale.order was cancelled (Fase 6)', async () => {
+  it('calls revertDealStage when the sale.order was cancelled for a legacy deal-kind sourceId (Fase 6)', async () => {
     const odooSource = makeSource({ pages: [[so(501, 'cancel', 'no', '2026-08-06 09:00:00')]] })
-    const mappingRepository = makeMappingRepository({ bySourceRef: { 501: { sourceId: 'D-1:qQ-1', targetId: '501' } } })
+    const mappingRepository = makeMappingRepository({ bySourceRef: { 501: { sourceId: 'D-1', targetId: '501' } } })
     const hubspotGateway = makeHubspotGateway()
     const cursorRepo = makeCursorRepo()
     const m = createSaleOrderStatusSyncModule({ odooSource, mappingRepository, hubspotGateway, cursorRepo, logger: makeLogger() })
     await m.runIncremental({})
-    expect(hubspotGateway.revertDealStage).toHaveBeenCalledWith('D-1:qQ-1')
+    expect(hubspotGateway.revertDealStage).toHaveBeenCalledWith('D-1')
   })
 
   it('clears numero_orden_fabricacion in the same writeBack when the sale.order was cancelled (evita dejar el número de la MO vieja/inválida)', async () => {
     const odooSource = makeSource({ pages: [[so(501, 'cancel', 'no', '2026-08-06 09:00:00')]] })
-    const mappingRepository = makeMappingRepository({ bySourceRef: { 501: { sourceId: 'D-1:qQ-1', targetId: '501' } } })
+    const mappingRepository = makeMappingRepository({ bySourceRef: { 501: { sourceId: 'D-1', targetId: '501' } } })
     const hubspotGateway = makeHubspotGateway()
     const cursorRepo = makeCursorRepo()
     const m = createSaleOrderStatusSyncModule({ odooSource, mappingRepository, hubspotGateway, cursorRepo, logger: makeLogger() })
     await m.runIncremental({})
-    expect(hubspotGateway.writeBack).toHaveBeenCalledWith('D-1:qQ-1', {
+    expect(hubspotGateway.writeBack).toHaveBeenCalledWith('D-1', {
       estado_presupuesto_odoo: 'cancel', estado_facturacion_odoo: 'no', numero_orden_fabricacion: null
     })
   })
 
   it('does NOT call revertDealStage again for the same cancelled sale.order on a later run (evita deshacer una corrección manual hecha dentro de la ventana de overlap)', async () => {
-    const bySourceRef = { 501: { sourceId: 'D-1:qQ-1', targetId: '501' } }
+    const bySourceRef = { 501: { sourceId: 'D-1', targetId: '501' } }
     const mappingRepository = makeMappingRepository({ bySourceRef })
     const hubspotGateway = makeHubspotGateway()
     const cursorRepo = makeCursorRepo()
@@ -163,7 +163,7 @@ describe('saleOrderStatusSyncModule.runIncremental (Fase 6 — docs/plan-cambios
   })
 
   it('calls revertDealStage again if the sale.order is cancelled a second time with a new write_date (nueva cancelación legítima)', async () => {
-    const bySourceRef = { 501: { sourceId: 'D-1:qQ-1', targetId: '501' } }
+    const bySourceRef = { 501: { sourceId: 'D-1', targetId: '501' } }
     const mappingRepository = makeMappingRepository({ bySourceRef })
     const hubspotGateway = makeHubspotGateway()
     const cursorRepo = makeCursorRepo()
@@ -177,6 +177,38 @@ describe('saleOrderStatusSyncModule.runIncremental (Fase 6 — docs/plan-cambios
     await m2.runIncremental({})
 
     expect(hubspotGateway.revertDealStage).toHaveBeenCalledTimes(2)
+  })
+
+  it('calls revertQuoteReleaseOnCancellation instead of revertDealStage for a quote-kind sourceId (per-quote gating flow)', async () => {
+    const odooSource = makeSource({ pages: [[so(501, 'cancel', 'no', '2026-08-06 09:00:00')]] })
+    const mappingRepository = makeMappingRepository({ bySourceRef: { 501: { sourceId: 'D-1:qQ-1', targetId: '501' } } })
+    const hubspotGateway = makeHubspotGateway()
+    const cursorRepo = makeCursorRepo()
+    const revertQuoteReleaseOnCancellation = { execute: vi.fn(async () => null) }
+    const m = createSaleOrderStatusSyncModule({
+      odooSource, mappingRepository, hubspotGateway, cursorRepo, revertQuoteReleaseOnCancellation, logger: makeLogger()
+    })
+    await m.runIncremental({})
+    expect(revertQuoteReleaseOnCancellation.execute).toHaveBeenCalledWith({
+      quoteId: 'Q-1', reason: 'Odoo sale.order 501 cancelled'
+    })
+    expect(hubspotGateway.revertDealStage).not.toHaveBeenCalled()
+  })
+
+  it('logs a warning and does not throw when a quote-kind cancellation is detected but revertQuoteReleaseOnCancellation was not injected', async () => {
+    const odooSource = makeSource({ pages: [[so(501, 'cancel', 'no', '2026-08-06 09:00:00')]] })
+    const mappingRepository = makeMappingRepository({ bySourceRef: { 501: { sourceId: 'D-1:qQ-1', targetId: '501' } } })
+    const hubspotGateway = makeHubspotGateway()
+    const cursorRepo = makeCursorRepo()
+    const logger = makeLogger()
+    const m = createSaleOrderStatusSyncModule({ odooSource, mappingRepository, hubspotGateway, cursorRepo, logger })
+    const out = await m.runIncremental({})
+    expect(logger.warn).toHaveBeenCalledWith(
+      'sale-order-status-sync.quote_release_revert.skipped_no_dependency',
+      expect.objectContaining({ quoteId: 'Q-1' })
+    )
+    expect(hubspotGateway.revertDealStage).not.toHaveBeenCalled()
+    expect(out.failed).toBe(0)
   })
 
   it('does NOT call revertDealStage for states other than cancel', async () => {

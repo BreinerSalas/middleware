@@ -471,6 +471,29 @@ describe('config', () => {
     })
   })
 
+  describe('quoteRelease (manual per-quote MO release gate — separate trust boundary from the panel)', () => {
+    const baseEnv = {
+      ...PORTAL_ENV,
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret'
+    }
+
+    it('defaults to an empty token and the x-quote-release-token header', () => {
+      const cfg = load({ env: baseEnv })
+      expect(cfg.quoteRelease.token).toBe('')
+      expect(cfg.quoteRelease.headerName).toBe('authorization')
+    })
+
+    it('reads QUOTE_RELEASE_TOKEN and QUOTE_RELEASE_TOKEN_HEADER_NAME from env', () => {
+      const cfg = load({
+        env: { ...baseEnv, QUOTE_RELEASE_TOKEN: 'qr-secret', QUOTE_RELEASE_TOKEN_HEADER_NAME: 'X-Custom-Header' }
+      })
+      expect(cfg.quoteRelease.token).toBe('qr-secret')
+      expect(cfg.quoteRelease.headerName).toBe('x-custom-header')
+    })
+  })
+
   describe('manufacturingOrderRetrySync (Fase 6 — reintento de MO tardía)', () => {
     const baseEnv = {
       ...PORTAL_ENV,

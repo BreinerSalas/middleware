@@ -134,6 +134,13 @@ describe('composition/dealSyncModule end-to-end', () => {
     })
   })
 
+  it('exposes the composed enqueueSyncJobUseCase via _internals, sharing the same jobRepository/dedupeGuard used by the job poller (so other modules — e.g. quoteReleaseModule — can enqueue jobs the poller will actually process)', () => {
+    const { EnqueueSyncJobUseCase } = require('../../src/core/application/use-cases/EnqueueSyncJobUseCase.js')
+    expect(moduleUnderTest._internals.enqueueSyncJobUseCase).toBeInstanceOf(EnqueueSyncJobUseCase)
+    expect(moduleUnderTest._internals.enqueueSyncJobUseCase.jobRepository).toBe(moduleUnderTest._internals.jobRepository)
+    expect(moduleUnderTest._internals.enqueueSyncJobUseCase.dedupeGuard).toBe(moduleUnderTest._internals.dedupeGuard)
+  })
+
   it('wires the real HubspotSourceGateway.closedWonStageId from config.deals.closedWonStageId when sourceGateway is not injected', () => {
     const otherTenantClosedWonId = '999999-other-portal'
     const module = createDealSyncModule({

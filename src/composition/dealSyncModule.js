@@ -220,7 +220,8 @@ function createDealSyncModule({
       sourceGateway: _sourceGateway,
       targetGateway: _targetGateway,
       jobPoller: _jobPoller,
-      planDealSyncUseCase: _planDealSyncUseCase
+      planDealSyncUseCase: _planDealSyncUseCase,
+      enqueueSyncJobUseCase: _enqueueSyncJobUseCase
     }
   }
 }

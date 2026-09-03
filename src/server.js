@@ -40,12 +40,25 @@ const { runProductsProvisioningGate } = require('./composition/productsProvision
 const { createProductOrphanReconcileModule } = require('./composition/productOrphanReconcileModule')
 const { createProductOrphanReconcileJobModule } = require('./composition/productOrphanReconcileJobModule')
 const { MongoProductOrphanRepository } = require('./adapters/outbound/mongo/MongoProductOrphanRepository')
+const { createQuoteReleaseModule } = require('./composition/quoteReleaseModule')
+const { MongoQuoteReleaseTrackerRepository } = require('./adapters/outbound/mongo/MongoQuoteReleaseTrackerRepository')
 
 async function start({ config = null } = {}) {
   const cfg = config || load()
   const logger = createLogger({ level: cfg.logging.level })
   await connectMongo({ uri: cfg.mongodbUri, logger })
   const dealSyncModule = createDealSyncModule({ config: cfg, logger })
+
+  // Quote-release gating (per-quote MO trigger, manual click from a future React CRM card):
+  // reuses the deal-sync flow's already-composed enqueueSyncJobUseCase (so a released quote's
+  // sync job lands in the same jobRepository the existing JobPoller already processes) and
+  // auditTrail (so cancellation reverts show up in the same panel logs as everything else).
+  const quoteReleaseModule = createQuoteReleaseModule({
+    trackerRepository: new MongoQuoteReleaseTrackerRepository({ logger }),
+    enqueueSyncJobUseCase: dealSyncModule._internals.enqueueSyncJobUseCase,
+    auditTrail: dealSyncModule._internals.auditTrail,
+    logger
+  })
 
   const hubspotApi = createHubspotApiClient({
     baseUrl: cfg.hubspot.apiBase,
@@ -132,6 +145,7 @@ async function start({ config = null } = {}) {
       mappingRepository: new MongoMappingRepository(),
       hubspotGateway: saleOrderHubspotGateway,
       cursorRepo: new MongoSyncCursorRepository(),
+      revertQuoteReleaseOnCancellation: quoteReleaseModule.revertQuoteReleaseOnCancellation,
       logger
     })
     saleOrderStatusSyncJobModule = createSaleOrderStatusSyncJobModule({
@@ -227,7 +241,7 @@ async function start({ config = null } = {}) {
   }
 
   const staticRoot = path.resolve(__dirname, 'panel')
-  const app = createApp({ config: cfg, logger, dealSyncModule, staticRoot })
+  const app = createApp({ config: cfg, logger, dealSyncModule, staticRoot, quoteReleaseModule })
 
   await dealSyncModule.startWorker()
   if (productSyncJobModule) await productSyncJobModule.startWorker()
@@ -262,7 +276,8 @@ async function start({ config = null } = {}) {
     saleOrderStatusSyncJobModule,
     manufacturingOrderRetrySyncJobModule,
     partnerSyncJobModule,
-    productOrphanReconcileJobModule
+    productOrphanReconcileJobModule,
+    quoteReleaseModule
   }
 }
 

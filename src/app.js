@@ -8,14 +8,16 @@ const { createLogger } = require('./lib/logger')
 const { createHubspotSignatureMiddleware } = require('./adapters/inbound/http/hubspotSignature.middleware')
 const { createCorrelationMiddleware } = require('./adapters/inbound/http/correlation.middleware')
 const { createHealthRoutes } = require('./adapters/inbound/http/health.routes')
+const { createHubspotApiClient } = require('./adapters/outbound/hubspot/hubspotApiClient')
 const { createPanelRoutes } = require('./adapters/inbound/http/panel.routes')
+const { createQuoteReleaseRoutes } = require('./adapters/inbound/http/quoteRelease.routes')
 const { createMediaRoutes } = require('./adapters/inbound/http/media.routes')
 const { MongoPanelRepository } = require('./adapters/outbound/mongo/MongoPanelRepository')
 const { MongoProductPanelRepository } = require('./adapters/outbound/mongo/MongoProductPanelRepository')
 const { hubspotHealthCheck } = require('./adapters/outbound/hubspot/hubspotHealthCheck')
 const { odooHealthCheck } = require('./adapters/outbound/odoo/odooHealthCheck')
 
-function createApp({ config, logger = null, dealSyncModule = null, panelRepository = null, staticRoot = null } = {}) {
+function createApp({ config, logger = null, dealSyncModule = null, panelRepository = null, staticRoot = null, quoteReleaseModule = null } = {}) {
   if (!config) throw new Error('createApp requires config')
   const log = logger || createLogger({ level: config.logging.level })
   const app = Fastify({ logger: false })
@@ -112,6 +114,13 @@ function createApp({ config, logger = null, dealSyncModule = null, panelReposito
       odoo: () => odooHealthCheck({ mode: config.odoo.mode, baseUrl: config.odoo.baseUrl, timeoutMs: 5000 })
     }
     app.register(createPanelRoutes, { panelRepository: repo, productRepository: productRepo, healthCheck, config })
+  }
+
+  // quote release: manual per-quote MO release gate (future React CRM card), distinct
+  // trust boundary/token from the panel above
+  if (config.quoteRelease && quoteReleaseModule && quoteReleaseModule.triggerQuoteRelease) {
+    const hubspotApiClient = createHubspotApiClient({ baseUrl: config.hubspot.apiBase, accessToken: config.hubspot.accessToken })
+    app.register(createQuoteReleaseRoutes, { triggerQuoteRelease: quoteReleaseModule.triggerQuoteRelease, hubspotApiClient, config })
   }
 
   // media: signed proxy for Odoo product images (Odoo serves the real binary only to

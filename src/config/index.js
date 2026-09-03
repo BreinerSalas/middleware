@@ -41,6 +41,8 @@ const OPTIONAL_KEYS = [
   'RETRY_MAX_DELAY_MS',
   'PANEL_TOKEN',
   'PANEL_TOKEN_HEADER_NAME',
+  'QUOTE_RELEASE_TOKEN',
+  'QUOTE_RELEASE_TOKEN_HEADER_NAME',
   'MEDIA_URL_SECRET',
   'MEDIA_PUBLIC_BASE_URL',
   'PRODUCT_SYNC_JOB_ENABLED',
@@ -146,6 +148,15 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
     panel: {
       token: env.PANEL_TOKEN || '',
       headerName: (env.PANEL_TOKEN_HEADER_NAME || 'x-panel-token').toLowerCase()
+    },
+    // Distinct trust boundary from the internal ops panel above — a separate token/header
+    // guards the manual per-quote MO release action a future React CRM card will call.
+    quoteRelease: {
+      token: env.QUOTE_RELEASE_TOKEN || '',
+      // hubspot.fetch() from the card only permits the 'Authorization' header on custom
+      // requests (confirmed via `hs project dev` warning log) — any other header name is
+      // silently rejected and the request fails with an empty-body 400 before reaching us.
+      headerName: (env.QUOTE_RELEASE_TOKEN_HEADER_NAME || 'authorization').toLowerCase()
     },
     media: {
       urlSecret: env.MEDIA_URL_SECRET || '',
