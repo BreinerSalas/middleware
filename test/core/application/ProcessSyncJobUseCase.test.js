@@ -89,3 +89,57 @@ describe('ProcessSyncJobUseCase — retryPolicy pass-through (write-back regress
     expect(mappingRepository.upsert).toHaveBeenCalledWith(expect.objectContaining({ payloadHash: 'hash-abc' }))
   })
 })
+
+describe('ProcessSyncJobUseCase — shouldConfirm resolution from the job payload (frozen at enqueue time)', () => {
+  // The tracker is re-readable at an indeterminate LATER time by another process
+  // (saleOrderStatusSyncModule's independent poller), so re-reading it here to decide
+  // shouldConfirm is inherently racy. shouldConfirm must instead be a pure, synchronous
+  // read of the job's own (immutable) payload, frozen at enqueue time by
+  // TriggerQuoteReleaseUseCase. There is no quoteReleaseTrackerRepository dependency
+  // anymore — ProcessSyncJobUseCase never looks the tracker up.
+  function makeUseCase() {
+    const sourceGateway = makeSourceGateway()
+    const jobRepository = makeJobRepository()
+    const mappingRepository = makeMappingRepository()
+    const targetGateway = makeTargetGateway()
+    const useCase = new ProcessSyncJobUseCase({
+      jobRepository, mappingRepository, sourceGateway, targetGateway,
+      auditTrail: { record: vi.fn(async () => null) },
+      retryPolicy: { buildWriteBackPayload: (m) => ({ ref: m.targetRef }) },
+      validators: []
+    })
+    return { useCase, targetGateway }
+  }
+
+  it('a quote-kind job (manual release path) with payload.shouldConfirm: true calls upsert with shouldConfirm: true', async () => {
+    const { useCase, targetGateway } = makeUseCase()
+    await useCase.execute({
+      job: { _id: 'JOB-1', sourceId: 'D-1:qQ-1', correlationId: 'c-1', attempts: 0, maxAttempts: 5, payload: { shouldConfirm: true, releasedAt: '2026-01-01T00:00:00.000Z' } }
+    })
+    expect(targetGateway.upsert).toHaveBeenCalledWith(expect.objectContaining({ shouldConfirm: true }))
+  })
+
+  it('a quote-kind job (automatic deal-won fan-out) whose payload lacks shouldConfirm calls upsert with shouldConfirm: false', async () => {
+    const { useCase, targetGateway } = makeUseCase()
+    await useCase.execute({
+      job: { _id: 'JOB-1', sourceId: 'D-1:qQ-1', correlationId: 'c-1', attempts: 0, maxAttempts: 5, payload: { quoteId: 'Q-1' } }
+    })
+    expect(targetGateway.upsert).toHaveBeenCalledWith(expect.objectContaining({ shouldConfirm: false }))
+  })
+
+  it('a quote-kind job with a null payload calls upsert with shouldConfirm: false, no crash', async () => {
+    const { useCase, targetGateway } = makeUseCase()
+    await useCase.execute({
+      job: { _id: 'JOB-1', sourceId: 'D-1:qQ-1', correlationId: 'c-1', attempts: 0, maxAttempts: 5, payload: null }
+    })
+    expect(targetGateway.upsert).toHaveBeenCalledWith(expect.objectContaining({ shouldConfirm: false }))
+  })
+
+  it('a deal-kind job (no :q in sourceId — legacy per-deal fallback) leaves shouldConfirm undefined so the gateway default (autoConfirm) applies, regardless of payload content', async () => {
+    const { useCase, targetGateway } = makeUseCase()
+    await useCase.execute({
+      job: { _id: 'JOB-2', sourceId: 'D-1', correlationId: 'c-1', attempts: 0, maxAttempts: 5, payload: { shouldConfirm: true } }
+    })
+    expect(targetGateway.upsert).toHaveBeenCalledWith(expect.objectContaining({ shouldConfirm: undefined }))
+  })
+})

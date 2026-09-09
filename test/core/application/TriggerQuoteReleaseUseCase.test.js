@@ -79,10 +79,28 @@ describe('TriggerQuoteReleaseUseCase', () => {
     expect(enqueueSyncJobUseCase.execute).toHaveBeenCalledWith({
       sourceId: 'deal-1:qquote-1',
       correlationId: 'corr-1',
-      rawPayload: { foo: 'bar' },
+      rawPayload: expect.objectContaining({ foo: 'bar', releasedAt: expect.any(String), shouldConfirm: true }),
       kind: 'quote'
     })
     expect(result).toEqual({ released: true, tracker, enqueued: enqueueResult })
+  })
+
+  it('stamps a per-attempt releasedAt onto rawPayload so the dedupeKey varies on every release (never a silent duplicate)', async () => {
+    const tracker = { stage: 'pending', release: vi.fn() }
+    const evaluateQuoteRelease = makeEvaluateQuoteRelease({ canRelease: true, tracker })
+    const enqueueSyncJobUseCase = makeEnqueueSyncJobUseCase()
+    const trackerRepository = makeTrackerRepository()
+    const timestamps = ['2026-01-01T00:00:00.000Z', '2026-01-01T00:05:00.000Z']
+    const clock = vi.fn(() => new Date(timestamps.shift()))
+    const useCase = new TriggerQuoteReleaseUseCase({ evaluateQuoteRelease, enqueueSyncJobUseCase, trackerRepository, clock })
+
+    await useCase.execute({ dealId: 'deal-1', quoteId: 'quote-1' })
+    await useCase.execute({ dealId: 'deal-1', quoteId: 'quote-1' })
+
+    const [firstCall, secondCall] = enqueueSyncJobUseCase.execute.mock.calls
+    expect(firstCall[0].rawPayload).not.toEqual(secondCall[0].rawPayload)
+    expect(firstCall[0].rawPayload.releasedAt).toBe('2026-01-01T00:00:00.000Z')
+    expect(secondCall[0].rawPayload.releasedAt).toBe('2026-01-01T00:05:00.000Z')
   })
 
   it('releases and persists the tracker when the quote is released', async () => {
@@ -96,6 +114,19 @@ describe('TriggerQuoteReleaseUseCase', () => {
 
     expect(tracker.release).toHaveBeenCalledTimes(1)
     expect(trackerRepository.save).toHaveBeenCalledWith(tracker)
+  })
+
+  it('persists the released tracker BEFORE enqueueing, so a poller that claims the job immediately never reads a stale tracker', async () => {
+    const order = [];
+    const tracker = { stage: 'cancelled', release: vi.fn(() => { order.push('release') }) };
+    const evaluateQuoteRelease = makeEvaluateQuoteRelease({ canRelease: true, tracker });
+    const enqueueSyncJobUseCase = { execute: vi.fn(async () => { order.push('enqueue'); return { job: { _id: 'JOB-1' }, deduped: false } }) };
+    const trackerRepository = { save: vi.fn(async (t) => { order.push('save'); return t }) };
+    const useCase = new TriggerQuoteReleaseUseCase({ evaluateQuoteRelease, enqueueSyncJobUseCase, trackerRepository });
+
+    await useCase.execute({ dealId: 'deal-1', quoteId: 'quote-1' });
+
+    expect(order).toEqual(['release', 'save', 'enqueue']);
   })
 
   it('passes dealId and quoteId through to evaluateQuoteRelease (so a first-ever click on an untracked quote can find-or-create)', async () => {

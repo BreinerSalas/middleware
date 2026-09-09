@@ -47,6 +47,14 @@ async function start({ config = null } = {}) {
   const cfg = config || load()
   const logger = createLogger({ level: cfg.logging.level })
   await connectMongo({ uri: cfg.mongodbUri, logger })
+
+  // Shared instance: quoteReleaseModule needs it to flip a quote's stage to 'released'
+  // on manual trigger (TriggerQuoteReleaseUseCase) and to revert it on cancellation
+  // (RevertQuoteReleaseOnCancellationUseCase / saleOrderStatusSyncModule). It is no
+  // longer wired into dealSyncModule: ProcessSyncJobUseCase decides shouldConfirm from
+  // the job's own payload (frozen at enqueue time), not by re-reading this tracker —
+  // re-reading it at processing time raced against this same tracker's other writers.
+  const quoteReleaseTrackerRepository = new MongoQuoteReleaseTrackerRepository({ logger })
   const dealSyncModule = createDealSyncModule({ config: cfg, logger })
 
   // Quote-release gating (per-quote MO trigger, manual click from a future React CRM card):
@@ -54,7 +62,7 @@ async function start({ config = null } = {}) {
   // sync job lands in the same jobRepository the existing JobPoller already processes) and
   // auditTrail (so cancellation reverts show up in the same panel logs as everything else).
   const quoteReleaseModule = createQuoteReleaseModule({
-    trackerRepository: new MongoQuoteReleaseTrackerRepository({ logger }),
+    trackerRepository: quoteReleaseTrackerRepository,
     enqueueSyncJobUseCase: dealSyncModule._internals.enqueueSyncJobUseCase,
     auditTrail: dealSyncModule._internals.auditTrail,
     logger

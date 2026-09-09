@@ -1,5 +1,7 @@
 'use strict'
 
+const { QUOTE_RELEASE_STAGE } = require('../../domain/QuoteReleaseTracker')
+
 class RevertQuoteReleaseOnCancellationUseCase {
   constructor({ trackerRepository, auditTrail = null, logger = null } = {}) {
     if (!trackerRepository) throw new Error('RevertQuoteReleaseOnCancellationUseCase requires trackerRepository')
@@ -13,6 +15,14 @@ class RevertQuoteReleaseOnCancellationUseCase {
     const tracker = await this.trackerRepository.findByQuoteId(quoteId)
     if (!tracker) {
       throw new Error(`RevertQuoteReleaseOnCancellationUseCase: no tracker found for quote ${quoteId}`)
+    }
+    // Already cancelled: skip the transition/persist/audit entirely. Odoo
+    // keeps reporting the sale order as cancelled on every poll tick, so
+    // without this guard we'd re-cancel (and re-audit) on every tick for as
+    // long as the sale order stays cancelled, flooding the audit trail and
+    // risking clobbering a legitimate concurrent re-release.
+    if (tracker.stage === QUOTE_RELEASE_STAGE.CANCELLED) {
+      return tracker
     }
     tracker.cancel()
     const persisted = await this.trackerRepository.save(tracker)

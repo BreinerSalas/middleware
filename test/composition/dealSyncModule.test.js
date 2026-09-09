@@ -533,6 +533,34 @@ describe('buildWriteBackPayload (quote flow)', () => {
   })
 })
 
+describe('composition/dealSyncModule wiring (quote-release confirmation gating)', () => {
+  // shouldConfirm is now frozen into the job payload at enqueue time (by
+  // TriggerQuoteReleaseUseCase) instead of being resolved by re-reading a
+  // QuoteReleaseTracker at processing time, so ProcessSyncJobUseCase no longer
+  // takes a quoteReleaseTrackerRepository dependency at all — passing one through
+  // (even if the caller still provides it) must not attach it to the use case.
+  it('does not attach quoteReleaseTrackerRepository to the default-constructed ProcessSyncJobUseCase, even if passed', () => {
+    const quoteReleaseTrackerRepository = { findByQuoteId: async () => null }
+    const m = createDealSyncModule({
+      config: {
+        mongodbUri: 'mongodb://x',
+        hubspot: { accessToken: 't', apiBase: 'https://api.hubapi.com' },
+        odoo: { mode: 'stub', baseUrl: '', apiKey: '' },
+        server: { port: 0, nodeEnv: 'test' },
+        logging: { level: 'error' },
+        worker: { concurrency: 1, pollIntervalMs: 50 },
+        retry: { maxAttempts: 8, maxDelayMs: 60_000 }
+      },
+      sourceGateway: makeSourceGateway(),
+      logger: null,
+      recoverOrphansOnStart: false,
+      validators: [],
+      quoteReleaseTrackerRepository
+    })
+    expect(m._internals.processSyncJobUseCase.quoteReleaseTrackerRepository).toBeUndefined()
+  })
+})
+
 describe('composition/dealSyncModule wiring (openspec/hubspot-product-odoo-id-key — PR 2)', () => {
   it('the default-constructed OdooTargetGateway receives a productMappingRepository (line-item tier 2 wiring, PR 2)', () => {
     // Do NOT inject `targetGateway` — let the module's default factory construct it. The

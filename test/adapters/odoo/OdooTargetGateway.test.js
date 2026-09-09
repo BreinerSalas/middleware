@@ -588,6 +588,44 @@ describe('OdooTargetGateway auto-confirm (Fase 4 — docs/plan-cambios-2026-08-0
     expect(result.metadata.manufacturingOrder).toBeNull()
   })
 
+  it('shouldConfirm:true passed explicitly confirms even when the gateway autoConfirm is false', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': 17 } })
+    api.confirmSalesOrder = vi.fn(async () => ({ confirmed: true }))
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, autoConfirm: false })
+    const result = await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] },
+      shouldConfirm: true
+    })
+    expect(api.confirmSalesOrder).toHaveBeenCalledWith('SO-NEW')
+    expect(result.metadata.confirmation).toEqual({ status: 'confirmed', reason: null })
+  })
+
+  it('shouldConfirm:false passed explicitly skips confirmation even when the gateway autoConfirm is true', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': 17 } })
+    api.confirmSalesOrder = vi.fn(async () => ({ confirmed: true }))
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, autoConfirm: true })
+    const result = await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] },
+      shouldConfirm: false
+    })
+    expect(api.confirmSalesOrder).not.toHaveBeenCalled()
+    expect(result.metadata.confirmation).toBeNull()
+  })
+
+  it('omitting shouldConfirm preserves the existing default-from-constructor behaviour (autoConfirm true)', async () => {
+    const api = makeApi({ productMap: { 'SKU-1': 17 } })
+    api.confirmSalesOrder = vi.fn(async () => ({ confirmed: true }))
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload, autoConfirm: true })
+    const result = await gw.upsert({
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    expect(api.confirmSalesOrder).toHaveBeenCalledWith('SO-NEW')
+    expect(result.metadata.confirmation).toEqual({ status: 'confirmed', reason: null })
+  })
+
   it('does not look up the MO when autoConfirm is off', async () => {
     const api = makeApi({ productMap: { 'SKU-1': 17 } })
     api.findManufacturingOrderBySaleOrderName = vi.fn(async () => ({ id: 88, name: 'WH/MO/00042' }))

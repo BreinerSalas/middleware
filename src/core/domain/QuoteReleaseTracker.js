@@ -23,14 +23,15 @@ class QuoteReleaseTracker {
     return this
   }
 
-  // Terminal: a cancelled quote must never become releasable again.
   cancel() {
     this.stage = QUOTE_RELEASE_STAGE.CANCELLED
     return this
   }
 
+  // A cancelled MO is exactly as releasable as a fresh pending one — only an
+  // already-released (and still active) quote should block a re-release.
   canRelease() {
-    return this.stage === QUOTE_RELEASE_STAGE.PENDING
+    return this.stage !== QUOTE_RELEASE_STAGE.RELEASED
   }
 }
 

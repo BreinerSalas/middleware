@@ -75,13 +75,13 @@ describe('QuoteReleaseTracker (domain)', () => {
       expect(tracker.canRelease()).toBe(false)
     })
 
-    it('returns false when the stage is cancelled', () => {
+    it('returns true when the stage is cancelled, so a cancelled MO can be released again', () => {
       const tracker = new QuoteReleaseTracker({
         quoteId: 'quote-1',
         dealId: 'deal-1',
         stage: QUOTE_RELEASE_STAGE.CANCELLED
       })
-      expect(tracker.canRelease()).toBe(false)
+      expect(tracker.canRelease()).toBe(true)
     })
   })
 })

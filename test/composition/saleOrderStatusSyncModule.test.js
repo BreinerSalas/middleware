@@ -195,6 +195,27 @@ describe('saleOrderStatusSyncModule.runIncremental (Fase 6 — docs/plan-cambios
     expect(hubspotGateway.revertDealStage).not.toHaveBeenCalled()
   })
 
+  it('clears metadata.manufacturingOrder on the mapping when a quote-kind sale.order is cancelled (para que manufacturing-order-retry-sync la vuelva a tomar como pendiente tras regenerarse)', async () => {
+    const odooSource = makeSource({ pages: [[so(501, 'cancel', 'no', '2026-08-06 09:00:00')]] })
+    const mappingRepository = makeMappingRepository({
+      bySourceRef: {
+        501: { sourceId: 'D-1:qQ-1', targetId: '501', targetRef: 'S501', metadata: { manufacturingOrder: { name: 'MO/OLD' } } }
+      }
+    })
+    const hubspotGateway = makeHubspotGateway()
+    const cursorRepo = makeCursorRepo()
+    const revertQuoteReleaseOnCancellation = { execute: vi.fn(async () => null) }
+    const m = createSaleOrderStatusSyncModule({
+      odooSource, mappingRepository, hubspotGateway, cursorRepo, revertQuoteReleaseOnCancellation, logger: makeLogger()
+    })
+    await m.runIncremental({})
+    expect(mappingRepository.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      sourceId: 'D-1:qQ-1',
+      targetId: '501',
+      metadata: { manufacturingOrder: null }
+    }))
+  })
+
   it('logs a warning and does not throw when a quote-kind cancellation is detected but revertQuoteReleaseOnCancellation was not injected', async () => {
     const odooSource = makeSource({ pages: [[so(501, 'cancel', 'no', '2026-08-06 09:00:00')]] })
     const mappingRepository = makeMappingRepository({ bySourceRef: { 501: { sourceId: 'D-1:qQ-1', targetId: '501' } } })

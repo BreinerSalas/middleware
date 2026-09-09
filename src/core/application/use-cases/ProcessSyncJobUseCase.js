@@ -3,6 +3,7 @@
 const { JOB_STATUS } = require('../../domain/SyncJob')
 const { calculateNextRetry, isRetryableError, shouldDeadLetter } = require('../../domain/RetryPolicy')
 const { SkipSyncError } = require('../../domain/errors')
+const { parseSourceId } = require('../../../adapters/outbound/hubspot/HubspotSourceGateway')
 
 class ProcessSyncJobUseCase {
   constructor({
@@ -71,11 +72,27 @@ class ProcessSyncJobUseCase {
       await this.audit({ jobId, sourceId, correlationId, event: 'validators.passed', success: true })
 
       const existingMapping = await this.mappingRepository.findBySourceId(sourceId)
+
+      // shouldConfirm is decided ONCE, at enqueue time, by whichever use case built this
+      // job's payload (TriggerQuoteReleaseUseCase stamps shouldConfirm: true on manual
+      // release; PlanDealSyncUseCase's automatic fan-out never stamps it at all). Re-reading
+      // a mutable QuoteReleaseTracker HERE, at an indeterminate later processing time, is
+      // exactly the race that produced the live bug this replaces: a concurrent poller
+      // (saleOrderStatusSyncModule) can flip the tracker between enqueue and processing.
+      // A quote-kind job with no explicit flag must resolve to `false` (not `undefined`),
+      // so it never silently falls back to the gateway's static autoConfirm config — that
+      // fallback is exactly what caused the original auto-confirm-everything bug.
+      const { quoteId } = parseSourceId(sourceId)
+      const shouldConfirm = quoteId
+        ? Boolean(job.payload && job.payload.shouldConfirm === true)
+        : undefined
+
       const upsertResult = await this.targetGateway.upsert({
         existingTargetId: existingMapping ? existingMapping.targetId : null,
         record,
         references,
-        correlationId
+        correlationId,
+        shouldConfirm
       })
       await this.audit({
         jobId, sourceId, correlationId,

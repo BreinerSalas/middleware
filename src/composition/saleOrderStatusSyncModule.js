@@ -67,6 +67,18 @@ function createSaleOrderStatusSyncModule({
                   quoteId, sourceId: mapping.sourceId
                 })
               }
+              // Clear the stale MO on the mapping too (not just the HubSpot property above) —
+              // manufacturing-order-retry-sync.js only picks up mappings whose
+              // metadata.manufacturingOrder is null, so leaving the cancelled MO there would
+              // permanently block the retry job from filling in the next MO once the quote
+              // gets released again.
+              await mappingRepository.upsert({
+                sourceId: mapping.sourceId,
+                targetId: mapping.targetId,
+                targetRef: mapping.targetRef,
+                payloadHash: mapping.payloadHash,
+                metadata: { manufacturingOrder: null }
+              })
             } else {
               // Legacy deal-kind sourceId — reverting the whole deal's stage is a repeatable
               // side effect on HubSpot, so guard it against being repeated for the same

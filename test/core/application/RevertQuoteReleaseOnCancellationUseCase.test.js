@@ -69,4 +69,17 @@ describe('RevertQuoteReleaseOnCancellationUseCase', () => {
     const useCase = new RevertQuoteReleaseOnCancellationUseCase({ trackerRepository })
     await expect(useCase.execute({ quoteId: 'quote-1' })).resolves.toBeDefined()
   })
+
+  it('is a no-op when the tracker is already cancelled (idempotency guard against every-tick re-processing)', async () => {
+    const tracker = new QuoteReleaseTracker({ quoteId: 'quote-1', dealId: 'deal-1', stage: QUOTE_RELEASE_STAGE.CANCELLED })
+    const trackerRepository = makeTrackerRepository({ tracker })
+    const auditTrail = makeAuditTrail()
+    const useCase = new RevertQuoteReleaseOnCancellationUseCase({ trackerRepository, auditTrail })
+
+    const result = await useCase.execute({ quoteId: 'quote-1', reason: 'MO cancelled in Odoo' })
+
+    expect(result.stage).toBe(QUOTE_RELEASE_STAGE.CANCELLED)
+    expect(trackerRepository.save).not.toHaveBeenCalled()
+    expect(auditTrail.record).not.toHaveBeenCalled()
+  })
 })

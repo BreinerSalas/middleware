@@ -68,11 +68,11 @@ describe('EvaluateQuoteReleaseUseCase', () => {
     expect(result).toEqual({ tracker, canRelease: false })
   })
 
-  it('returns canRelease=false when the tracker is cancelled', async () => {
+  it('returns canRelease=true when the tracker is cancelled, so a cancelled MO can be re-released', async () => {
     const tracker = new QuoteReleaseTracker({ quoteId: 'quote-1', dealId: 'deal-1', stage: QUOTE_RELEASE_STAGE.CANCELLED })
     const trackerRepository = makeTrackerRepository({ tracker })
     const useCase = new EvaluateQuoteReleaseUseCase({ trackerRepository })
     const result = await useCase.execute({ quoteId: 'quote-1' })
-    expect(result).toEqual({ tracker, canRelease: false })
+    expect(result).toEqual({ tracker, canRelease: true })
   })
 })

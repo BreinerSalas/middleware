@@ -320,7 +320,7 @@ class OdooTargetGateway {
     this.productMappingRepository = productMappingRepository
   }
 
-  async upsert({ existingTargetId = null, record, references = {}, correlationId = null } = {}) {
+  async upsert({ existingTargetId = null, record, references = {}, correlationId = null, shouldConfirm = this.autoConfirm } = {}) {
     if (!record) throw new Error('OdooTargetGateway.upsert requires record')
     // existingTargetId se acepta por contrato del puerto pero se ignora deliberadamente:
     // las filas viejas de mappings tienen ids de mrp.production, no de sale.order.
@@ -384,7 +384,7 @@ class OdooTargetGateway {
 
     const soResult = await this.upsertSalesOrder({ payload, correlationId })
 
-    const confirmation = this.autoConfirm
+    const confirmation = shouldConfirm
       ? await this.confirmSalesOrder(soResult.id, correlationId)
       : null
 
