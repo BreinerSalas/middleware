@@ -572,4 +572,28 @@ describe('config', () => {
       expect(cfg.productOrphanReconcile.trackBEnabled).toBe(false)
     })
   })
+
+  describe('contactInboundSync (sdd/hubspot-contact-inbound-sync, Phase 2 — flag-gated HubSpot->Odoo contact.creation sync)', () => {
+    const baseEnv = {
+      ...PORTAL_ENV,
+      MONGODB_URI: 'mongodb://localhost:27017/x',
+      HUBSPOT_ACCESS_TOKEN: 'tok',
+      HUBSPOT_CLIENT_SECRET: 'my-secret'
+    }
+
+    it('defaults to disabled', () => {
+      const cfg = load({ env: baseEnv })
+      expect(cfg.contactInboundSync.enabled).toBe(false)
+    })
+
+    it('parses CONTACT_INBOUND_SYNC_ENABLED=true to enable the feature', () => {
+      const cfg = load({ env: { ...baseEnv, CONTACT_INBOUND_SYNC_ENABLED: 'true' } })
+      expect(cfg.contactInboundSync.enabled).toBe(true)
+    })
+
+    it('treats any non-"true" value as disabled', () => {
+      const cfg = load({ env: { ...baseEnv, CONTACT_INBOUND_SYNC_ENABLED: 'yes' } })
+      expect(cfg.contactInboundSync.enabled).toBe(false)
+    })
+  })
 })
