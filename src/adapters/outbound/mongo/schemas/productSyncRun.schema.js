@@ -20,6 +20,15 @@ const ProductSyncRunSchema = new Schema({
   updatedAt: { type: Date, default: () => new Date() }
 }, { versionKey: false })
 
+ProductSyncRunSchema.index({ startedAt: -1 })
+ProductSyncRunSchema.index(
+  { endedAt: 1 },
+  {
+    expireAfterSeconds: 60 * 60 * 24 * 30,
+    partialFilterExpression: { status: { $in: ['completed', 'failed'] } }
+  }
+)
+
 module.exports = {
   ProductSyncRunSchema,
   ProductSyncRunModel: model('ProductSyncRun', ProductSyncRunSchema)
