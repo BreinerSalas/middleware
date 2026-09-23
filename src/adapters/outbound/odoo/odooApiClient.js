@@ -50,6 +50,7 @@ function createOdooApiClient({
   if (normalizedMode === 'stub') {
     let soCounter = 0
     let moCounter = 0
+    let partnerCounter = 0
     return {
       mode: 'stub',
       async createSalesOrder(payload) {
@@ -140,6 +141,19 @@ function createOdooApiClient({
       },
       async searchPartnersChangedSince({ writeDateGte, offset = 0, limit = 100 } = {}) {
         return []
+      },
+      async searchPartnersByEmail(_email, { limit = 3 } = {}) {
+        return []
+      },
+      async createPartner(payload) {
+        partnerCounter += 1
+        return { id: `stub-partner-${partnerCounter}`, raw: payload }
+      },
+      async updatePartner(partnerId, payload) {
+        return { id: String(partnerId), raw: payload }
+      },
+      async searchCountryIdsByNames(_names) {
+        return {}
       }
     }
   }
@@ -697,6 +711,46 @@ function createOdooApiClient({
       return executeKw('res.partner', 'search_read',
         [domain],
         { fields: PARTNER_FIELDS, offset, limit })
+    },
+    async searchPartnersByEmail(email, { limit = 3 } = {}) {
+      const domain = [['active', '=', true], ['email', '=ilike', String(email)]]
+      return executeKw('res.partner', 'search_read', [domain], { fields: PARTNER_FIELDS, limit })
+    },
+    async createPartner(payload) {
+      const result = await executeKw('res.partner', 'create', [payload])
+      return { id: String(result), raw: payload }
+    },
+    async updatePartner(partnerId, payload) {
+      const result = await executeKw('res.partner', 'write', [[Number(partnerId)], payload])
+      return { id: partnerId, raw: payload, rpcResult: result }
+    },
+    // Read-only, best-effort fallback for when the ISO code lookup (searchCountryIdsByCodes)
+    // does not resolve — matches on the human-readable country name instead. Mirrors
+    // searchProductIdsByNames' polish-notation OR domain construction (N terms need N-1 '|').
+    async searchCountryIdsByNames(names) {
+      const cleaned = []
+      const seen = new Set()
+      for (const raw of Array.isArray(names) ? names : []) {
+        if (raw == null) continue
+        const n = String(raw).trim()
+        if (!n || seen.has(n)) continue
+        seen.add(n)
+        cleaned.push(n)
+      }
+      if (cleaned.length === 0) return {}
+      const terms = cleaned.map((n) => ['name', '=ilike', n])
+      const domain = terms.length === 1
+        ? terms
+        : [...Array(terms.length - 1).fill('|'), ...terms]
+      const result = await executeKw('res.country', 'search_read', [domain], { fields: ['id', 'code', 'name'] })
+      const out = {}
+      if (Array.isArray(result)) {
+        for (const r of result) {
+          if (!r || r.name == null || r.id == null) continue
+          out[r.name] = { id: Number(r.id), code: r.code || null, name: r.name }
+        }
+      }
+      return out
     }
   }
 }
