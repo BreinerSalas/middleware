@@ -199,6 +199,9 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
     },
     // (sdd/hubspot-contact-inbound-sync) Flag-gated, default OFF: HubSpot contact.creation
     // webhook -> Odoo res.partner inbound sync. Mirrors dealSyncModule wiring.
+    // DEPLOY CHECKLIST: the HubSpot Private App's contact.creation webhook subscription must
+    // be configured manually in the HubSpot UI before setting CONTACT_INBOUND_SYNC_ENABLED=true
+    // in production — this is a non-code, one-time dependency, not automated by this flag.
     contactInboundSync: {
       enabled: String(env.CONTACT_INBOUND_SYNC_ENABLED || 'false').toLowerCase() === 'true'
     }

@@ -42,6 +42,7 @@ const { createProductOrphanReconcileJobModule } = require('./composition/product
 const { MongoProductOrphanRepository } = require('./adapters/outbound/mongo/MongoProductOrphanRepository')
 const { createQuoteReleaseModule } = require('./composition/quoteReleaseModule')
 const { MongoQuoteReleaseTrackerRepository } = require('./adapters/outbound/mongo/MongoQuoteReleaseTrackerRepository')
+const { createContactInboundSyncModule } = require('./composition/contactInboundSyncModule')
 
 async function start({ config = null } = {}) {
   const cfg = config || load()
@@ -248,10 +249,20 @@ async function start({ config = null } = {}) {
     })
   }
 
+  // (sdd/hubspot-contact-inbound-sync, Phase 5) Flag-gated, default OFF (Phase 2's
+  // CONTACT_INBOUND_SYNC_ENABLED). Deploy checklist: HubSpot's contact.creation Private App
+  // webhook subscription must be configured manually in the HubSpot UI before enabling this
+  // flag in production — see the comment next to contactInboundSync in src/config/index.js.
+  let contactInboundSyncModule = null
+  if (cfg.contactInboundSync && cfg.contactInboundSync.enabled) {
+    contactInboundSyncModule = createContactInboundSyncModule({ config: cfg, logger })
+  }
+
   const staticRoot = path.resolve(__dirname, 'panel')
-  const app = createApp({ config: cfg, logger, dealSyncModule, staticRoot, quoteReleaseModule })
+  const app = createApp({ config: cfg, logger, dealSyncModule, staticRoot, quoteReleaseModule, contactInboundSyncModule })
 
   await dealSyncModule.startWorker()
+  if (contactInboundSyncModule) await contactInboundSyncModule.startWorker()
   if (productSyncJobModule) await productSyncJobModule.startWorker()
   if (saleOrderStatusSyncJobModule) await saleOrderStatusSyncJobModule.startWorker()
   if (manufacturingOrderRetrySyncJobModule) await manufacturingOrderRetrySyncJobModule.startWorker()
@@ -264,6 +275,7 @@ async function start({ config = null } = {}) {
     logger.info('server.shutdown', { signal })
     try { await app.close() } catch (_) { /* noop */ }
     try { await dealSyncModule.stopWorker() } catch (_) { /* noop */ }
+    if (contactInboundSyncModule) { try { await contactInboundSyncModule.stopWorker() } catch (_) { /* noop */ } }
     if (productSyncJobModule) { try { await productSyncJobModule.stopWorker() } catch (_) { /* noop */ } }
     if (saleOrderStatusSyncJobModule) { try { await saleOrderStatusSyncJobModule.stopWorker() } catch (_) { /* noop */ } }
     if (manufacturingOrderRetrySyncJobModule) { try { await manufacturingOrderRetrySyncJobModule.stopWorker() } catch (_) { /* noop */ } }
@@ -280,6 +292,7 @@ async function start({ config = null } = {}) {
     logger,
     config: cfg,
     dealSyncModule,
+    contactInboundSyncModule,
     productSyncJobModule,
     saleOrderStatusSyncJobModule,
     manufacturingOrderRetrySyncJobModule,
