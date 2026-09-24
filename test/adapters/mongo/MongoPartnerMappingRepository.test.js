@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll, beforeAll } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, beforeAll, vi } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const mongoose = require('mongoose')
@@ -122,5 +122,125 @@ describe('MongoPartnerMappingRepository', () => {
     expect((await repo.listAll())).toHaveLength(2)
     await repo.clear()
     expect((await repo.listAll())).toHaveLength(0)
+  })
+
+  describe('direction (sdd/hubspot-contact-inbound-sync, schema)', () => {
+    it('defaults direction to null when not supplied on upsert (legacy/outbound path unaffected)', async () => {
+      const repo = new MongoPartnerMappingRepository()
+      await repo.upsert({ odooId: 1, hubspotId: 'H-1', action: 'created', now: () => 'T' })
+      const found = await repo.findByOdooId(1)
+      expect(found.direction).toBeNull()
+    })
+
+    it('upsert stores an explicit direction value', async () => {
+      const repo = new MongoPartnerMappingRepository()
+      await repo.upsert({ odooId: 1, hubspotId: 'H-1', action: 'linked', direction: 'hubspot_to_odoo', now: () => 'T' })
+      const found = await repo.findByOdooId(1)
+      expect(found.direction).toBe('hubspot_to_odoo')
+    })
+
+    it('rejects an invalid direction value at the schema level', async () => {
+      await expect(
+        PartnerMappingModel.create({
+          odooId: 999, odooPartnerId: '999', hubspotId: 'H', lastAction: 'created', direction: 'sideways',
+          lastSyncedAt: new Date(), firstSyncedAt: new Date()
+        })
+      ).rejects.toThrow()
+    })
+
+    it('bulkUpsertMany sets direction only on insert via $setOnInsert, never flipping an existing origin on update', async () => {
+      const repo = new MongoPartnerMappingRepository()
+      // First tick: outbound batch creates the row (direction defaults to odoo_to_hubspot on insert)
+      await repo.bulkUpsertMany({
+        items: [{ odooId: 1, hubspotId: 'H-1', action: 'created' }],
+        now: () => 'T1'
+      })
+      const afterInsert = await repo.findByOdooId(1)
+      expect(afterInsert.direction).toBe('odoo_to_hubspot')
+
+      // Simulate the row having been created by the inbound flow instead (hubspot_to_odoo),
+      // then run bulkUpsertMany again as an UPDATE — direction must not flip.
+      await PartnerMappingModel.updateOne({ odooId: 1 }, { $set: { direction: 'hubspot_to_odoo' } })
+      await repo.bulkUpsertMany({
+        items: [{ odooId: 1, hubspotId: 'H-1', action: 'updated' }],
+        now: () => 'T2'
+      })
+      const afterUpdate = await repo.findByOdooId(1)
+      expect(afterUpdate.direction).toBe('hubspot_to_odoo')
+    })
+  })
+
+  describe('lastAction "linked" (sdd/hubspot-contact-inbound-sync, schema)', () => {
+    it('accepts "linked" as a valid lastAction value', async () => {
+      const doc = await PartnerMappingModel.create({
+        odooId: 500, odooPartnerId: '500', hubspotId: 'H-500', lastAction: 'linked',
+        lastSyncedAt: new Date(), firstSyncedAt: new Date()
+      })
+      expect(doc.lastAction).toBe('linked')
+    })
+  })
+
+  describe('hubspotId index is non-unique (sdd/hubspot-contact-inbound-sync, schema)', () => {
+    it('allows two mapping rows with the same hubspotId (legacy rows may have duplicates)', async () => {
+      const repo = new MongoPartnerMappingRepository()
+      await repo.upsert({ odooId: 1, hubspotId: 'DUP', action: 'created', now: () => 'T' })
+      await repo.upsert({ odooId: 2, hubspotId: 'DUP', action: 'created', now: () => 'T' })
+      const all = await repo.listAll()
+      expect(all.filter((m) => m.hubspotId === 'DUP')).toHaveLength(2)
+    })
+  })
+
+  describe('findByHubspotId (sdd/hubspot-contact-inbound-sync)', () => {
+    it('returns the mapped row when a row exists for the hubspotId', async () => {
+      const repo = new MongoPartnerMappingRepository()
+      await repo.upsert({ odooId: 42, hubspotId: '46671077999', action: 'created', now: () => 'T' })
+      const found = await repo.findByHubspotId('46671077999')
+      expect(found).not.toBeNull()
+      expect(found.odooId).toBe(42)
+      expect(found.hubspotId).toBe('46671077999')
+    })
+
+    it('returns null when no row exists for the hubspotId (does NOT guess)', async () => {
+      const repo = new MongoPartnerMappingRepository()
+      await repo.upsert({ odooId: 1, hubspotId: 'H-1', action: 'created', now: () => 'T' })
+      const found = await repo.findByHubspotId('99999999999')
+      expect(found).toBeNull()
+    })
+
+    it('returns null when hubspotId is null WITHOUT issuing a Mongo query', async () => {
+      const repo = new MongoPartnerMappingRepository()
+      const findOneSpy = vi.spyOn(PartnerMappingModel, 'findOne')
+      const result = await repo.findByHubspotId(null)
+      expect(result).toBeNull()
+      expect(findOneSpy).not.toHaveBeenCalled()
+      findOneSpy.mockRestore()
+    })
+
+    it('returns null when hubspotId is undefined WITHOUT issuing a Mongo query', async () => {
+      const repo = new MongoPartnerMappingRepository()
+      const findOneSpy = vi.spyOn(PartnerMappingModel, 'findOne')
+      const result = await repo.findByHubspotId(undefined)
+      expect(result).toBeNull()
+      expect(findOneSpy).not.toHaveBeenCalled()
+      findOneSpy.mockRestore()
+    })
+
+    it('returns null when hubspotId is empty string WITHOUT issuing a Mongo query', async () => {
+      const repo = new MongoPartnerMappingRepository()
+      const findOneSpy = vi.spyOn(PartnerMappingModel, 'findOne')
+      const result = await repo.findByHubspotId('')
+      expect(result).toBeNull()
+      expect(findOneSpy).not.toHaveBeenCalled()
+      findOneSpy.mockRestore()
+    })
+
+    it('returns null when hubspotId is the string "null" WITHOUT issuing a Mongo query', async () => {
+      const repo = new MongoPartnerMappingRepository()
+      const findOneSpy = vi.spyOn(PartnerMappingModel, 'findOne')
+      const result = await repo.findByHubspotId('null')
+      expect(result).toBeNull()
+      expect(findOneSpy).not.toHaveBeenCalled()
+      findOneSpy.mockRestore()
+    })
   })
 })

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { PartnerMapping, buildPartnerMapping, recordSyncSuccess, VALID_ACTIONS } = require('../../../src/core/domain/PartnerMapping.js')
+const { PartnerMapping, buildPartnerMapping, recordSyncSuccess, VALID_ACTIONS, DIRECTIONS } = require('../../../src/core/domain/PartnerMapping.js')
 
 describe('PartnerMapping (domain)', () => {
   it('buildPartnerMapping creates a record with required fields', () => {
@@ -106,5 +106,38 @@ describe('PartnerMapping (domain)', () => {
     expect(m.hubspotId).toBe('H-1')
     expect(m.action).toBe('created')
     expect(m.syncedAt).toBe('T')
+  })
+
+  describe('direction (sdd/hubspot-contact-inbound-sync)', () => {
+    it('DIRECTIONS exposes exactly the two documented origins', () => {
+      expect(DIRECTIONS.ODOO_TO_HUBSPOT).toBe('odoo_to_hubspot')
+      expect(DIRECTIONS.HUBSPOT_TO_ODOO).toBe('hubspot_to_odoo')
+    })
+
+    it('buildPartnerMapping accepts and stores an explicit direction', () => {
+      const m = buildPartnerMapping({ odooId: 1, hubspotId: 'H-1', action: 'linked', direction: DIRECTIONS.HUBSPOT_TO_ODOO })
+      expect(m.direction).toBe('hubspot_to_odoo')
+    })
+
+    it('buildPartnerMapping defaults direction to null when not provided (legacy/outbound path unaffected)', () => {
+      const m = buildPartnerMapping({ odooId: 1, hubspotId: 'H-1', action: 'created' })
+      expect(m.direction).toBeNull()
+    })
+
+    it('PartnerMapping class wraps direction from props', () => {
+      const m = new PartnerMapping({ odooId: 1, odooPartnerId: '1', hubspotId: 'H-1', action: 'linked', syncedAt: 'T', direction: 'hubspot_to_odoo' })
+      expect(m.direction).toBe('hubspot_to_odoo')
+    })
+  })
+
+  describe('linked action (sdd/hubspot-contact-inbound-sync)', () => {
+    it('VALID_ACTIONS now accepts "linked" for the silent single-email-match path', () => {
+      expect(VALID_ACTIONS.has('linked')).toBe(true)
+    })
+
+    it('buildPartnerMapping accepts action "linked"', () => {
+      const m = buildPartnerMapping({ odooId: 1, hubspotId: 'H-1', action: 'linked' })
+      expect(m.action).toBe('linked')
+    })
   })
 })

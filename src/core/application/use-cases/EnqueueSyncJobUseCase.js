@@ -12,9 +12,9 @@ class EnqueueSyncJobUseCase {
     this.logger = logger
   }
 
-  async execute({ sourceId, correlationId = null, rawPayload = null, maxAttempts = 8, kind = 'deal' } = {}) {
+  async execute({ sourceId, correlationId = null, rawPayload = null, maxAttempts = 8, kind = 'deal', dedupeKey: dedupeKeyOverride = null } = {}) {
     if (!sourceId) throw new Error('sourceId required')
-    const dedupeKey = buildDedupeKey({ sourceId, rawPayload })
+    const dedupeKey = dedupeKeyOverride || buildDedupeKey({ sourceId, rawPayload })
 
     let duplicate = false
     try {
