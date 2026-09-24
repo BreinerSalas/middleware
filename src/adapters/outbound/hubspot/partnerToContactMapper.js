@@ -36,7 +36,7 @@ function mapPartnerToContactProperties(partner, { idProperty = 'id_contacto_odoo
     ? name
     : pickMany2oneName(partner.parent_id)
 
-  return {
+  const properties = {
     [idProperty]: asString(partner.id),
     firstname,
     lastname,
@@ -47,9 +47,14 @@ function mapPartnerToContactProperties(partner, { idProperty = 'id_contacto_odoo
     city: asString(partner.city),
     zip: asString(partner.zip),
     country: pickMany2oneName(partner.country_id),
-    jobtitle: asString(partner.function),
-    company
+    jobtitle: asString(partner.function)
   }
+
+  if (company !== '') {
+    properties.company = company
+  }
+
+  return properties
 }
 
 module.exports = { mapPartnerToContactProperties, splitName }

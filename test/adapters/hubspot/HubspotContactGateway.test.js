@@ -74,11 +74,12 @@ describe('HubspotContactGateway', () => {
       expect(props.firstname).toBe('Ana')
       expect(props.lastname).toBe('Pérez')
       expect(props.email).toBe('a@b.com')
-      // every key always present (unconditional overwrite contract)
+      // every key always present except company, which is omitted when unresolved
       expect(Object.keys(props).sort()).toEqual([
-        'address', 'city', 'company', 'country', 'email', 'firstname', 'id_contacto_odoo',
+        'address', 'city', 'country', 'email', 'firstname', 'id_contacto_odoo',
         'jobtitle', 'lastname', 'mobilephone', 'phone', 'zip'
       ])
+      expect(props).not.toHaveProperty('company')
     })
 
     it('propagates idProperty override into the emitted properties', () => {

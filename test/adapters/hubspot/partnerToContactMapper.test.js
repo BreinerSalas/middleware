@@ -35,22 +35,23 @@ describe('splitName', () => {
 })
 
 describe('mapPartnerToContactProperties', () => {
-  describe('key emission contract (the unconditional-overwrite rule)', () => {
-    it('emits EVERY contact property key on every call, even with empty values', () => {
+  describe('key emission contract (the unconditional-overwrite rule, company excepted)', () => {
+    it('emits every non-company key on every call, even with empty values, and omits company when unresolved', () => {
       const props = mapPartnerToContactProperties({ id: 1, name: 'Empty' })
       expect(Object.keys(props).sort()).toEqual([
-        'address', 'city', 'company', 'country', 'email', 'firstname', 'id_contacto_odoo',
+        'address', 'city', 'country', 'email', 'firstname', 'id_contacto_odoo',
         'jobtitle', 'lastname', 'mobilephone', 'phone', 'zip'
       ])
+      expect(props).not.toHaveProperty('company')
     })
 
-    it('emits all keys when the partner has only an id (no name)', () => {
+    it('emits all non-company keys when the partner has only an id (no name), and omits company', () => {
       const props = mapPartnerToContactProperties({ id: 99 })
       expect(Object.keys(props).sort()).toEqual([
-        'address', 'city', 'company', 'country', 'email', 'firstname', 'id_contacto_odoo',
+        'address', 'city', 'country', 'email', 'firstname', 'id_contacto_odoo',
         'jobtitle', 'lastname', 'mobilephone', 'phone', 'zip'
       ])
-      // every non-id field must be '' (the unconditional-overwrite rule)
+      // every non-id, non-company field must be '' (the unconditional-overwrite rule)
       expect(props.id_contacto_odoo).toBe('99')
       expect(props.firstname).toBe('')
       expect(props.lastname).toBe('')
@@ -62,10 +63,10 @@ describe('mapPartnerToContactProperties', () => {
       expect(props.zip).toBe('')
       expect(props.country).toBe('')
       expect(props.jobtitle).toBe('')
-      expect(props.company).toBe('')
+      expect(props).not.toHaveProperty('company')
     })
 
-    it('never omits a key — always writes "" for empty/missing Odoo values (no merging)', () => {
+    it('never omits a non-company key — always writes "" for empty/missing Odoo values (no merging); company is omitted, not blanked', () => {
       const partner = {
         id: 7,
         name: 'Ana',
@@ -86,7 +87,7 @@ describe('mapPartnerToContactProperties', () => {
       expect(props.mobilephone).toBe('')
       expect(props.address).toBe('')
       expect(props.jobtitle).toBe('')
-      expect(props.company).toBe('')
+      expect(props).not.toHaveProperty('company')
       expect(props.country).toBe('Peru')
     })
   })
@@ -105,13 +106,13 @@ describe('mapPartnerToContactProperties', () => {
   })
 
   describe('individual person (is_company !== true)', () => {
-    it('splits name into firstname/lastname and leaves company empty when no parent_id', () => {
+    it('splits name into firstname/lastname and omits company when no parent_id', () => {
       const props = mapPartnerToContactProperties({
         id: 1, name: 'Ana Pérez', is_company: false, parent_id: false
       })
       expect(props.firstname).toBe('Ana')
       expect(props.lastname).toBe('Pérez')
-      expect(props.company).toBe('')
+      expect(props).not.toHaveProperty('company')
     })
 
     it('uses parent_id[1] as company name when present', () => {
@@ -205,8 +206,45 @@ describe('mapPartnerToContactProperties', () => {
       expect(props.city).toBe('')
       expect(props.zip).toBe('')
       expect(props.country).toBe('')
-      expect(props.company).toBe('')
+      expect(props).not.toHaveProperty('company')
       expect(props.jobtitle).toBe('')
+    })
+  })
+
+  describe('Outbound Company Field Must Not Be Blanked (spec requirement)', () => {
+    it('omits the company key when is_company=false and no parent_id (unresolved)', () => {
+      const props = mapPartnerToContactProperties({
+        id: 1, name: 'Ana Pérez', is_company: false
+      })
+      expect(props).not.toHaveProperty('company')
+    })
+
+    it('includes company set to the resolved name when is_company=true (unchanged behavior)', () => {
+      const props = mapPartnerToContactProperties({
+        id: 1, name: 'ACME S.A.', is_company: true
+      })
+      expect(props.company).toBe('ACME S.A.')
+    })
+
+    it('includes company set to the resolved name when parent_id resolves (unchanged behavior)', () => {
+      const props = mapPartnerToContactProperties({
+        id: 1, name: 'Beto López', is_company: false, parent_id: [10, 'ACME S.A.']
+      })
+      expect(props.company).toBe('ACME S.A.')
+    })
+
+    it('changes no other key when toggling company from omitted to present', () => {
+      const withoutCompany = mapPartnerToContactProperties({
+        id: 1, name: 'Ana Pérez', email: 'ana@example.com', is_company: false
+      })
+      const withCompany = mapPartnerToContactProperties({
+        id: 1, name: 'Ana Pérez', email: 'ana@example.com', is_company: false, parent_id: [10, 'ACME S.A.']
+      })
+      const { company: _omittedCompany, ...withoutCompanyRest } = withoutCompany
+      const { company: _presentCompany, ...withCompanyRest } = withCompany
+      expect(withoutCompanyRest).toEqual(withCompanyRest)
+      expect(withoutCompany).not.toHaveProperty('company')
+      expect(withCompany.company).toBe('ACME S.A.')
     })
   })
 })
