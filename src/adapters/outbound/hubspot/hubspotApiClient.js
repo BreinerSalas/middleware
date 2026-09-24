@@ -355,6 +355,14 @@ function createHubspotApiClient({
     return items[0] || null
   }
 
+  async function getContactById(contactId, properties = []) {
+    try {
+      return await requestWithRateLimit('get', `/crm/v3/objects/contacts/${contactId}`, {
+        params: properties.length > 0 ? { properties: properties.join(',') } : undefined
+      })
+    } catch (err) { throw normalizeHubspotError(err) }
+  }
+
   async function createContact(properties) {
     try {
       return await requestWithRateLimit('post', '/crm/v3/objects/contacts', { properties })
@@ -414,7 +422,7 @@ function createHubspotApiClient({
     searchProductByOdooId, createProduct, updateProduct,
     batchUpsertProducts, batchUpdateProducts, batchArchiveProducts,
     searchProducts, searchLineItemsByProductId,
-    searchContactByProperty, createContact, updateContact, batchUpsertContacts,
+    searchContactByProperty, createContact, updateContact, batchUpsertContacts, getContactById,
     getCustomProperty, createCustomProperty, updateCustomProperty, ensureCustomProperty,
     _http: http,
     _rateLimiter: rl

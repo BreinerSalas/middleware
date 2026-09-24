@@ -16,6 +16,42 @@ function makeRateLimiter() {
 }
 
 describe('hubspotApiClient - contact CRUD + batch upsert (partner-sync)', () => {
+  describe('getContactById', () => {
+    it('GETs /crm/v3/objects/contacts/{id} with properties param, and omits it when none given', async () => {
+      const get = vi.fn(async () => ({ data: { id: 'C-1', properties: { email: 'a@b.com' } } }))
+      const http = makeHttpMock({ get })
+      const api = createHubspotApiClient({
+        baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http, rateLimiter: makeRateLimiter()
+      })
+      const data = await api.getContactById('C-1', ['firstname', 'lastname', 'email'])
+      expect(data.id).toBe('C-1')
+      expect(get).toHaveBeenCalledWith('/crm/v3/objects/contacts/C-1', { params: { properties: 'firstname,lastname,email' } })
+
+      await api.getContactById('C-1')
+      expect(get).toHaveBeenCalledWith('/crm/v3/objects/contacts/C-1', { params: undefined })
+    })
+
+    it('normalizes a 404 HubSpot error (contact not found)', async () => {
+      const http = makeHttpMock({
+        get: async () => {
+          const err = new Error('Request failed with status code 404')
+          err.response = { status: 404, data: { message: 'contact not found' } }
+          throw err
+        }
+      })
+      const api = createHubspotApiClient({
+        baseUrl: 'https://api.hubapi.com', accessToken: 'tok-1', httpClient: http, rateLimiter: makeRateLimiter()
+      })
+      try {
+        await api.getContactById('missing')
+        throw new Error('should have thrown')
+      } catch (err) {
+        expect(err.httpStatus).toBe(404)
+        expect(err.message).toMatch(/contact not found/)
+      }
+    })
+  })
+
   describe('searchContactByProperty', () => {
     it('POSTs to /crm/v3/objects/contacts/search with a single EQ filter and limit 1', async () => {
       const post = vi.fn(async () => ({ data: { results: [], total: 0 } }))
