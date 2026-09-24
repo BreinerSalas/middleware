@@ -146,6 +146,19 @@ describe('EnqueueSyncJobUseCase', () => {
   it('requires sourceId', async () => {
     await expect(uc.execute({ sourceId: '' })).rejects.toThrow(/sourceId/)
   })
+
+  it('uses the caller-supplied dedupeKey verbatim instead of the hash-derived one when provided (sdd/hubspot-contact-inbound-sync)', async () => {
+    const result = await uc.execute({ sourceId: 'contact:123', rawPayload: { x: 1 }, dedupeKey: 'contact.creation:123' })
+    expect(result.dedupeKey).toBe('contact.creation:123')
+    expect(result.job.dedupeKey).toBe('contact.creation:123')
+  })
+
+  it('deduplicates on the caller-supplied dedupeKey even when rawPayload differs between deliveries', async () => {
+    await uc.execute({ sourceId: 'contact:123', rawPayload: { attemptNumber: 1 }, dedupeKey: 'contact.creation:123' })
+    const r2 = await uc.execute({ sourceId: 'contact:123', rawPayload: { attemptNumber: 2 }, dedupeKey: 'contact.creation:123' })
+    expect(r2.deduped).toBe(true)
+    expect(jobRepo._all()).toHaveLength(1)
+  })
 })
 
 describe('ProcessSyncJobUseCase', () => {

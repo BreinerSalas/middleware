@@ -1,6 +1,14 @@
 'use strict'
 
-const VALID_ACTIONS = new Set(['created', 'updated'])
+const VALID_ACTIONS = new Set(['created', 'updated', 'linked'])
+
+// (sdd/hubspot-contact-inbound-sync) Records which system originated the mapping so a later
+// outbound tick can never flip the origin. Legacy rows (direction: null) count as
+// odoo_to_hubspot and are not backfilled — see MongoPartnerMappingRepository.bulkUpsertMany.
+const DIRECTIONS = Object.freeze({
+  ODOO_TO_HUBSPOT: 'odoo_to_hubspot',
+  HUBSPOT_TO_ODOO: 'hubspot_to_odoo'
+})
 
 class PartnerMapping {
   constructor(props = {}) {
@@ -11,10 +19,11 @@ class PartnerMapping {
     this.syncedAt = props.syncedAt
     this.lastSyncedAt = props.lastSyncedAt || props.syncedAt
     this.createdAt = props.createdAt || props.syncedAt
+    this.direction = props.direction
   }
 }
 
-function buildPartnerMapping({ odooId, hubspotId, action, now = () => new Date().toISOString() } = {}) {
+function buildPartnerMapping({ odooId, hubspotId, action, direction = null, now = () => new Date().toISOString() } = {}) {
   if (odooId == null) throw new Error('buildPartnerMapping requires odooId')
   if (hubspotId == null) throw new Error('buildPartnerMapping requires hubspotId')
   if (!VALID_ACTIONS.has(action)) throw new Error(`buildPartnerMapping invalid action: ${action}`)
@@ -27,7 +36,8 @@ function buildPartnerMapping({ odooId, hubspotId, action, now = () => new Date()
     action,
     syncedAt,
     lastSyncedAt: syncedAt,
-    createdAt: syncedAt
+    createdAt: syncedAt,
+    direction
   }
 }
 
@@ -46,4 +56,4 @@ function recordSyncSuccess({ mapping, action, now = () => new Date().toISOString
   }
 }
 
-module.exports = { PartnerMapping, buildPartnerMapping, recordSyncSuccess, VALID_ACTIONS }
+module.exports = { PartnerMapping, buildPartnerMapping, recordSyncSuccess, VALID_ACTIONS, DIRECTIONS }

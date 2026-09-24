@@ -8,7 +8,7 @@ class MongoPartnerMappingRepository {
     this.logger = logger
   }
 
-  async upsert({ odooId, hubspotId, action, now = () => new Date() } = {}) {
+  async upsert({ odooId, hubspotId, action, direction = null, now = () => new Date() } = {}) {
     const at = toDate(now())
     const numericOdooId = Number(odooId)
     const result = await this.model.findOneAndUpdate(
@@ -18,6 +18,7 @@ class MongoPartnerMappingRepository {
           odooPartnerId: String(numericOdooId),
           hubspotId: hubspotId == null ? null : String(hubspotId),
           lastAction: action,
+          direction,
           lastSyncedAt: at,
           updatedAt: at
         },
@@ -51,7 +52,10 @@ class MongoPartnerMappingRepository {
             $setOnInsert: {
               odooId: numericOdooId,
               firstSyncedAt: at,
-              createdAt: at
+              createdAt: at,
+              // (sdd/hubspot-contact-inbound-sync) Only set on INSERT, never on update — a later
+              // outbound tick must never flip the origin of a row created by the inbound flow.
+              direction: 'odoo_to_hubspot'
             }
           },
           upsert: true
@@ -64,6 +68,16 @@ class MongoPartnerMappingRepository {
 
   async findByOdooId(odooId) {
     return this.model.findOne({ odooId: Number(odooId) }).lean()
+  }
+
+  // (sdd/hubspot-contact-inbound-sync) Mirrors MongoProductMappingRepository.findByHubspotId's
+  // null/''/'null' edge-case handling exactly: legacy rows may store hubspotId: null and must
+  // short-circuit without a Mongo query so we never "match" them.
+  async findByHubspotId(hubspotId) {
+    if (hubspotId == null) return null
+    const s = String(hubspotId)
+    if (s.length === 0 || s === 'null') return null
+    return this.model.findOne({ hubspotId: s }).lean()
   }
 
   async listAll() {

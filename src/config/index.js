@@ -60,7 +60,8 @@ const OPTIONAL_KEYS = [
   'PRODUCT_ORPHAN_RECONCILE_ORPHAN_WATCHDOG_MS',
   'PRODUCT_ORPHAN_RECONCILE_LIMIT',
   'PRODUCT_ORPHAN_RECONCILE_TRACK_A_ENABLED',
-  'PRODUCT_ORPHAN_RECONCILE_TRACK_B_ENABLED'
+  'PRODUCT_ORPHAN_RECONCILE_TRACK_B_ENABLED',
+  'CONTACT_INBOUND_SYNC_ENABLED'
 ]
 
 function parseCsvList(raw) {
@@ -195,6 +196,14 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       limit: Number(env.PRODUCT_ORPHAN_RECONCILE_LIMIT || 200),
       trackAEnabled: String(env.PRODUCT_ORPHAN_RECONCILE_TRACK_A_ENABLED || 'true').toLowerCase() === 'true',
       trackBEnabled: String(env.PRODUCT_ORPHAN_RECONCILE_TRACK_B_ENABLED || 'true').toLowerCase() === 'true'
+    },
+    // (sdd/hubspot-contact-inbound-sync) Flag-gated, default OFF: HubSpot contact.creation
+    // webhook -> Odoo res.partner inbound sync. Mirrors dealSyncModule wiring.
+    // DEPLOY CHECKLIST: the HubSpot Private App's contact.creation webhook subscription must
+    // be configured manually in the HubSpot UI before setting CONTACT_INBOUND_SYNC_ENABLED=true
+    // in production — this is a non-code, one-time dependency, not automated by this flag.
+    contactInboundSync: {
+      enabled: String(env.CONTACT_INBOUND_SYNC_ENABLED || 'false').toLowerCase() === 'true'
     }
   }
 }

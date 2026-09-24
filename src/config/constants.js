@@ -24,7 +24,8 @@ const JOB_KIND = Object.freeze({
   SALE_ORDER_STATUS_SYNC: 'sale_order_status_sync',
   MANUFACTURING_ORDER_RETRY_SYNC: 'manufacturing_order_retry_sync',
   PARTNER_SYNC: 'partner_sync',
-  PRODUCT_ORPHAN_RECONCILE: 'product_orphan_reconcile'
+  PRODUCT_ORPHAN_RECONCILE: 'product_orphan_reconcile',
+  CONTACT_INBOUND: 'contact_inbound'
 })
 
 module.exports = {

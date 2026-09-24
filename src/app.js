@@ -17,7 +17,7 @@ const { MongoProductPanelRepository } = require('./adapters/outbound/mongo/Mongo
 const { hubspotHealthCheck } = require('./adapters/outbound/hubspot/hubspotHealthCheck')
 const { odooHealthCheck } = require('./adapters/outbound/odoo/odooHealthCheck')
 
-function createApp({ config, logger = null, dealSyncModule = null, panelRepository = null, staticRoot = null, quoteReleaseModule = null } = {}) {
+function createApp({ config, logger = null, dealSyncModule = null, panelRepository = null, staticRoot = null, quoteReleaseModule = null, contactInboundSyncModule = null } = {}) {
   if (!config) throw new Error('createApp requires config')
   const log = logger || createLogger({ level: config.logging.level })
   const app = Fastify({ logger: false })
@@ -67,6 +67,30 @@ function createApp({ config, logger = null, dealSyncModule = null, panelReposito
     let lastResult = null
     for (const event of body) {
       if (!event || typeof event !== 'object') continue
+
+      // contact.creation — HubSpot -> Odoo res.partner inbound sync (sdd/hubspot-contact-inbound-sync).
+      // Evaluated before the deal.propertyChange filter below; deal branch/503 guard unchanged.
+      if (event.subscriptionType === 'contact.creation') {
+        const contactObjectId = event.objectId
+        if (!contactObjectId) continue
+        if (!contactInboundSyncModule) {
+          log.info('webhook.contact_inbound.ignored', { objectId: contactObjectId, reason: 'module_not_ready' })
+          continue
+        }
+        try {
+          const result = await contactInboundSyncModule.enqueueWebhook({
+            rawBody: event,
+            objectId: String(contactObjectId),
+            eventType: event.subscriptionType
+          })
+          enqueued++
+          lastResult = result
+        } catch (err) {
+          log.error('webhook.contact_inbound.enqueue_failed', { error: err.message, objectId: contactObjectId })
+        }
+        continue
+      }
+
       if (event.subscriptionType !== 'deal.propertyChange') continue
       if (event.propertyName !== 'dealstage') continue
       const stageId = event.propertyValue == null ? null : String(event.propertyValue)

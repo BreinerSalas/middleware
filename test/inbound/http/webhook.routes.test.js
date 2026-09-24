@@ -46,6 +46,17 @@ function makeFakeDealSyncModule() {
   }
 }
 
+function makeFakeContactInboundSyncModule() {
+  const calls = { enqueue: [] }
+  return {
+    enqueueWebhook: async (args) => {
+      calls.enqueue.push(args)
+      return { job: { _id: `CJ-${calls.enqueue.length}` }, deduped: false, correlationId: `CC-${calls.enqueue.length}` }
+    },
+    _calls: calls
+  }
+}
+
 async function postSigned(app, { body, secret = 'hmac-test-secret', url = '/webhooks/hubspot', method = 'POST' }) {
   const rawBody = typeof body === 'string' ? body : JSON.stringify(body)
   const ts = Date.now()
@@ -63,8 +74,8 @@ async function postSigned(app, { body, secret = 'hmac-test-secret', url = '/webh
 
 describe('HTTP /webhooks/hubspot (Private App HMAC + array body)', () => {
   const apps = []
-  async function buildApp(mod, cfg = baseConfig()) {
-    const app = createApp({ config: cfg, dealSyncModule: mod })
+  async function buildApp(mod, cfg = baseConfig(), extra = {}) {
+    const app = createApp({ config: cfg, dealSyncModule: mod, ...extra })
     await app.listen({ port: 0, host: '127.0.0.1' })
     apps.push(app)
     return app
@@ -335,6 +346,38 @@ describe('HTTP /webhooks/hubspot (Private App HMAC + array body)', () => {
       expect(res.status).toBe(200)
       expect(res.body.enqueued).toBe(0)
       expect(mod._calls.enqueue).toHaveLength(0)
+    })
+  })
+
+  // (sdd/hubspot-contact-inbound-sync, Phase 5) contact.creation branch — evaluated before
+  // the deal.propertyChange filter, ends with `continue`; deal branch/503 guard unchanged.
+  describe('contact.creation branch (sdd/hubspot-contact-inbound-sync)', () => {
+    it('202 enqueues via contactInboundSyncModule (present) alongside an unchanged deal.propertyChange event in the same batch', async () => {
+      const dealMod = makeFakeDealSyncModule()
+      const contactMod = makeFakeContactInboundSyncModule()
+      const app = await buildApp(dealMod, baseConfig(), { contactInboundSyncModule: contactMod })
+      const body = [
+        { subscriptionType: 'contact.creation', objectId: '999' },
+        { subscriptionType: 'deal.propertyChange', objectId: 'D-1', propertyName: 'dealstage', propertyValue: '1409249445' }
+      ]
+      const res = await postSigned(app, { body })
+      expect(res.status).toBe(202)
+      expect(res.body.enqueued).toBe(2)
+      expect(contactMod._calls.enqueue).toHaveLength(1)
+      expect(contactMod._calls.enqueue[0].objectId).toBe('999')
+      expect(contactMod._calls.enqueue[0].eventType).toBe('contact.creation')
+      expect(dealMod._calls.enqueue).toHaveLength(1)
+      expect(dealMod._calls.enqueue[0].objectId).toBe('D-1')
+    })
+
+    it('200, logs and ignores (does not 503) when contactInboundSyncModule is null', async () => {
+      const dealMod = makeFakeDealSyncModule()
+      const app = await buildApp(dealMod)
+      const body = [{ subscriptionType: 'contact.creation', objectId: '999' }]
+      const res = await postSigned(app, { body })
+      expect(res.status).toBe(200)
+      expect(res.body.enqueued).toBe(0)
+      expect(dealMod._calls.enqueue).toHaveLength(0)
     })
   })
 })
