@@ -77,7 +77,15 @@ Forecast ~200-350 authored changed lines; single slice. Assessed review tier: pe
 - Not done: real run against HubSpot/Odoo; flag stays off until the colleague confirms the HubSpot properties
   exist and their type/scale. Review tier: not assessed.
 
+- 2026-10-14 HubSpot property definitions read (read-only, user-authorized, HubSpot connector, object `quotes`):
+  all 14 requested properties exist (the 10 written ones plus `otros_cargos`, `flete_monto`, `prod_monto`,
+  `base_cif_con_otros_cargos`) and all are type `number`, not text. The four percentage properties are documented
+  "registrar como decimal" (e.g. 0.01375 = 1.375 %), which matches the raw Odoo fractions we send (0.13, 0.0125,
+  0.085). Descriptions: `cargos_extra_aduana` = "Cargos extraordinarios de aduana"; `otros_cargos` = "Otros cargos que
+  se incorporan a la base CIF", so `otros_cargos` looks like a different, manual input (still to confirm with the
+  colleague). Limit: the connector does not expose whether a property is calculated/read-only.
+
 ## Next step
 
-Confirm HubSpot property types/scale with the colleague, then enable `QUOTE_COST_WRITEBACK_ENABLED` on staging
+Enable `QUOTE_COST_WRITEBACK_ENABLED` on staging
 and verify one closed-won deal end to end.
