@@ -1,47 +1,167 @@
-operation.costs id=66 (DDP Costa Rica), sale.order S06643
+CRUCE DE PROPIEDADES DE COTIZACION: HUBSPOT <-> ODOO
+=====================================================
 
-HubSpot property                     | label                                | status                | Odoo model.field                          | exists in Odoo | Odoo type | sample value
--------------------------------------+--------------------------------------+-----------------------+-------------------------------------------+----------------+-----------+-------------
-cargos_extra_aduana                  | Cargos extra de aduana               | odoo_operation_costs  | operation.costs.extra_custom_charges      | yes            | float     | 33          
-gastos_duca_escaner                  | Gastos DUCA, escaner y transmision   | odoo_operation_costs  | operation.costs.duca_scanner_transmission | yes            | float     | 46          
-honorarios_agencia                   | Honorarios de agencia destino        | odoo_operation_costs  | operation.costs.destination_procedure     | yes            | float     | 200         
-costo_envio_doctos                   | Envio de documentos a Finanzas       | odoo_operation_costs  | operation.costs.finance_docs_shipping     | yes            | float     | 40          
-costo_trsf_enviada                   | Costo de transferencia enviada       | odoo_operation_costs  | operation.costs.trsf_cost                 | yes            | float     | 35          
-costo_trsf_recibida                  | Costo de transferencia recibida      | odoo_operation_costs  | operation.costs.received_transfer         | yes            | float     | 55          
-porcentaje_financiamiento            | Porcentaje de financiamiento         | odoo_operation_costs  | operation.costs.financing                 | yes            | float     | 0.085       
-porcentaje_iva                       | Porcentaje IVA                       | odoo_operation_costs  | operation.costs.iva                       | yes            | float     | 0.13        
-porcentaje_seguro                    | Porcentaje de seguro                 | odoo_operation_costs  | operation.costs.insurance                 | yes            | float     | 0.0125      
-porcentaje_dai                       | Porcentaje DAI / Arancel             | odoo_operation_costs  | operation.costs.dai                       | yes            | float     | 0           
-prod_monto                           | Mueble / Producto                    | no_known_match        | -                                         | -              | -         | -           
-flete_monto                          | Flete                                | odoo_sale_order       | sale.order.freight                        | yes            | monetary  | 0           
-otros_cargos                         | Otros cargos                         | no_known_match        | -                                         | -              | -         | -           
-monto_seguro                         | Monto Seguro                         | calculated_in_hubspot | -                                         | -              | -         | -           
-valor_base_cif                       | Valor Base CIF                       | calculated_in_hubspot | -                                         | -              | -         | -           
-base_cif_con_otros_cargos            | Base CIF con Otros Cargos            | calculated_in_hubspot | -                                         | -              | -         | -           
-arancel_dai                          | Arancel DAI                          | calculated_in_hubspot | -                                         | -              | -         | -           
-impuesto_iva                         | Impuesto IVA                         | calculated_in_hubspot | -                                         | -              | -         | -           
-total_impuestos_aduaneros            | Total Impuestos Aduaneros            | calculated_in_hubspot | -                                         | -              | -         | -           
-total_gastos_operativos_y_logisticos | Total Gastos Operativos y Logisticos | calculated_in_hubspot | -                                         | -              | -         | -           
-suma_prefinanciamiento               | Suma Pre-Financiamiento              | calculated_in_hubspot | -                                         | -              | -         | -           
-costo_financiero                     | Costo Financiero                     | calculated_in_hubspot | -                                         | -              | -         | -           
-pais_de_destino                      | Pais de destino                      | synced_today          | -                                         | -              | -         | -           
-incoterm_cotizacion                  | Incoterm                             | synced_today          | -                                         | -              | -         | -           
-tipo_documento_cotizacion            | Tipo de documento                    | synced_today          | -                                         | -              | -         | -           
-id_presupuesto_odoo                  | ID presupuesto Odoo                  | synced_today          | -                                         | -              | -         | -           
-estado_presupuesto_odoo              | Estado presupuesto Odoo              | synced_today          | -                                         | -              | -         | -           
-estado_facturacion_odoo              | Estado facturacion Odoo              | synced_today          | -                                         | -              | -         | -           
-numero_orden_fabricacion             | Numero de orden de fabricacion       | synced_today          | -                                         | -              | -         | -           
-comercial                            | Comercial                            | no_known_match        | -                                         | -              | -         | -           
-fecha_entrega_estimada               | Fecha de entrega estimada            | no_known_match        | -                                         | -              | -         | -           
-forma_pago                           | Forma de pago                        | no_known_match        | -                                         | -              | -         | -           
-unidad_medida                        | Unidad de medida                     | no_known_match        | -                                         | -              | -         | -           
-ocultar_campos                       | Ocultar campos                       | not_odoo              | -                                         | -              | -         | -           
-valor_contabilizado                  | Valor contabilizado                  | not_odoo              | -                                         | -              | -         | -           
+Fecha: 2026-10-14
+Fuentes: Odoo staging (temporal, se elimina el 2026-10-28) y las definiciones de propiedades del objeto
+Cotizaciones en HubSpot (solo lectura). Registro de muestra: operation.costs id=66 "DDP Costa Rica".
+Base: las 35 propiedades del Excel "Propiedades cotizacion Visual Branding".
 
-HubSpot properties WITHOUT a confirmed Odoo match:
-- prod_monto (Mueble / Producto): no known Odoo counterpart
-- otros_cargos (Otros cargos): no known Odoo counterpart
-- comercial (Comercial): no known Odoo counterpart
-- fecha_entrega_estimada (Fecha de entrega estimada): no known Odoo counterpart
-- forma_pago (Forma de pago): no known Odoo counterpart
-- unidad_medida (Unidad de medida): no known Odoo counterpart
+
+RESUMEN (35 propiedades)
+------------------------
+  10  LISTAS        Salen de Odoo (operation.costs). El middleware las escribe en la cotizacion al cierre ganado.
+   9  CALCULADAS    Las calcula HubSpot. No vienen de Odoo.
+   7  YA SINCRONIZADAS HOY
+   7  NECESITAN TU DECISION (seccion 2): prod_monto, flete_monto, otros_cargos, comercial,
+                    fecha_entrega_estimada, forma_pago, unidad_medida
+   2  SIN RELACION CON ODOO: ocultar_campos, valor_contabilizado
+
+
+IMPORTANTE: CUANDO APARECEN LOS VALORES
+---------------------------------------
+Los valores se escriben cuando el negocio pasa a "cierre ganado", NO cuando el vendedor elige el pais.
+Motivo: HubSpot no permite suscribirse a cambios de propiedad en Cotizaciones (el objeto no aparece en la lista
+de webhooks de la app privada). Si la cotizacion visual necesita los costos antes del cierre, hay que cambiar
+el disparador; se puede hacer despues.
+
+
+1. LISTAS: OPERATION.COSTS -> COTIZACION (10)
+---------------------------------------------
+Todas son de tipo NUMERO en HubSpot (confirmado). El middleware envia el valor tal cual lo da Odoo.
+Los porcentajes van como decimal (0.13 = 13 %), que es lo que piden las descripciones de HubSpot.
+
+  Propiedad HubSpot            Campo en Odoo (operation.costs)   Muestra (registro 66)
+  cargos_extra_aduana          extra_custom_charges              33
+  gastos_duca_escaner          duca_scanner_transmission         46
+  honorarios_agencia           destination_procedure             200
+  costo_envio_doctos           finance_docs_shipping             40
+  costo_trsf_enviada           trsf_cost                         35
+  costo_trsf_recibida          received_transfer                 55
+  porcentaje_financiamiento    financing                         0.085
+  porcentaje_iva               iva                               0.13
+  porcentaje_seguro            insurance                         0.0125
+  porcentaje_dai               dai                               0
+
+Nota: el valor de cada propiedad depende del registro de operation.costs que el vendedor elige en
+pais_de_destino (cada combinacion Incoterm + pais es un registro distinto).
+
+
+2. NECESITAN TU DECISION (7)
+----------------------------
+Para cada una, que existe en Odoo y que hay que definir. Los nombres de Odoo salieron de listar todos los campos
+de sale.order, sale.order.line y mrp.production (no son inventados), pero el candidato es una propuesta.
+
+  prod_monto (Mueble / Producto)
+    Candidato: sale.order.amount_untaxed ("Untaxed Amount"); por linea: sale.order.line.price_subtotal.
+    Pregunta: la hoja de Alertas dice que la base imponible lee prod_monto y no la suma de la tabla de
+    productos. Debe prod_monto ser la suma de las lineas de la cotizacion?
+
+  flete_monto (Flete)
+    Existe: sale.order.freight ("Flete", monetario, editable). En la orden de muestra vale 0.
+    Tambien existen x_studio_flete_terrestre y x_studio_precio_flete_terrestre (flete terrestre, aparte).
+    Pregunta: quien carga el flete, un vendedor a mano o sale de otro calculo?
+
+  otros_cargos (Otros cargos)
+    En HubSpot: "Otros cargos que se incorporan a la base CIF". En Odoo, "Otros Cargos Extra de Aduanas"
+    (extra_custom_charges) ya alimenta cargos_extra_aduana, asi que otros_cargos parece una entrada manual aparte.
+    Pregunta: confirmar que es una entrada manual. Alerta: si queda vacio rompe la cadena de impuestos;
+    recomendado valor por defecto 0.
+
+  comercial (Comercial)
+    Candidato: sale.order.user_id ("Salesperson"). La orden de fabricacion tiene x_studio_comercial ("Vendedor", texto).
+    Pregunta: es el vendedor de la orden? Que formato necesita la propiedad (nombre, id)?
+
+  fecha_entrega_estimada (Fecha de entrega estimada)
+    Candidatos: sale.order.commitment_date ("Delivery Date", existe al armar la cotizacion);
+    mrp.production.date_planned_start ("Fecha prevista" en la pantalla de la orden de fabricacion;
+    solo existe despues de crear la orden de fabricacion).
+    Pregunta: cual de las dos fechas es la que se quiere mostrar?
+
+  forma_pago (Forma de pago)
+    Candidato: sale.order.payment_term_id ("Payment Terms").
+    Pregunta: la propiedad es texto o lista de opciones?
+
+  unidad_medida (Unidad de medida)
+    Candidatos: sale.order.line.product_uom (por linea); mrp.production.product_uom_id.
+    Pregunta: es un valor unico de la cotizacion o uno por producto?
+
+
+3. CALCULADAS EN HUBSPOT (9)
+----------------------------
+No se traen de Odoo: monto_seguro, valor_base_cif, base_cif_con_otros_cargos, arancel_dai, impuesto_iva,
+total_impuestos_aduaneros, total_gastos_operativos_y_logisticos, suma_prefinanciamiento, costo_financiero.
+(Seis estan respaldadas por la hoja de Alertas; monto_seguro, valor_base_cif y
+total_gastos_operativos_y_logisticos las deduje por nombre.)
+
+Control cruzado posible: Odoo calcula sus propios totales en la orden (sale.order.dai_totals, iva_totals,
+insurance_sv, operation_cost_total) y en Gastos de Envio (finantial, total_operations). Sirven para comprobar
+que las formulas de HubSpot dan lo mismo que Odoo.
+
+
+4. YA SINCRONIZADAS HOY (7)
+---------------------------
+  pais_de_destino, incoterm_cotizacion, tipo_documento_cotizacion      HubSpot -> Odoo
+  id_presupuesto_odoo, estado_presupuesto_odoo, estado_facturacion_odoo, numero_orden_fabricacion   Odoo -> HubSpot
+
+
+5. ALERTAS DEL EXCEL QUE SIGUEN VIGENTES
+----------------------------------------
+  - otros_cargos vacio rompe la cadena de impuestos (vacio + numero = vacio). Valor por defecto recomendado: 0.
+  - pais_de_destino e incoterm_cotizacion guardan un id numerico, no el texto; el modulo de Datos comerciales
+    todavia imprime el numero.
+  - El incoterm se captura dos veces: dentro de pais_de_destino ("CIF Canada") y en incoterm_cotizacion.
+  - La base imponible lee prod_monto, no la suma de la tabla de productos.
+
+
+6. ESTADO DEL CODIGO
+--------------------
+La escritura de las 10 propiedades de la seccion 1 esta implementada, pero apagada por defecto
+(variable QUOTE_COST_WRITEBACK_ENABLED). Falta probarla de punta a punta con un negocio de prueba.
+Las 7 de la seccion 2 no estan implementadas hasta tener las respuestas.
+
+
+ANEXO: SALIDA ORIGINAL DE LA SONDA (registro 66 y orden S06643)
+================================================================
+status: odoo_operation_costs / odoo_sale_order = hay campo en Odoo; calculated_in_hubspot; synced_today;
+        no_known_match = sin candidato al correr la sonda (ver seccion 2); not_odoo = sin relacion con Odoo.
+
+HubSpot property                     | status                | Odoo model.field                          | Odoo type | muestra
+-------------------------------------+-----------------------+-------------------------------------------+-----------+--------
+cargos_extra_aduana                  | odoo_operation_costs  | operation.costs.extra_custom_charges      | float     | 33
+gastos_duca_escaner                  | odoo_operation_costs  | operation.costs.duca_scanner_transmission | float     | 46
+honorarios_agencia                   | odoo_operation_costs  | operation.costs.destination_procedure     | float     | 200
+costo_envio_doctos                   | odoo_operation_costs  | operation.costs.finance_docs_shipping     | float     | 40
+costo_trsf_enviada                   | odoo_operation_costs  | operation.costs.trsf_cost                 | float     | 35
+costo_trsf_recibida                  | odoo_operation_costs  | operation.costs.received_transfer         | float     | 55
+porcentaje_financiamiento            | odoo_operation_costs  | operation.costs.financing                 | float     | 0.085
+porcentaje_iva                       | odoo_operation_costs  | operation.costs.iva                       | float     | 0.13
+porcentaje_seguro                    | odoo_operation_costs  | operation.costs.insurance                 | float     | 0.0125
+porcentaje_dai                       | odoo_operation_costs  | operation.costs.dai                       | float     | 0
+prod_monto                           | no_known_match        | -                                         | -         | -
+flete_monto                          | odoo_sale_order       | sale.order.freight                        | monetary  | 0
+otros_cargos                         | no_known_match        | -                                         | -         | -
+monto_seguro                         | calculated_in_hubspot | -                                         | -         | -
+valor_base_cif                       | calculated_in_hubspot | -                                         | -         | -
+base_cif_con_otros_cargos            | calculated_in_hubspot | -                                         | -         | -
+arancel_dai                          | calculated_in_hubspot | -                                         | -         | -
+impuesto_iva                         | calculated_in_hubspot | -                                         | -         | -
+total_impuestos_aduaneros            | calculated_in_hubspot | -                                         | -         | -
+total_gastos_operativos_y_logisticos | calculated_in_hubspot | -                                         | -         | -
+suma_prefinanciamiento               | calculated_in_hubspot | -                                         | -         | -
+costo_financiero                     | calculated_in_hubspot | -                                         | -         | -
+pais_de_destino                      | synced_today          | -                                         | -         | -
+incoterm_cotizacion                  | synced_today          | -                                         | -         | -
+tipo_documento_cotizacion            | synced_today          | -                                         | -         | -
+id_presupuesto_odoo                  | synced_today          | -                                         | -         | -
+estado_presupuesto_odoo              | synced_today          | -                                         | -         | -
+estado_facturacion_odoo              | synced_today          | -                                         | -         | -
+numero_orden_fabricacion             | synced_today          | -                                         | -         | -
+comercial                            | no_known_match        | -                                         | -         | -
+fecha_entrega_estimada               | no_known_match        | -                                         | -         | -
+forma_pago                           | no_known_match        | -                                         | -         | -
+unidad_medida                        | no_known_match        | -                                         | -         | -
+ocultar_campos                       | not_odoo              | -                                         | -         | -
+valor_contabilizado                  | not_odoo              | -                                         | -         | -
+
+Lista completa de campos de Odoo (461): docs/campos-odoo-staging-2026-10-14.tsv
+Ranking de candidatos por propiedad:     docs/descubrimiento-campos-odoo-staging-2026-10-14.txt
