@@ -85,7 +85,20 @@ Forecast ~200-350 authored changed lines; single slice. Assessed review tier: pe
   se incorporan a la base CIF", so `otros_cargos` looks like a different, manual input (still to confirm with the
   colleague). Limit: the connector does not expose whether a property is calculated/read-only.
 
+- 2026-10-14 END-TO-END VERIFIED (user ran the local server with the flag on; parent read HubSpot read-only).
+  Test deal 66012267098 ("test propieties") moved to closed-won (stage 1409249440 -> 1409249445); quote
+  43956588404 ("test colombia", pais_de_destino=153 "DAP Colombia", status APPROVAL_NOT_NEEDED) had no cost values
+  before and afterwards carried exactly the operation.costs 153 values read from Odoo staging: gastos_duca_escaner
+  40, costo_envio_doctos 40, costo_trsf_enviada 35, costo_trsf_recibida 60, porcentaje_seguro 0.02, and 0 for
+  cargos_extra_aduana, honorarios_agencia, porcentaje_financiamiento, porcentaje_iva, porcentaje_dai. The Odoo order
+  S07089 id was written back to id_presupuesto_odoo. otros_cargos and flete_monto stayed empty by design.
+  Not observed: estado_presupuesto_odoo (status sync job) and numero_orden_fabricacion (gated by the release card).
+- Observation: the same quote has pais_de_destino=153 (DAP Colombia) and incoterm_cotizacion=6 (CIF): the costs
+  follow the country record while the Odoo order takes the incoterm field.
+- Side finding: the local server also ran product/contact sync against the real HubSpot portal (duplicate warnings);
+  those jobs should be off for local tests.
+
 ## Next step
 
-Enable `QUOTE_COST_WRITEBACK_ENABLED` on staging
+Colleague answers the 7 open properties; then decide on the real trigger and enable `QUOTE_COST_WRITEBACK_ENABLED` on staging
 and verify one closed-won deal end to end.
