@@ -1,0 +1,175 @@
+CRUCE DE PROPIEDADES DE COTIZACION: HUBSPOT <-> ODOO
+=====================================================
+
+Fecha: 2026-10-14 (tabla verificada contra Odoo el mismo dia)
+Fuentes: Odoo staging (temporal, se elimina el 2026-10-28) y las definiciones de propiedades del objeto
+Cotizaciones en HubSpot (solo lectura).
+Muestras: operation.costs id=153 "DAP Colombia" y la orden S07089 (creada por el negocio de prueba).
+Base: las 35 propiedades del Excel "Propiedades cotizacion Visual Branding".
+
+
+RESUMEN (35 propiedades)
+------------------------
+  10  LISTAS        Salen de Odoo (operation.costs). El middleware las escribe en la cotizacion al cierre ganado.
+   6  CON CAMPO EN ODOO, SIN CABLEAR: flete_monto, prod_monto, comercial, fecha_entrega_estimada, forma_pago,
+                    unidad_medida. El campo existe y esta comprobado; falta confirmar cual usar (seccion 2).
+   1  MANUAL        otros_cargos: se captura a mano, no sale de Odoo.
+   9  CALCULADAS    Las calcula HubSpot. No vienen de Odoo.
+   7  YA SINCRONIZADAS HOY
+   2  SIN RELACION CON ODOO: ocultar_campos, valor_contabilizado
+
+
+IMPORTANTE: CUANDO APARECEN LOS VALORES
+---------------------------------------
+Los valores se escriben cuando el negocio pasa a "cierre ganado", NO cuando el vendedor elige el pais.
+Motivo: HubSpot no permite suscribirse a cambios de propiedad en Cotizaciones (el objeto no aparece en la lista
+de webhooks de la app privada). Si la cotizacion visual necesita los costos antes del cierre, hay que cambiar
+el disparador; se puede hacer despues.
+
+
+1. LISTAS: OPERATION.COSTS -> COTIZACION (10)
+---------------------------------------------
+Todas son de tipo NUMERO en HubSpot (confirmado). El middleware envia el valor tal cual lo da Odoo.
+Los porcentajes van como decimal (0.13 = 13 %), que es lo que piden las descripciones de HubSpot.
+Verificado de punta a punta: en la cotizacion de prueba llegaron exactamente los valores del registro 153.
+
+  Propiedad HubSpot            Campo en Odoo (operation.costs)   Muestra (registro 153)
+  cargos_extra_aduana          extra_custom_charges              0
+  gastos_duca_escaner          duca_scanner_transmission         40
+  honorarios_agencia           destination_procedure             0
+  costo_envio_doctos           finance_docs_shipping             40
+  costo_trsf_enviada           trsf_cost                         35
+  costo_trsf_recibida          received_transfer                 60
+  porcentaje_financiamiento    financing                         0
+  porcentaje_iva               iva                               0
+  porcentaje_seguro            insurance                         0.02
+  porcentaje_dai               dai                               0
+
+Nota: el valor de cada propiedad depende del registro de operation.costs que el vendedor elige en
+pais_de_destino (cada combinacion Incoterm + pais es un registro distinto).
+
+
+2. CON CAMPO EN ODOO, FALTA CONFIRMAR Y CABLEAR (6)
+---------------------------------------------------
+Los campos existen en Odoo (comprobado con la sonda). Lo que falta es confirmar que son los correctos y, en
+algunos casos, de donde sale el dato, porque en las ordenes que crea el middleware varios llegan vacios.
+
+  prod_monto (Mueble / Producto)             -> sale.order.amount_untaxed   (monetario)   muestra: 149.5575
+    OJO: el negocio de prueba vale 169 en HubSpot y 149.5575 en Odoo; 169 / 1.13 = 149.5575. Es decir, Odoo
+    muestra el monto SIN el impuesto de 13 %. Pregunta: prod_monto debe ser el monto sin impuestos (149.5575)
+    o el de HubSpot (169)? La hoja de Alertas tambien pide decidir si es la suma de las lineas.
+
+  flete_monto (Flete)                        -> sale.order.freight          (monetario)   muestra: 0
+    Tambien existen x_studio_flete_terrestre y x_studio_precio_flete_terrestre (flete terrestre, aparte).
+    Pregunta: quien carga el flete, un vendedor a mano o sale de otro calculo?
+
+  comercial (Comercial)                      -> sale.order.user_id          (many2one)    muestra: "Smarteam"
+    Es el vendedor de la orden. En la orden de prueba aparece el usuario "Smarteam" (el usuario con el que el
+    middleware crea la orden), no un vendedor real. Pregunta: que vendedor debe mostrar, el de HubSpot
+    (propietario del negocio)? Entonces no sale de Odoo.
+
+  fecha_entrega_estimada (Fecha de entrega)  -> sale.order.commitment_date  (fecha-hora)  muestra: vacio
+    Alternativa: mrp.production.date_planned_start ("Fecha prevista" de la orden de fabricacion).
+    OJO: commitment_date llega VACIO en las ordenes que crea el middleware, y "Fecha prevista" solo existe
+    despues de crear la orden de fabricacion (al liberar la cotizacion). Pregunta: cual fecha se quiere y
+    cuando debe estar disponible?
+
+  forma_pago (Forma de pago)                 -> sale.order.payment_term_id  (many2one)    muestra: vacio
+    OJO: llega VACIO en las ordenes creadas por el middleware. Pregunta: de donde debe salir (el cliente en
+    Odoo, o una propiedad de HubSpot) y es texto o lista de opciones?
+
+  unidad_medida (Unidad de medida)           -> sale.order.line.product_uom (many2one)    muestra: "Rollo"
+    Alternativa: mrp.production.product_uom_id. Es por linea de producto, no por cotizacion.
+    Pregunta: es un valor unico de la cotizacion o uno por producto?
+
+
+2b. MANUAL (1)
+--------------
+  otros_cargos (Otros cargos): se captura a mano en HubSpot; no sale de Odoo. En HubSpot es
+  "Otros cargos que se incorporan a la base CIF", distinto de cargos_extra_aduana (que si sale de Odoo).
+  Alerta: si queda vacio rompe la cadena de impuestos; recomendado valor por defecto 0.
+
+
+3. CALCULADAS EN HUBSPOT (9)
+----------------------------
+No se traen de Odoo: monto_seguro, valor_base_cif, base_cif_con_otros_cargos, arancel_dai, impuesto_iva,
+total_impuestos_aduaneros, total_gastos_operativos_y_logisticos, suma_prefinanciamiento, costo_financiero.
+(Seis estan respaldadas por la hoja de Alertas; monto_seguro, valor_base_cif y
+total_gastos_operativos_y_logisticos las deduje por nombre.)
+
+Control cruzado posible: Odoo calcula sus propios totales en la orden (sale.order.dai_totals, iva_totals,
+insurance_sv, operation_cost_total) y en Gastos de Envio (finantial, total_operations). Sirven para comprobar
+que las formulas de HubSpot dan lo mismo que Odoo.
+
+
+4. YA SINCRONIZADAS HOY (7)
+---------------------------
+  pais_de_destino, incoterm_cotizacion, tipo_documento_cotizacion      HubSpot -> Odoo
+  id_presupuesto_odoo, estado_presupuesto_odoo, estado_facturacion_odoo, numero_orden_fabricacion   Odoo -> HubSpot
+
+
+5. ALERTAS DEL EXCEL QUE SIGUEN VIGENTES
+----------------------------------------
+  - otros_cargos vacio rompe la cadena de impuestos (vacio + numero = vacio). Valor por defecto recomendado: 0.
+  - pais_de_destino e incoterm_cotizacion guardan un id numerico, no el texto; el modulo de Datos comerciales
+    todavia imprime el numero.
+  - El incoterm se captura dos veces: dentro de pais_de_destino ("CIF Canada") y en incoterm_cotizacion.
+    Ejemplo real de la prueba: pais "DAP Colombia" con incoterm "CIF". Los costos siguen al pais; la orden de
+    Odoo toma el incoterm.
+  - La base imponible lee prod_monto, no la suma de la tabla de productos.
+
+
+6. ESTADO DEL CODIGO
+--------------------
+La escritura de las 10 propiedades de la seccion 1 esta implementada y verificada, pero apagada por defecto
+(variable QUOTE_COST_WRITEBACK_ENABLED). Las 6 de la seccion 2 no estan implementadas hasta tener las respuestas.
+
+
+TABLA VERIFICADA CONTRA ODOO (muestras: operation.costs 153 y orden S07089)
+===========================================================================
+estado: odoo_* = el campo existe en Odoo (comprobado); manual_input = se captura a mano;
+        calculated_in_hubspot; synced_today; not_odoo = sin relacion con Odoo.
+
+HubSpot property                     | estado                | campo Odoo                                | tipo     | muestra    | alternativa
+-------------------------------------+-----------------------+-------------------------------------------+----------+------------+------------------------------
+cargos_extra_aduana                  | odoo_operation_costs  | operation.costs.extra_custom_charges      | float    | 0          | -
+gastos_duca_escaner                  | odoo_operation_costs  | operation.costs.duca_scanner_transmission | float    | 40         | -
+honorarios_agencia                   | odoo_operation_costs  | operation.costs.destination_procedure     | float    | 0          | -
+costo_envio_doctos                   | odoo_operation_costs  | operation.costs.finance_docs_shipping     | float    | 40         | -
+costo_trsf_enviada                   | odoo_operation_costs  | operation.costs.trsf_cost                 | float    | 35         | -
+costo_trsf_recibida                  | odoo_operation_costs  | operation.costs.received_transfer         | float    | 60         | -
+porcentaje_financiamiento            | odoo_operation_costs  | operation.costs.financing                 | float    | 0          | -
+porcentaje_iva                       | odoo_operation_costs  | operation.costs.iva                       | float    | 0          | -
+porcentaje_seguro                    | odoo_operation_costs  | operation.costs.insurance                 | float    | 0.02       | -
+porcentaje_dai                       | odoo_operation_costs  | operation.costs.dai                       | float    | 0          | -
+prod_monto                           | odoo_sale_order       | sale.order.amount_untaxed                 | monetary | 149.5575   | -
+flete_monto                          | odoo_sale_order       | sale.order.freight                        | monetary | 0          | -
+otros_cargos                         | manual_input          | -                                         | -        | -          | -
+monto_seguro                         | calculated_in_hubspot | -                                         | -        | -          | -
+valor_base_cif                       | calculated_in_hubspot | -                                         | -        | -          | -
+base_cif_con_otros_cargos            | calculated_in_hubspot | -                                         | -        | -          | -
+arancel_dai                          | calculated_in_hubspot | -                                         | -        | -          | -
+impuesto_iva                         | calculated_in_hubspot | -                                         | -        | -          | -
+total_impuestos_aduaneros            | calculated_in_hubspot | -                                         | -        | -          | -
+total_gastos_operativos_y_logisticos | calculated_in_hubspot | -                                         | -        | -          | -
+suma_prefinanciamiento               | calculated_in_hubspot | -                                         | -        | -          | -
+costo_financiero                     | calculated_in_hubspot | -                                         | -        | -          | -
+pais_de_destino                      | synced_today          | -                                         | -        | -          | -
+incoterm_cotizacion                  | synced_today          | -                                         | -        | -          | -
+tipo_documento_cotizacion            | synced_today          | -                                         | -        | -          | -
+id_presupuesto_odoo                  | synced_today          | -                                         | -        | -          | -
+estado_presupuesto_odoo              | synced_today          | -                                         | -        | -          | -
+estado_facturacion_odoo              | synced_today          | -                                         | -        | -          | -
+numero_orden_fabricacion             | synced_today          | -                                         | -        | -          | -
+comercial                            | odoo_sale_order       | sale.order.user_id                        | many2one | "Smarteam" | -
+fecha_entrega_estimada               | odoo_sale_order       | sale.order.commitment_date                | datetime | vacio      | mrp.production.date_planned_start
+forma_pago                           | odoo_sale_order       | sale.order.payment_term_id                | many2one | vacio      | -
+unidad_medida                        | odoo_sale_order_line  | sale.order.line.product_uom               | many2one | "Rollo"    | mrp.production.product_uom_id
+ocultar_campos                       | not_odoo              | -                                         | -        | -          | -
+valor_contabilizado                  | not_odoo              | -                                         | -        | -          | -
+
+Propiedades sin ningun campo candidato en Odoo: ninguna.
+Entrada manual (sin campo en Odoo): otros_cargos.
+
+Lista completa de campos de Odoo (461): docs/campos-odoo-staging-2026-10-14.tsv
+Ranking de candidatos por propiedad:     docs/descubrimiento-campos-odoo-staging-2026-10-14.txt

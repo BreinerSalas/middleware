@@ -130,6 +130,35 @@ function buildQuotePropertiesToFetch(opts = {}) {
 
 const DEFAULT_DEAL_PROPERTIES_TO_FETCH = buildDealPropertiesToFetch()
 
+// operation.costs charge key -> HubSpot quote property (overridable via constructor)
+const DEFAULT_QUOTE_COST_PROPERTIES = {
+  extraCharges: 'cargos_extra_aduana',
+  scannerCharge: 'gastos_duca_escaner',
+  destinationProcess: 'honorarios_agencia',
+  documentsShipping: 'costo_envio_doctos',
+  transferCost: 'costo_trsf_enviada',
+  receivedTransfer: 'costo_trsf_recibida',
+  financing: 'porcentaje_financiamiento',
+  ivaRate: 'porcentaje_iva',
+  insuranceRate: 'porcentaje_seguro',
+  daiRate: 'porcentaje_dai'
+}
+
+// Odoo datetimes are 'YYYY-MM-DD HH:MM:SS' in UTC. Returns 'YYYY-MM-DD' in the given IANA
+// zone, or null when the value or the zone is invalid.
+function odooUtcToCalendarDate(value, timeZone) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(String(value).trim())
+  if (!match) return null
+  const [y, mo, d, h, mi, s] = match.slice(1).map(Number)
+  const instant = new Date(Date.UTC(y, mo - 1, d, h, mi, s))
+  if (Number.isNaN(instant.getTime())) return null
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(instant)
+  } catch (_) {
+    return null
+  }
+}
+
 class HubspotSourceGateway {
   constructor({
     apiClient,
@@ -146,6 +175,10 @@ class HubspotSourceGateway {
     closedWonStageId,
     quoteEligibleStatuses,
     echoGuard = null,
+    quoteCostWritebackEnabled = false,
+    propertyQuoteCosts = null,
+    propertyQuoteDeliveryDate = null,
+    deliveryDateTimeZone = null,
     logger = null
   } = {}) {
     if (!apiClient) throw new Error('HubspotSourceGateway requires apiClient')
@@ -172,6 +205,10 @@ class HubspotSourceGateway {
       ? quoteEligibleStatuses
       : DEFAULT_QUOTE_ELIGIBLE_STATUSES
     this.echoGuard = echoGuard || createEchoGuard({ ttlMs: 10000 })
+    this.quoteCostWritebackEnabled = quoteCostWritebackEnabled === true
+    this.propertyQuoteCosts = { ...DEFAULT_QUOTE_COST_PROPERTIES, ...(propertyQuoteCosts || {}) }
+    this.propertyQuoteDeliveryDate = propertyQuoteDeliveryDate || 'fecha_entrega_estimada'
+    this.deliveryDateTimeZone = deliveryDateTimeZone || 'America/Costa_Rica'
     this.logger = logger
   }
 
@@ -234,6 +271,57 @@ class HubspotSourceGateway {
   }
 
   async writeBack(sourceId, payload = {}) {
+    await this.writeBackProperties(sourceId, payload)
+    await this.writeQuoteCosts(sourceId, payload)
+    await this.writeQuoteDeliveryDate(sourceId, payload)
+  }
+
+  // Best-effort and separate from the cost PATCH: the HubSpot date property may be
+  // missing, and that must never affect the other write-backs.
+  async writeQuoteDeliveryDate(sourceId, payload) {
+    if (!this.quoteCostWritebackEnabled || !payload || typeof payload !== 'object') return
+    const raw = payload.delivery_date
+    if (!raw) return
+    const { quoteId } = parseSourceId(sourceId)
+    if (!quoteId) return
+    const date = odooUtcToCalendarDate(raw, this.deliveryDateTimeZone)
+    if (!date) {
+      if (this.logger) this.logger.warn('hubspot.quoteDeliveryDate.unparseable', { sourceId, quoteId, value: String(raw) })
+      return
+    }
+    try {
+      await this.apiClient.updateQuote(quoteId, { [this.propertyQuoteDeliveryDate]: date })
+      if (this.logger) this.logger.info('hubspot.quoteDeliveryDate', { sourceId, quoteId, date })
+    } catch (err) {
+      if (this.logger) this.logger.warn('hubspot.quoteDeliveryDate.failed', { sourceId, quoteId, error: err.message })
+    }
+  }
+
+  // Best-effort, separate PATCH so a missing HubSpot property can never break the
+  // main write-back above. No echo guard: quote property changes raise no webhook
+  // the middleware listens to, so there is no echo loop to suppress.
+  async writeQuoteCosts(sourceId, payload) {
+    if (!this.quoteCostWritebackEnabled || !payload || typeof payload !== 'object') return
+    const charges = payload.quote_costs
+    if (!charges || typeof charges !== 'object') return
+    const { quoteId } = parseSourceId(sourceId)
+    if (!quoteId) return
+    const properties = {}
+    for (const [key, propertyName] of Object.entries(this.propertyQuoteCosts)) {
+      const value = charges[key]
+      if (value == null || value === '' || !Number.isFinite(Number(value))) continue
+      properties[propertyName] = String(value)
+    }
+    if (Object.keys(properties).length === 0) return
+    try {
+      await this.apiClient.updateQuote(quoteId, properties)
+      if (this.logger) this.logger.info('hubspot.quoteCostWriteback', { sourceId, quoteId, properties: Object.keys(properties) })
+    } catch (err) {
+      if (this.logger) this.logger.warn('hubspot.quoteCostWriteback.failed', { sourceId, quoteId, error: err.message })
+    }
+  }
+
+  async writeBackProperties(sourceId, payload = {}) {
     if (!payload || typeof payload !== 'object') return
     const { dealId, quoteId } = parseSourceId(sourceId)
     const properties = {}

@@ -35,6 +35,12 @@ function buildWriteBackPayload(mapping) {
     ? mapping.metadata.manufacturingOrder.name
     : null
   if (moName) payload.numero_orden_fabricacion = moName
+  const moDate = mapping && mapping.metadata && mapping.metadata.manufacturingOrder
+    ? mapping.metadata.manufacturingOrder.datePlannedStart
+    : null
+  if (moDate) payload.delivery_date = moDate
+  const costCharges = mapping && mapping.metadata ? mapping.metadata.costCharges : null
+  if (costCharges && typeof costCharges === 'object') payload.quote_costs = costCharges
   return payload
 }
 
@@ -81,6 +87,10 @@ function createDealSyncModule({
     propertyQuoteInvoiceStatus: config.hubspot.propertyQuoteInvoiceStatus,
     closedWonStageId: _defaultDealsConfig.closedWonStageId || null,
     quoteEligibleStatuses: config.hubspot.quoteEligibleStatuses,
+    quoteCostWritebackEnabled: Boolean(config.quoteCostWriteback && config.quoteCostWriteback.enabled),
+    propertyQuoteCosts: config.hubspot.propertyQuoteCosts,
+    propertyQuoteDeliveryDate: config.hubspot.propertyQuoteDeliveryDate,
+    deliveryDateTimeZone: config.quoteCostWriteback && config.quoteCostWriteback.deliveryDateTimeZone,
     echoGuard,
     logger
   })

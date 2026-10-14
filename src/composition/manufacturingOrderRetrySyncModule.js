@@ -28,7 +28,9 @@ function createManufacturingOrderRetrySyncModule({
           stillPending += 1
           continue
         }
-        await hubspotGateway.writeBack(mapping.sourceId, { numero_orden_fabricacion: mo.name })
+        const writeBackPayload = { numero_orden_fabricacion: mo.name }
+        if (mo.datePlannedStart) writeBackPayload.delivery_date = mo.datePlannedStart
+        await hubspotGateway.writeBack(mapping.sourceId, writeBackPayload)
         await mappingRepository.upsert({
           sourceId: mapping.sourceId,
           targetId: mapping.targetId,

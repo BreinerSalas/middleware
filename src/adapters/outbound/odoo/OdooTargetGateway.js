@@ -415,6 +415,9 @@ class OdooTargetGateway {
           code: incotermResult.code,
           reason: incotermResult.reason
         },
+        // Kept outside countryExpense and outside payload/payloadHash: consumed by the
+        // HubSpot quote cost write-back only.
+        costCharges: countryExpense.status === 'resolved' ? (countryExpense.charges || null) : null,
         documentType: documentTypeCode,
         confirmation,
         manufacturingOrder

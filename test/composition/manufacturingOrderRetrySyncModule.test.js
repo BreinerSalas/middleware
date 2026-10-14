@@ -49,6 +49,17 @@ describe('manufacturingOrderRetrySyncModule.runOnce (Fase 6 — brecha de MO tar
     expect(out).toEqual({ found: 1, stillPending: 0, failed: 0 })
   })
 
+  it('also writes delivery_date (raw Odoo string) when the MO carries datePlannedStart', async () => {
+    const mappingRepository = makeMappingRepository({ pending: [mapping()] })
+    const odooApiClient = makeOdooApiClient({ mo: { id: 9471, name: 'BPT/MO/09471', datePlannedStart: '2026-09-28 16:26:55' } })
+    const hubspotGateway = makeHubspotGateway()
+    const m = createManufacturingOrderRetrySyncModule({ mappingRepository, odooApiClient, hubspotGateway, logger: makeLogger() })
+    await m.runOnce({})
+    expect(hubspotGateway.writeBack).toHaveBeenCalledWith('D-1:qQ-1', {
+      numero_orden_fabricacion: 'BPT/MO/09471', delivery_date: '2026-09-28 16:26:55'
+    })
+  })
+
   it('counts as stillPending and does not write back when the MO does not exist yet', async () => {
     const mappingRepository = makeMappingRepository({ pending: [mapping()] })
     const odooApiClient = makeOdooApiClient({ mo: null })

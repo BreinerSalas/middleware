@@ -527,6 +527,38 @@ describe('buildWriteBackPayload (quote flow)', () => {
     expect(payload).toEqual({ id_presupuesto_odoo: 'S06613', numero_orden_fabricacion: 'WH/MO/00042' })
   })
 
+  it('adds delivery_date (raw Odoo string) when the manufacturingOrder carries datePlannedStart', () => {
+    const payload = buildWriteBackPayload({
+      targetRef: 'S06613',
+      metadata: { manufacturingOrder: { id: 88, name: 'WH/MO/00042', datePlannedStart: '2026-09-28 16:26:55' } }
+    })
+    expect(payload).toEqual({
+      id_presupuesto_odoo: 'S06613', numero_orden_fabricacion: 'WH/MO/00042', delivery_date: '2026-09-28 16:26:55'
+    })
+  })
+
+  it('omits delivery_date when the manufacturingOrder has no datePlannedStart', () => {
+    const withNull = buildWriteBackPayload({
+      targetRef: 'S1', metadata: { manufacturingOrder: { id: 1, name: 'MO/1', datePlannedStart: null } }
+    })
+    expect(withNull).not.toHaveProperty('delivery_date')
+    const without = buildWriteBackPayload({ targetRef: 'S1', metadata: { manufacturingOrder: { id: 1, name: 'MO/1' } } })
+    expect(without).not.toHaveProperty('delivery_date')
+  })
+
+  it('includes quote_costs when mapping.metadata carries costCharges', () => {
+    const charges = { extraCharges: 33, ivaRate: 0.13 }
+    const payload = buildWriteBackPayload({
+      sourceId: 'D-1', targetId: 'SO-1', targetRef: 'S06613', metadata: { costCharges: charges }
+    })
+    expect(payload).toEqual({ id_presupuesto_odoo: 'S06613', quote_costs: charges })
+  })
+
+  it('omits quote_costs when costCharges is null or absent (unchanged shape)', () => {
+    expect(buildWriteBackPayload({ targetRef: 'S1', metadata: { costCharges: null } })).toEqual({ id_presupuesto_odoo: 'S1' })
+    expect(buildWriteBackPayload({ targetRef: 'S1', metadata: {} })).toEqual({ id_presupuesto_odoo: 'S1' })
+  })
+
   it('omits numero_orden_fabricacion when there is no manufacturingOrder metadata (unchanged shape)', () => {
     const payload = buildWriteBackPayload({ sourceId: 'D-1', targetId: 'SO-1', targetRef: 'S06613' })
     expect(payload).not.toHaveProperty('numero_orden_fabricacion')

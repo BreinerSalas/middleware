@@ -531,12 +531,14 @@ describe('listOperationCosts', () => {
             {
               id: 71, name: 'DDP Mexico', country_id: [156, 'Mexico'], product_id: false,
               extra_custom_charges: 33, duca_scanner_transmission: 46, destination_procedure: 200,
-              finance_docs_shipping: 40, trsf_cost: 35, received_transfer: 55, financing: 0.085
+              finance_docs_shipping: 40, trsf_cost: 35, received_transfer: 55, financing: 0.085,
+              iva: 0.13, insurance: 0.01, dai: 0.05
             },
             {
               id: 116, name: 'CIP Mexico', country_id: [156, 'Mexico'], product_id: false,
               extra_custom_charges: 0, duca_scanner_transmission: 0, destination_procedure: 0,
-              finance_docs_shipping: 0, trsf_cost: 0, received_transfer: 0, financing: 0
+              finance_docs_shipping: 0, trsf_cost: 0, received_transfer: 0, financing: 0,
+              iva: false, insurance: false, dai: false
             }
           ]
         },
@@ -552,14 +554,16 @@ describe('listOperationCosts', () => {
         id: 71, name: 'DDP Mexico', countryId: 156, countryName: 'Mexico', productId: null,
         charges: {
           extraCharges: 33, scannerCharge: 46, destinationProcess: 200,
-          documentsShipping: 40, transferCost: 35, receivedTransfer: 55, financing: 0.085
+          documentsShipping: 40, transferCost: 35, receivedTransfer: 55, financing: 0.085,
+          ivaRate: 0.13, insuranceRate: 0.01, daiRate: 0.05
         }
       },
       {
         id: 116, name: 'CIP Mexico', countryId: 156, countryName: 'Mexico', productId: null,
         charges: {
           extraCharges: 0, scannerCharge: 0, destinationProcess: 0,
-          documentsShipping: 0, transferCost: 0, receivedTransfer: 0, financing: 0
+          documentsShipping: 0, transferCost: 0, receivedTransfer: 0, financing: 0,
+          ivaRate: 0, insuranceRate: 0, daiRate: 0
         }
       }
     ])
@@ -568,7 +572,8 @@ describe('listOperationCosts', () => {
       {
         fields: ['id', 'name', 'country_id', 'product_id',
           'extra_custom_charges', 'duca_scanner_transmission', 'destination_procedure',
-          'finance_docs_shipping', 'trsf_cost', 'received_transfer', 'financing']
+          'finance_docs_shipping', 'trsf_cost', 'received_transfer', 'financing',
+          'iva', 'insurance', 'dai']
       }
     ])
   })
@@ -828,18 +833,29 @@ describe('listOperationCosts memoization + TTL', () => {
     it('http mode searches mrp.production by origin=soName, excludes cancelled MOs and returns the most recent match', async () => {
       const post = vi.fn()
         .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
-        .mockResolvedValueOnce({ data: { result: [{ id: 88, name: 'WH/MO/00042' }] }, status: 200 })
+        .mockResolvedValueOnce({ data: { result: [{ id: 88, name: 'WH/MO/00042', date_planned_start: '2026-09-28 16:26:55' }] }, status: 200 })
       const api = createOdooApiClient({
         mode: 'http', baseUrl: 'https://odoo.example.com',
         db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
       })
       const r = await api.findManufacturingOrderBySaleOrderName('S00017')
-      expect(r).toEqual({ id: 88, name: 'WH/MO/00042' })
+      expect(r).toEqual({ id: 88, name: 'WH/MO/00042', datePlannedStart: '2026-09-28 16:26:55' })
       expect(post.mock.calls[1][1].params.args).toEqual([
         'db', 2, 'k', 'mrp.production', 'search_read',
         [[['origin', '=', 'S00017'], ['state', '!=', 'cancel']]],
-        { fields: ['id', 'name'], order: 'id desc', limit: 1 }
+        { fields: ['id', 'name', 'date_planned_start'], order: 'id desc', limit: 1 }
       ])
+    })
+
+    it('http mode returns datePlannedStart null when Odoo reports false', async () => {
+      const post = vi.fn()
+        .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+        .mockResolvedValueOnce({ data: { result: [{ id: 88, name: 'WH/MO/00042', date_planned_start: false }] }, status: 200 })
+      const api = createOdooApiClient({
+        mode: 'http', baseUrl: 'https://odoo.example.com',
+        db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+      })
+      expect(await api.findManufacturingOrderBySaleOrderName('S00017')).toEqual({ id: 88, name: 'WH/MO/00042', datePlannedStart: null })
     })
 
     it('http mode returns null when no MO matches yet', async () => {

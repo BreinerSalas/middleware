@@ -575,6 +575,24 @@ describe('OdooTargetGateway auto-confirm (Fase 4 — docs/plan-cambios-2026-08-0
     expect(result.metadata.manufacturingOrder).toEqual({ id: 88, name: 'WH/MO/00042' })
   })
 
+  it('carries datePlannedStart inside metadata.manufacturingOrder without changing payloadHash', async () => {
+    const run = async (mo) => {
+      const api = makeApi({ productMap: { 'SKU-1': 17 }, soCreate: { id: 'SO-NEW', ref: 'S00001', state: 'draft', raw: {} } })
+      api.confirmSalesOrder = vi.fn(async () => ({ confirmed: true }))
+      api.findManufacturingOrderBySaleOrderName = vi.fn(async () => mo)
+      const gw = new OdooTargetGateway({ apiClient: api, hashPayload, autoConfirm: true })
+      return gw.upsert({
+        record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+        references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+      })
+    }
+    const withDate = await run({ id: 88, name: 'WH/MO/00042', datePlannedStart: '2026-09-28 16:26:55' })
+    const without = await run(null)
+    expect(withDate.metadata.manufacturingOrder).toEqual({ id: 88, name: 'WH/MO/00042', datePlannedStart: '2026-09-28 16:26:55' })
+    expect(withDate.payloadHash).toBe(without.payloadHash)
+    expect(withDate.raw).toEqual(without.raw)
+  })
+
   it('does not look up the MO when confirmation was rejected', async () => {
     const api = makeApi({ productMap: { 'SKU-1': 17 } })
     api.confirmSalesOrder = vi.fn(async () => { throw new Error('rejected') })
@@ -1001,6 +1019,36 @@ describe('OdooTargetGateway country_expense resolution', () => {
 
   it('includes shipping_expense_ids in the create payload, mapped from the resolved operation.costs charges (Gastos de Envío onchange gap)', async () => {
     const api = makeApi({ productMap: { 'SKU-1': 17 } })
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload })
+    await gw.upsert({
+      existingTargetId: null,
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    const soPayload = api.createSalesOrder.mock.calls[0][0]
+    expect(soPayload.shipping_expense_ids).toEqual([[0, 0, {
+      extra_charges: 33,
+      scanner_charge: 46,
+      destination_process: 200,
+      documents_shipping: 40,
+      transfer_cost: 35,
+      received_transfer: 55,
+      financing: 0.085
+    }]])
+  })
+
+  it('keeps the shipping_expense_ids payload unchanged when charges also carry iva/insurance/dai rates', async () => {
+    const api = makeApi({
+      productMap: { 'SKU-1': 17 },
+      operationCosts: [{
+        id: 78, name: 'DDP Colombia', countryId: 49, countryName: 'Colombia', productId: null,
+        charges: {
+          extraCharges: 33, scannerCharge: 46, destinationProcess: 200,
+          documentsShipping: 40, transferCost: 35, receivedTransfer: 55, financing: 0.085,
+          ivaRate: 0.13, insuranceRate: 0.01, daiRate: 0.05
+        }
+      }]
+    })
     const gw = new OdooTargetGateway({ apiClient: api, hashPayload })
     await gw.upsert({
       existingTargetId: null,

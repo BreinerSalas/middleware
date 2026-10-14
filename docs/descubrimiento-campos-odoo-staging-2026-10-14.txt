@@ -1,0 +1,63 @@
+sale.order: 151 fields
+sale.order.shipping.expense: 25 fields
+sale.order.line: 87 fields
+mrp.production: 178 fields
+operation.costs: 20 fields
+
+Wrote /tmp/claude-1000/-home-breiner-smartprojects-middleware/3de8fc5c-764e-4b1e-8fb3-1c92d984dbc3/scratchpad/fields.tsv
+
+prod_monto (Mueble / Producto) - top 8 candidates:
+  mrp.production.x_studio_many2one_field_IA1Oz | Plantilla de producto | many2one | store=true
+  mrp.production.x_studio_producto_a_colocarmedidas | Producto a Colocar/Medidas | selection | store=false
+  operation.costs.product_id | Producto | many2one | store=true
+  sale.order.amount_untaxed | Untaxed Amount | monetary | store=true
+  sale.order.operation_invoiced_amount | Monto Facturado de Operaciones | monetary | store=false
+  sale.order.line.adjusted_unit_price | Precio Unitario Ajustado | float | store=true
+  sale.order.line.price_subtotal | Subtotal | monetary | store=true
+  sale.order.line.price_subtotal_incl_taxes | Subtotal con Impuestos | monetary | store=false
+
+otros_cargos (Otros cargos) - top 8 candidates:
+  operation.costs.extra_custom_charges | Otros Cargos Extra de Aduanas | float | store=true
+  sale.order.shipping.expense.extra_charges | Otros Cargos Extra de Aduanas | float | store=true
+  mrp.production.extra_cost | Extra Cost | float | store=true
+  sale.order.line.product_no_variant_attribute_value_ids | Extra Values | many2many | store=true
+  sale.order.shipping.expense.scanner_charge | Duca|Escáner|Transmisión | float | store=true
+
+comercial (Comercial) - top 8 candidates:
+  sale.order.user_id | Salesperson | many2one | store=true
+  mrp.production.x_studio_comercial | Vendedor | char | store=false
+  sale.order.team_id | Sales Team | many2one | store=true
+  sale.order.line.salesman_id | Salesperson | many2one | store=true
+  mrp.production.activity_user_id | Responsible User | many2one | store=false
+  mrp.production.user_id | Responsible | many2one | store=true
+  sale.order.activity_user_id | Responsible User | many2one | store=false
+
+fecha_entrega_estimada (Fecha de entrega estimada) - top 8 candidates:
+  mrp.production.date_planned_finished | Scheduled End Date | datetime | store=true
+  mrp.production.date_planned_start | Scheduled Date | datetime | store=true
+  sale.order.commitment_date | Delivery Date | datetime | store=true
+  mrp.production.activity_date_deadline | Next Activity Deadline | date | store=false
+  mrp.production.date_deadline | Deadline | datetime | store=true
+  mrp.production.my_activity_date_deadline | My Activity Deadline | date | store=false
+  sale.order.activity_date_deadline | Next Activity Deadline | date | store=false
+  sale.order.expected_date | Expected Date | datetime | store=false
+
+forma_pago (Forma de pago) - top 8 candidates:
+  sale.order.payment_term_id | Payment Terms | many2one | store=true
+  sale.order.incoterm | Incoterm | many2one | store=true
+  sale.order.intermediary_name | Intermediario | char | store=true
+  sale.order.note | Terms and conditions | html | store=true
+  sale.order.percentage_intermediary | Intermediario (%) | float | store=true
+  sale.order.reference | Payment Ref. | char | store=true
+  sale.order.require_payment | Online Payment | boolean | store=true
+  sale.order.terms_type | Terms & Conditions format | selection | store=false
+
+unidad_medida (Unidad de medida) - top 8 candidates:
+  mrp.production.product_uom_id | Product Unit of Measure | many2one | store=true
+  sale.order.line.product_uom | Unit of Measure | many2one | store=true
+  sale.order.timesheet_encode_uom_id | Timesheet Encoding Unit | many2one | store=false
+  mrp.production.product_uom_category_id | Category | many2one | store=false
+  mrp.production.product_uom_qty | Total Quantity | float | store=true
+  mrp.production.x_studio_carpeta_de_medidas | Carpeta de Medidas | binary | store=true
+  mrp.production.x_studio_carpeta_de_medidas_1 | Carpeta de Medidas | html | store=true
+  mrp.production.x_studio_medidas_finales | Medidas Finales | selection | store=false
