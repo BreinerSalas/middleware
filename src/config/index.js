@@ -72,7 +72,9 @@ const OPTIONAL_KEYS = [
   'HS_PROPERTY_QUOTE_COST_FINANCING',
   'HS_PROPERTY_QUOTE_COST_IVA_RATE',
   'HS_PROPERTY_QUOTE_COST_INSURANCE_RATE',
-  'HS_PROPERTY_QUOTE_COST_DAI_RATE'
+  'HS_PROPERTY_QUOTE_COST_DAI_RATE',
+  'HS_PROPERTY_QUOTE_DELIVERY_DATE',
+  'QUOTE_DELIVERY_DATE_TIMEZONE'
 ]
 
 function parseCsvList(raw) {
@@ -126,6 +128,7 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       propertyQuoteInvoiceStatus: env.HS_PROPERTY_QUOTE_INVOICE_STATUS || 'estado_facturacion_odoo',
       propertyOdooPartnerId: env.HS_PROPERTY_ODOO_PARTNER_ID || 'id_contacto_odoo_v2',
       propertyOdooProductId: env.HS_PROPERTY_ODOO_PRODUCT_ID || 'id_producto_odoo',
+      propertyQuoteDeliveryDate: env.HS_PROPERTY_QUOTE_DELIVERY_DATE || 'fecha_entrega_estimada',
       // operation.costs charge key -> HubSpot quote property name (quote cost write-back)
       propertyQuoteCosts: {
         extraCharges: env.HS_PROPERTY_QUOTE_COST_EXTRA_CHARGES || 'cargos_extra_aduana',
@@ -232,7 +235,9 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
     // Flag-gated, default OFF: after the Odoo sale order is created on closed-won, write the
     // resolved operation.costs values into HubSpot quote properties (best-effort).
     quoteCostWriteback: {
-      enabled: String(env.QUOTE_COST_WRITEBACK_ENABLED || 'false').toLowerCase() === 'true'
+      enabled: String(env.QUOTE_COST_WRITEBACK_ENABLED || 'false').toLowerCase() === 'true',
+      // IANA zone used to turn the MO's UTC date_planned_start into a calendar date.
+      deliveryDateTimeZone: env.QUOTE_DELIVERY_DATE_TIMEZONE || 'America/Costa_Rica'
     }
   }
 }

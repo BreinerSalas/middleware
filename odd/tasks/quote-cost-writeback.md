@@ -50,6 +50,14 @@ still preparing the quote.
 - [x] T3 In the closed-won write-back, build the 10-property map from `charges` and send it as a separate
       best-effort `updateQuote`, flag-gated, with tests (flag off, unresolved, success, HubSpot failure swallowed).
 
+- [x] T4 (added 2026-10-14, user request) Write `fecha_entrega_estimada` (HubSpot type `date`, sent as YYYY-MM-DD)
+      from the manufacturing order's `date_planned_start` ("Fecha prevista") in the same shared write-back. The MO
+      only exists after release/confirmation, so the value appears on the release run. Read the field in
+      `findManufacturingOrderBySaleOrderName`, carry it in `metadata.manufacturingOrder`, add it to
+      `buildWriteBackPayload`, and write it as a separate best-effort `updateQuote` (same flag). Convert the Odoo UTC
+      datetime to a local calendar date (default `America/Costa_Rica`) so a late-evening MO does not shift a day.
+      Also cover the manufacturing-order retry path if it writes back the MO.
+
 ## Route declaration
 
 One delegated writer: reading the gateway/config/tests prepares the write and 2+ non-trivial files change.
@@ -97,6 +105,16 @@ Forecast ~200-350 authored changed lines; single slice. Assessed review tier: pe
   follow the country record while the Odoo order takes the incoterm field.
 - Side finding: the local server also ran product/contact sync against the real HubSpot portal (duplicate warnings);
   those jobs should be off for local tests.
+
+- 2026-10-14 T4 done by one delegated writer, RED observed (12 failing tests before source changes), GREEN: writer ran
+  `npx vitest run test/adapters/hubspot test/adapters/odoo test/config test/config.test.js test/composition`:
+  67 files, 879 tests passed. Parent spot check: 6 files (new deliveryDate gateway test, costWriteback, odooApiClient,
+  dealSyncModule, manufacturingOrderRetrySyncModule, quoteCostWriteback config), 120 tests passed; read the
+  `HubspotSourceGateway.js` diff. HubSpot `fecha_entrega_estimada` is type `date` (read-only definition check), so
+  the value is sent as YYYY-MM-DD, converted from Odoo UTC to `America/Costa_Rica` (configurable
+  `QUOTE_DELIVERY_DATE_TIMEZONE`; property name via `HS_PROPERTY_QUOTE_DELIVERY_DATE`). Same flag as the costs.
+- Not verified: no real release run yet; the date appears only on the release run (the MO exists after
+  confirmation) and can go stale if someone edits the MO date later.
 
 ## Next step
 

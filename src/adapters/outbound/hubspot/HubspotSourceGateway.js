@@ -144,6 +144,21 @@ const DEFAULT_QUOTE_COST_PROPERTIES = {
   daiRate: 'porcentaje_dai'
 }
 
+// Odoo datetimes are 'YYYY-MM-DD HH:MM:SS' in UTC. Returns 'YYYY-MM-DD' in the given IANA
+// zone, or null when the value or the zone is invalid.
+function odooUtcToCalendarDate(value, timeZone) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(String(value).trim())
+  if (!match) return null
+  const [y, mo, d, h, mi, s] = match.slice(1).map(Number)
+  const instant = new Date(Date.UTC(y, mo - 1, d, h, mi, s))
+  if (Number.isNaN(instant.getTime())) return null
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(instant)
+  } catch (_) {
+    return null
+  }
+}
+
 class HubspotSourceGateway {
   constructor({
     apiClient,
@@ -162,6 +177,8 @@ class HubspotSourceGateway {
     echoGuard = null,
     quoteCostWritebackEnabled = false,
     propertyQuoteCosts = null,
+    propertyQuoteDeliveryDate = null,
+    deliveryDateTimeZone = null,
     logger = null
   } = {}) {
     if (!apiClient) throw new Error('HubspotSourceGateway requires apiClient')
@@ -190,6 +207,8 @@ class HubspotSourceGateway {
     this.echoGuard = echoGuard || createEchoGuard({ ttlMs: 10000 })
     this.quoteCostWritebackEnabled = quoteCostWritebackEnabled === true
     this.propertyQuoteCosts = { ...DEFAULT_QUOTE_COST_PROPERTIES, ...(propertyQuoteCosts || {}) }
+    this.propertyQuoteDeliveryDate = propertyQuoteDeliveryDate || 'fecha_entrega_estimada'
+    this.deliveryDateTimeZone = deliveryDateTimeZone || 'America/Costa_Rica'
     this.logger = logger
   }
 
@@ -254,6 +273,28 @@ class HubspotSourceGateway {
   async writeBack(sourceId, payload = {}) {
     await this.writeBackProperties(sourceId, payload)
     await this.writeQuoteCosts(sourceId, payload)
+    await this.writeQuoteDeliveryDate(sourceId, payload)
+  }
+
+  // Best-effort and separate from the cost PATCH: the HubSpot date property may be
+  // missing, and that must never affect the other write-backs.
+  async writeQuoteDeliveryDate(sourceId, payload) {
+    if (!this.quoteCostWritebackEnabled || !payload || typeof payload !== 'object') return
+    const raw = payload.delivery_date
+    if (!raw) return
+    const { quoteId } = parseSourceId(sourceId)
+    if (!quoteId) return
+    const date = odooUtcToCalendarDate(raw, this.deliveryDateTimeZone)
+    if (!date) {
+      if (this.logger) this.logger.warn('hubspot.quoteDeliveryDate.unparseable', { sourceId, quoteId, value: String(raw) })
+      return
+    }
+    try {
+      await this.apiClient.updateQuote(quoteId, { [this.propertyQuoteDeliveryDate]: date })
+      if (this.logger) this.logger.info('hubspot.quoteDeliveryDate', { sourceId, quoteId, date })
+    } catch (err) {
+      if (this.logger) this.logger.warn('hubspot.quoteDeliveryDate.failed', { sourceId, quoteId, error: err.message })
+    }
   }
 
   // Best-effort, separate PATCH so a missing HubSpot property can never break the

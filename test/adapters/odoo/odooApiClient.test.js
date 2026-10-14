@@ -833,18 +833,29 @@ describe('listOperationCosts memoization + TTL', () => {
     it('http mode searches mrp.production by origin=soName, excludes cancelled MOs and returns the most recent match', async () => {
       const post = vi.fn()
         .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
-        .mockResolvedValueOnce({ data: { result: [{ id: 88, name: 'WH/MO/00042' }] }, status: 200 })
+        .mockResolvedValueOnce({ data: { result: [{ id: 88, name: 'WH/MO/00042', date_planned_start: '2026-09-28 16:26:55' }] }, status: 200 })
       const api = createOdooApiClient({
         mode: 'http', baseUrl: 'https://odoo.example.com',
         db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
       })
       const r = await api.findManufacturingOrderBySaleOrderName('S00017')
-      expect(r).toEqual({ id: 88, name: 'WH/MO/00042' })
+      expect(r).toEqual({ id: 88, name: 'WH/MO/00042', datePlannedStart: '2026-09-28 16:26:55' })
       expect(post.mock.calls[1][1].params.args).toEqual([
         'db', 2, 'k', 'mrp.production', 'search_read',
         [[['origin', '=', 'S00017'], ['state', '!=', 'cancel']]],
-        { fields: ['id', 'name'], order: 'id desc', limit: 1 }
+        { fields: ['id', 'name', 'date_planned_start'], order: 'id desc', limit: 1 }
       ])
+    })
+
+    it('http mode returns datePlannedStart null when Odoo reports false', async () => {
+      const post = vi.fn()
+        .mockResolvedValueOnce({ data: { result: 2 }, status: 200 })
+        .mockResolvedValueOnce({ data: { result: [{ id: 88, name: 'WH/MO/00042', date_planned_start: false }] }, status: 200 })
+      const api = createOdooApiClient({
+        mode: 'http', baseUrl: 'https://odoo.example.com',
+        db: 'db', login: 'l@x.com', apiKey: 'k', transport: { post }
+      })
+      expect(await api.findManufacturingOrderBySaleOrderName('S00017')).toEqual({ id: 88, name: 'WH/MO/00042', datePlannedStart: null })
     })
 
     it('http mode returns null when no MO matches yet', async () => {

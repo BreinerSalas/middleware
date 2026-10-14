@@ -527,6 +527,25 @@ describe('buildWriteBackPayload (quote flow)', () => {
     expect(payload).toEqual({ id_presupuesto_odoo: 'S06613', numero_orden_fabricacion: 'WH/MO/00042' })
   })
 
+  it('adds delivery_date (raw Odoo string) when the manufacturingOrder carries datePlannedStart', () => {
+    const payload = buildWriteBackPayload({
+      targetRef: 'S06613',
+      metadata: { manufacturingOrder: { id: 88, name: 'WH/MO/00042', datePlannedStart: '2026-09-28 16:26:55' } }
+    })
+    expect(payload).toEqual({
+      id_presupuesto_odoo: 'S06613', numero_orden_fabricacion: 'WH/MO/00042', delivery_date: '2026-09-28 16:26:55'
+    })
+  })
+
+  it('omits delivery_date when the manufacturingOrder has no datePlannedStart', () => {
+    const withNull = buildWriteBackPayload({
+      targetRef: 'S1', metadata: { manufacturingOrder: { id: 1, name: 'MO/1', datePlannedStart: null } }
+    })
+    expect(withNull).not.toHaveProperty('delivery_date')
+    const without = buildWriteBackPayload({ targetRef: 'S1', metadata: { manufacturingOrder: { id: 1, name: 'MO/1' } } })
+    expect(without).not.toHaveProperty('delivery_date')
+  })
+
   it('includes quote_costs when mapping.metadata carries costCharges', () => {
     const charges = { extraCharges: 33, ivaRate: 0.13 }
     const payload = buildWriteBackPayload({

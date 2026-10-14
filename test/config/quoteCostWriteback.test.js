@@ -47,4 +47,16 @@ describe('quoteCostWriteback config', () => {
     expect(cfg.hubspot.propertyQuoteCosts.extraCharges).toBe('extra_custom')
     expect(cfg.hubspot.propertyQuoteCosts.ivaRate).toBe('porcentaje_iva')
   })
+
+  it('defaults and overrides the delivery date property name', () => {
+    expect(load({ env: baseEnv }).hubspot.propertyQuoteDeliveryDate).toBe('fecha_entrega_estimada')
+    expect(load({ env: { ...baseEnv, HS_PROPERTY_QUOTE_DELIVERY_DATE: 'entrega_custom' } }).hubspot.propertyQuoteDeliveryDate).toBe('entrega_custom')
+    expect(OPTIONAL_KEYS).toContain('HS_PROPERTY_QUOTE_DELIVERY_DATE')
+  })
+
+  it('defaults and overrides the delivery date time zone', () => {
+    expect(load({ env: baseEnv }).quoteCostWriteback.deliveryDateTimeZone).toBe('America/Costa_Rica')
+    expect(load({ env: { ...baseEnv, QUOTE_DELIVERY_DATE_TIMEZONE: 'America/Mexico_City' } }).quoteCostWriteback.deliveryDateTimeZone).toBe('America/Mexico_City')
+    expect(OPTIONAL_KEYS).toContain('QUOTE_DELIVERY_DATE_TIMEZONE')
+  })
 })

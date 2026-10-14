@@ -575,6 +575,24 @@ describe('OdooTargetGateway auto-confirm (Fase 4 — docs/plan-cambios-2026-08-0
     expect(result.metadata.manufacturingOrder).toEqual({ id: 88, name: 'WH/MO/00042' })
   })
 
+  it('carries datePlannedStart inside metadata.manufacturingOrder without changing payloadHash', async () => {
+    const run = async (mo) => {
+      const api = makeApi({ productMap: { 'SKU-1': 17 }, soCreate: { id: 'SO-NEW', ref: 'S00001', state: 'draft', raw: {} } })
+      api.confirmSalesOrder = vi.fn(async () => ({ confirmed: true }))
+      api.findManufacturingOrderBySaleOrderName = vi.fn(async () => mo)
+      const gw = new OdooTargetGateway({ apiClient: api, hashPayload, autoConfirm: true })
+      return gw.upsert({
+        record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+        references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+      })
+    }
+    const withDate = await run({ id: 88, name: 'WH/MO/00042', datePlannedStart: '2026-09-28 16:26:55' })
+    const without = await run(null)
+    expect(withDate.metadata.manufacturingOrder).toEqual({ id: 88, name: 'WH/MO/00042', datePlannedStart: '2026-09-28 16:26:55' })
+    expect(withDate.payloadHash).toBe(without.payloadHash)
+    expect(withDate.raw).toEqual(without.raw)
+  })
+
   it('does not look up the MO when confirmation was rejected', async () => {
     const api = makeApi({ productMap: { 'SKU-1': 17 } })
     api.confirmSalesOrder = vi.fn(async () => { throw new Error('rejected') })
