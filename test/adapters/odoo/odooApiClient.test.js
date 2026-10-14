@@ -531,12 +531,14 @@ describe('listOperationCosts', () => {
             {
               id: 71, name: 'DDP Mexico', country_id: [156, 'Mexico'], product_id: false,
               extra_custom_charges: 33, duca_scanner_transmission: 46, destination_procedure: 200,
-              finance_docs_shipping: 40, trsf_cost: 35, received_transfer: 55, financing: 0.085
+              finance_docs_shipping: 40, trsf_cost: 35, received_transfer: 55, financing: 0.085,
+              iva: 0.13, insurance: 0.01, dai: 0.05
             },
             {
               id: 116, name: 'CIP Mexico', country_id: [156, 'Mexico'], product_id: false,
               extra_custom_charges: 0, duca_scanner_transmission: 0, destination_procedure: 0,
-              finance_docs_shipping: 0, trsf_cost: 0, received_transfer: 0, financing: 0
+              finance_docs_shipping: 0, trsf_cost: 0, received_transfer: 0, financing: 0,
+              iva: false, insurance: false, dai: false
             }
           ]
         },
@@ -552,14 +554,16 @@ describe('listOperationCosts', () => {
         id: 71, name: 'DDP Mexico', countryId: 156, countryName: 'Mexico', productId: null,
         charges: {
           extraCharges: 33, scannerCharge: 46, destinationProcess: 200,
-          documentsShipping: 40, transferCost: 35, receivedTransfer: 55, financing: 0.085
+          documentsShipping: 40, transferCost: 35, receivedTransfer: 55, financing: 0.085,
+          ivaRate: 0.13, insuranceRate: 0.01, daiRate: 0.05
         }
       },
       {
         id: 116, name: 'CIP Mexico', countryId: 156, countryName: 'Mexico', productId: null,
         charges: {
           extraCharges: 0, scannerCharge: 0, destinationProcess: 0,
-          documentsShipping: 0, transferCost: 0, receivedTransfer: 0, financing: 0
+          documentsShipping: 0, transferCost: 0, receivedTransfer: 0, financing: 0,
+          ivaRate: 0, insuranceRate: 0, daiRate: 0
         }
       }
     ])
@@ -568,7 +572,8 @@ describe('listOperationCosts', () => {
       {
         fields: ['id', 'name', 'country_id', 'product_id',
           'extra_custom_charges', 'duca_scanner_transmission', 'destination_procedure',
-          'finance_docs_shipping', 'trsf_cost', 'received_transfer', 'financing']
+          'finance_docs_shipping', 'trsf_cost', 'received_transfer', 'financing',
+          'iva', 'insurance', 'dai']
       }
     ])
   })

@@ -258,7 +258,8 @@ function createOdooApiClient({
           {
             fields: ['id', 'name', 'country_id', 'product_id',
               'extra_custom_charges', 'duca_scanner_transmission', 'destination_procedure',
-              'finance_docs_shipping', 'trsf_cost', 'received_transfer', 'financing']
+              'finance_docs_shipping', 'trsf_cost', 'received_transfer', 'financing',
+              'iva', 'insurance', 'dai']
           })
         const mapped = (Array.isArray(result) ? result : []).map((r) => ({
           id: Number(r.id),
@@ -275,7 +276,11 @@ function createOdooApiClient({
             documentsShipping: Number(r.finance_docs_shipping) || 0,
             transferCost: Number(r.trsf_cost) || 0,
             receivedTransfer: Number(r.received_transfer) || 0,
-            financing: Number(r.financing) || 0
+            financing: Number(r.financing) || 0,
+            // Read-only rates for the HubSpot quote; not part of shipping.expense (see dealToSaleOrderMapper).
+            ivaRate: Number(r.iva) || 0,
+            insuranceRate: Number(r.insurance) || 0,
+            daiRate: Number(r.dai) || 0
           }
         }))
         ocResult = mapped

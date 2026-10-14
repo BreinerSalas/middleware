@@ -1019,6 +1019,36 @@ describe('OdooTargetGateway country_expense resolution', () => {
     }]])
   })
 
+  it('keeps the shipping_expense_ids payload unchanged when charges also carry iva/insurance/dai rates', async () => {
+    const api = makeApi({
+      productMap: { 'SKU-1': 17 },
+      operationCosts: [{
+        id: 78, name: 'DDP Colombia', countryId: 49, countryName: 'Colombia', productId: null,
+        charges: {
+          extraCharges: 33, scannerCharge: 46, destinationProcess: 200,
+          documentsShipping: 40, transferCost: 35, receivedTransfer: 55, financing: 0.085,
+          ivaRate: 0.13, insuranceRate: 0.01, daiRate: 0.05
+        }
+      }]
+    })
+    const gw = new OdooTargetGateway({ apiClient: api, hashPayload })
+    await gw.upsert({
+      existingTargetId: null,
+      record: { id: 'D-1', properties: { id_cliente_odoo: '42' } },
+      references: { lineItems: [{ hs_sku: 'SKU-1', quantity: 1, price: 0, name: 'X' }] }
+    })
+    const soPayload = api.createSalesOrder.mock.calls[0][0]
+    expect(soPayload.shipping_expense_ids).toEqual([[0, 0, {
+      extra_charges: 33,
+      scanner_charge: 46,
+      destination_process: 200,
+      documents_shipping: 40,
+      transfer_cost: 35,
+      received_transfer: 55,
+      financing: 0.085
+    }]])
+  })
+
   it('omits shipping_expense_ids from update payload when the existing SO already has one', async () => {
     const api = makeApi({
       soSearch: [{ id: 17, name: 'S00017', state: 'draft', countryExpenseId: 78, hasShippingExpense: true }],
