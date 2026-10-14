@@ -1,0 +1,462 @@
+model	field	label	type	relation	store	readonly
+sale.order	campaign_id	Campaign	many2one	utm.campaign	true	false
+sale.order	source_id	Source	many2one	utm.source	true	false
+sale.order	medium_id	Medium	many2one	utm.medium	true	false
+sale.order	activity_ids	Activities	one2many	mail.activity	true	false
+sale.order	activity_state	Activity State	selection		false	true
+sale.order	activity_user_id	Responsible User	many2one	res.users	false	false
+sale.order	activity_type_id	Next Activity Type	many2one	mail.activity.type	false	false
+sale.order	activity_type_icon	Activity Type Icon	char		false	true
+sale.order	activity_date_deadline	Next Activity Deadline	date		false	true
+sale.order	my_activity_date_deadline	My Activity Deadline	date		false	true
+sale.order	activity_summary	Next Activity Summary	char		false	false
+sale.order	activity_exception_decoration	Activity Exception Decoration	selection		false	true
+sale.order	activity_exception_icon	Icon	char		false	true
+sale.order	activity_calendar_event_id	Next Activity Calendar Event	many2one	calendar.event	false	true
+sale.order	message_is_follower	Is Follower	boolean		false	true
+sale.order	message_follower_ids	Followers	one2many	mail.followers	true	false
+sale.order	message_partner_ids	Followers (Partners)	many2many	res.partner	false	true
+sale.order	message_ids	Messages	one2many	mail.message	true	false
+sale.order	has_message	Has Message	boolean		false	true
+sale.order	message_unread	Unread Messages	boolean		false	true
+sale.order	message_unread_counter	Unread Messages Counter	integer		false	true
+sale.order	message_needaction	Action Needed	boolean		false	true
+sale.order	message_needaction_counter	Number of Actions	integer		false	true
+sale.order	message_has_error	Message Delivery error	boolean		false	true
+sale.order	message_has_error_counter	Number of errors	integer		false	true
+sale.order	message_attachment_count	Attachment Count	integer		false	true
+sale.order	message_main_attachment_id	Main Attachment	many2one	ir.attachment	true	false
+sale.order	website_message_ids	Website Messages	one2many	mail.message	true	false
+sale.order	message_has_sms_error	SMS Delivery error	boolean		false	true
+sale.order	access_url	Portal Access URL	char		false	true
+sale.order	access_token	Security Token	char		true	false
+sale.order	access_warning	Access warning	text		false	true
+sale.order	name	Order Reference	char		true	true
+sale.order	origin	Source Document	char		true	false
+sale.order	client_order_ref	Customer Reference	char		true	false
+sale.order	reference	Payment Ref.	char		true	false
+sale.order	state	Status	selection		true	true
+sale.order	date_order	Order Date	datetime		true	true
+sale.order	validity_date	Expiration	date		true	true
+sale.order	is_expired	Is expired	boolean		false	true
+sale.order	require_signature	Online Signature	boolean		true	true
+sale.order	require_payment	Online Payment	boolean		true	true
+sale.order	create_date	Creation Date	datetime		true	true
+sale.order	user_id	Salesperson	many2one	res.users	true	false
+sale.order	partner_id	Customer	many2one	res.partner	true	true
+sale.order	partner_invoice_id	Invoice Address	many2one	res.partner	true	true
+sale.order	partner_shipping_id	Delivery Address	many2one	res.partner	true	true
+sale.order	pricelist_id	Pricelist	many2one	product.pricelist	true	true
+sale.order	currency_id	Currency	many2one	res.currency	true	true
+sale.order	analytic_account_id	Analytic Account	many2one	account.analytic.account	true	false
+sale.order	order_line	Order Lines	one2many	sale.order.line	true	false
+sale.order	invoice_count	Invoice Count	integer		false	true
+sale.order	invoice_ids	Invoices	many2many	account.move	false	true
+sale.order	invoice_status	Invoice Status	selection		true	true
+sale.order	note	Terms and conditions	html		true	false
+sale.order	terms_type	Terms & Conditions format	selection		false	true
+sale.order	amount_untaxed	Untaxed Amount	monetary		true	true
+sale.order	tax_totals_json	Tax Totals Json	char		false	true
+sale.order	amount_tax	Taxes	monetary		true	true
+sale.order	amount_total	Total	monetary		true	true
+sale.order	currency_rate	Currency Rate	float		true	true
+sale.order	payment_term_id	Payment Terms	many2one	account.payment.term	true	false
+sale.order	fiscal_position_id	Fiscal Position	many2one	account.fiscal.position	true	false
+sale.order	tax_country_id	Tax Country	many2one	res.country	false	true
+sale.order	company_id	Company	many2one	res.company	true	false
+sale.order	team_id	Sales Team	many2one	crm.team	true	false
+sale.order	signature	Signature	binary		true	false
+sale.order	signed_by	Signed By	char		true	false
+sale.order	signed_on	Signed On	datetime		true	false
+sale.order	commitment_date	Delivery Date	datetime		true	false
+sale.order	expected_date	Expected Date	datetime		false	true
+sale.order	amount_undiscounted	Amount Before Discount	float		false	true
+sale.order	type_name	Type Name	char		false	true
+sale.order	transaction_ids	Transactions	many2many	payment.transaction	true	true
+sale.order	authorized_transaction_ids	Authorized Transactions	many2many	payment.transaction	false	true
+sale.order	show_update_pricelist	Has Pricelist Changed	boolean		true	false
+sale.order	tag_ids	Tags	many2many	crm.tag	true	false
+sale.order	id	ID	integer		true	true
+sale.order	__last_update	Last Modified on	datetime		false	true
+sale.order	display_name	Display Name	char		false	true
+sale.order	create_uid	Created by	many2one	res.users	true	true
+sale.order	write_uid	Last Updated by	many2one	res.users	true	true
+sale.order	write_date	Last Updated on	datetime		true	true
+sale.order	journal_id	Journal	many2one	account.journal	true	false
+sale.order	sale_order_template_id	Quotation Template	many2one	sale.order.template	true	true
+sale.order	sale_order_option_ids	Optional Products Lines	one2many	sale.order.option	true	true
+sale.order	incoterm	Incoterm	many2one	account.incoterms	true	false
+sale.order	picking_policy	Shipping Policy	selection		true	true
+sale.order	warehouse_id	Warehouse	many2one	stock.warehouse	true	true
+sale.order	picking_ids	Transfers	one2many	stock.picking	true	false
+sale.order	delivery_count	Delivery Orders	integer		false	true
+sale.order	procurement_group_id	Procurement Group	many2one	procurement.group	true	false
+sale.order	effective_date	Effective Date	datetime		true	true
+sale.order	json_popover	JSON data for the popover widget	char		false	true
+sale.order	show_json_popover	Has late picking	boolean		false	true
+sale.order	order_id	Order	many2one	sale.order	true	false
+sale.order	version_date	Version Date	datetime		true	false
+sale.order	version	Version	char		true	false
+sale.order	latest_version	Latest Version	char		true	false
+sale.order	version_count	Version Count	integer		true	false
+sale.order	carrier_id	Delivery Method	many2one	delivery.carrier	true	false
+sale.order	delivery_message	Delivery Message	char		true	true
+sale.order	delivery_rating_success	Delivery Rating Success	boolean		true	false
+sale.order	delivery_set	Delivery Set	boolean		false	true
+sale.order	recompute_delivery_price	Delivery cost should be recomputed	boolean		true	false
+sale.order	is_all_service	Service Product	boolean		false	true
+sale.order	sale_no_suj_sv	Venta No Sujeta	boolean		true	false
+sale.order	oprations_conditions_sv	Condiciones de la Operación	selection		true	false
+sale.order	operation_type_sv	Tipo de documento	selection		true	false
+sale.order	is_re_sale	Re-venta	boolean		true	false
+sale.order	amount_perception_sv	Percepción	float		true	false
+sale.order	company_size_sv	Tamaño de la Compañia	selection		false	true
+sale.order	retention_ids	Tipo de Retención	many2many	res.retention	true	false
+sale.order	opportunity_id	Opportunity	many2one	crm.lead	true	false
+sale.order	mrp_production_count	Count of MO generated	integer		false	true
+sale.order	tasks_ids	Tasks associated to this sale	many2many	project.task	false	true
+sale.order	visible_project	Display project	boolean		false	true
+sale.order	project_id	Project	many2one	project.project	true	true
+sale.order	res_partner_group_id	Grupo	many2one	res.partner.group	false	true
+sale.order	fe_environment_sv	Ambiente de destino	selection		false	true
+sale.order	percentage_intermediary	Intermediario (%)	float		true	false
+sale.order	intermediary_name	Intermediario	char		true	false
+sale.order	comisionista	Comisión Externa (%)	float		true	false
+sale.order	comisionista_name	Comisionista	char		true	false
+sale.order	gestion_type	Tipo de gestión	selection		true	false
+sale.order	country_expense	País	many2one	operation.costs	true	false
+sale.order	has_insurance	Seguro	boolean		true	false
+sale.order	porcentual_insurance	Porcentual Insurance	float		true	false
+sale.order	freight	Flete	monetary		true	false
+sale.order	insurance_sv	Insurance Sv	monetary		false	true
+sale.order	dai_totals	DAI	monetary		True	true
+sale.order	iva_totals	IVA	monetary		true	true
+sale.order	destination_taxes	Impuestos de destino	monetary		true	true
+sale.order	operation_invoice_id	Operation Invoice	many2many	account.move	true	false
+sale.order	operation_cost_total	Gastos de envío	float		false	true
+sale.order	drive_qty_saving	Cantidad de Viajes	float		true	false
+sale.order	operation_state	Estado Operaciones	selection		false	true
+sale.order	operation_invoice_count	Conteo de Facturas de Operaciones	integer		false	true
+sale.order	operation_invoiced_amount	Monto Facturado de Operaciones	monetary		false	true
+sale.order	shipping_expense_ids	Gastos de Envío	one2many	sale.order.shipping.expense	true	false
+sale.order	timesheet_ids	Timesheet activities associated to this sale	many2many	account.analytic.line	false	true
+sale.order	timesheet_encode_uom_id	Timesheet Encoding Unit	many2one	uom.uom	false	true
+sale.order	timesheet_total_duration	Timesheet Total Duration	integer		false	true
+sale.order	ticket_count	Ticket Count	integer		false	true
+sale.order	x_studio_many2one_field_Pr6Wu	Marca de campaña	many2one	x_marca_de_campana	true	false
+sale.order	x_studio_flete_terrestre	Flete terrestre	many2one	x_fletes	true	false
+sale.order	x_studio_precio_flete_terrestre	Precio flete terrestre	float		true	true
+sale.order	x_studio_grupo	Grupo N/A	char		true	true
+sale.order	x_studio_pas	País	many2one	res.country	true	true
+sale.order	x_studio_marca	Marca	char		true	false
+sale.order	x_studio_grupo_1	Grupo	char		true	true
+sale.order.shipping.expense	currency_id	Currency	many2one	res.currency	true	false
+sale.order.shipping.expense	order_id	Pedido	many2one	sale.order	true	false
+sale.order.shipping.expense	product_id	Producto	many2one	product.product	true	true
+sale.order.shipping.expense	description	Descripción	char		true	false
+sale.order.shipping.expense	unit_price	Precio Unitario	float		true	false
+sale.order.shipping.expense	extra_charges	Otros Cargos Extra de Aduanas	float		true	false
+sale.order.shipping.expense	scanner_charge	Duca|Escáner|Transmisión	float		true	false
+sale.order.shipping.expense	destination_process	Trámite Destino	float		true	false
+sale.order.shipping.expense	documents_shipping	Envío Doctos Finanzas	float		true	false
+sale.order.shipping.expense	transfer_cost	Costo x TRSF	float		true	false
+sale.order.shipping.expense	received_transfer	Transferencia Recibida Banco Destino / Agencia	float		true	false
+sale.order.shipping.expense	financing	Financiamiento	float		true	false
+sale.order.shipping.expense	finantial	Finantial	float		True	true
+sale.order.shipping.expense	total_operations	Total Operaciones	monetary		false	true
+sale.order.shipping.expense	rounding	Redondeo	float		true	false
+sale.order.shipping.expense	drive_qty	Cantidad de Viajes	float		true	true
+sale.order.shipping.expense	drive_qty_saved	Cantidad de Viajes Guardada	float		true	true
+sale.order.shipping.expense	drive_cost	Costo de Viajes	float		false	true
+sale.order.shipping.expense	id	ID	integer		true	true
+sale.order.shipping.expense	__last_update	Last Modified on	datetime		false	true
+sale.order.shipping.expense	display_name	Display Name	char		false	true
+sale.order.shipping.expense	create_uid	Created by	many2one	res.users	true	true
+sale.order.shipping.expense	create_date	Created on	datetime		true	true
+sale.order.shipping.expense	write_uid	Last Updated by	many2one	res.users	true	true
+sale.order.shipping.expense	write_date	Last Updated on	datetime		true	true
+sale.order.line	order_id	Order Reference	many2one	sale.order	true	false
+sale.order.line	name	Description	text		true	false
+sale.order.line	sequence	Sequence	integer		true	false
+sale.order.line	invoice_lines	Invoice Lines	many2many	account.move.line	true	false
+sale.order.line	invoice_status	Invoice Status	selection		true	true
+sale.order.line	price_unit	Unit Price	float		true	false
+sale.order.line	price_subtotal	Subtotal	monetary		true	true
+sale.order.line	price_tax	Total Tax	float		true	true
+sale.order.line	price_total	Total	monetary		true	true
+sale.order.line	price_reduce	Price Reduce	float		true	true
+sale.order.line	tax_id	Taxes	many2many	account.tax	true	false
+sale.order.line	price_reduce_taxinc	Price Reduce Tax inc	monetary		true	true
+sale.order.line	price_reduce_taxexcl	Price Reduce Tax excl	monetary		true	true
+sale.order.line	discount	Discount (%)	float		true	false
+sale.order.line	product_id	Product	many2one	product.product	true	false
+sale.order.line	product_template_id	Product Template	many2one	product.template	false	true
+sale.order.line	product_updatable	Can Edit Product	boolean		false	true
+sale.order.line	product_uom_qty	Quantity	float		true	false
+sale.order.line	product_uom	Unit of Measure	many2one	uom.uom	true	false
+sale.order.line	product_uom_category_id	Category	many2one	uom.category	false	true
+sale.order.line	product_uom_readonly	Product Uom Readonly	boolean		false	true
+sale.order.line	product_custom_attribute_value_ids	Custom Values	one2many	product.attribute.custom.value	true	false
+sale.order.line	product_no_variant_attribute_value_ids	Extra Values	many2many	product.template.attribute.value	true	false
+sale.order.line	qty_delivered_method	Method to update delivered qty	selection		true	true
+sale.order.line	qty_delivered	Delivered Quantity	float		true	false
+sale.order.line	qty_delivered_manual	Delivered Manually	float		true	false
+sale.order.line	qty_to_invoice	To Invoice Quantity	float		true	true
+sale.order.line	qty_invoiced	Invoiced Quantity	float		true	true
+sale.order.line	untaxed_amount_invoiced	Untaxed Invoiced Amount	monetary		true	true
+sale.order.line	untaxed_amount_to_invoice	Untaxed Amount To Invoice	monetary		true	true
+sale.order.line	salesman_id	Salesperson	many2one	res.users	true	true
+sale.order.line	currency_id	Currency	many2one	res.currency	true	true
+sale.order.line	company_id	Company	many2one	res.company	true	true
+sale.order.line	order_partner_id	Customer	many2one	res.partner	true	true
+sale.order.line	analytic_tag_ids	Analytic Tags	many2many	account.analytic.tag	true	false
+sale.order.line	analytic_line_ids	Analytic lines	one2many	account.analytic.line	true	false
+sale.order.line	is_expense	Is expense	boolean		true	false
+sale.order.line	is_downpayment	Is a down payment	boolean		true	false
+sale.order.line	state	Order Status	selection		true	true
+sale.order.line	customer_lead	Lead Time	float		true	false
+sale.order.line	display_type	Display Type	selection		true	false
+sale.order.line	product_packaging_id	Packaging	many2one	product.packaging	true	false
+sale.order.line	product_packaging_qty	Packaging Quantity	float		true	false
+sale.order.line	id	ID	integer		true	true
+sale.order.line	__last_update	Last Modified on	datetime		false	true
+sale.order.line	display_name	Display Name	char		false	true
+sale.order.line	create_uid	Created by	many2one	res.users	true	true
+sale.order.line	create_date	Created on	datetime		true	true
+sale.order.line	write_uid	Last Updated by	many2one	res.users	true	true
+sale.order.line	write_date	Last Updated on	datetime		true	true
+sale.order.line	sale_order_option_ids	Optional Products Lines	one2many	sale.order.option	true	false
+sale.order.line	purchase_line_ids	Generated Purchase Lines	one2many	purchase.order.line	true	true
+sale.order.line	purchase_line_count	Number of generated purchase items	integer		false	true
+sale.order.line	route_id	Route	many2one	stock.location.route	true	false
+sale.order.line	move_ids	Stock Moves	one2many	stock.move	true	false
+sale.order.line	product_type	Product Type	selection		false	true
+sale.order.line	virtual_available_at_date	Virtual Available At Date	float		false	true
+sale.order.line	scheduled_date	Scheduled Date	datetime		false	true
+sale.order.line	forecast_expected_date	Forecast Expected Date	datetime		false	true
+sale.order.line	free_qty_today	Free Qty Today	float		false	true
+sale.order.line	qty_available_today	Qty Available Today	float		false	true
+sale.order.line	warehouse_id	Warehouse	many2one	stock.warehouse	false	true
+sale.order.line	qty_to_deliver	Qty To Deliver	float		false	true
+sale.order.line	is_mto	Is Mto	boolean		false	true
+sale.order.line	display_qty_widget	Display Qty Widget	boolean		false	true
+sale.order.line	is_delivery	Is a Delivery	boolean		true	false
+sale.order.line	product_qty	Product Qty	float		false	true
+sale.order.line	recompute_delivery_price	Delivery cost should be recomputed	boolean		false	true
+sale.order.line	tax_ids_domain_compute	Tax Ids Domain Compute	many2many	account.tax	false	true
+sale.order.line	sale_no_suj_sv	Venta No Sujeta	boolean		true	false
+sale.order.line	project_id	Generated Project	many2one	project.project	true	false
+sale.order.line	task_id	Generated Task	many2one	project.task	true	false
+sale.order.line	is_service	Is a Service	boolean		true	true
+sale.order.line	external_commission_value	Comisión Externa	float		false	true
+sale.order.line	intermediary	Intermediario	float		false	true
+sale.order.line	price_subtotal_incl_taxes	Subtotal con Impuestos	monetary		false	true
+sale.order.line	percentage_finantial	% Finantial	float		true	false
+sale.order.line	finantial	Finantial	float		true	true
+sale.order.line	retention_percentage	% Retención de la Renta	float		true	false
+sale.order.line	retention_value	Retención de la Renta	float		true	true
+sale.order.line	bank_commission_percentage	% Comisión Bancaria	float		true	false
+sale.order.line	bank_commission_value	Comisión Bancaria	float		true	true
+sale.order.line	adjusted_unit_price	Precio Unitario Ajustado	float		true	true
+sale.order.line	exacting_rounding	Redondeo Exacto	float		true	false
+sale.order.line	remaining_hours_available	Remaining Hours Available	boolean		false	true
+sale.order.line	remaining_hours	Remaining Hours on SO	float		true	true
+sale.order.line	has_displayed_warning_upsell	Has Displayed Warning Upsell	boolean		true	false
+mrp.production	activity_ids	Activities	one2many	mail.activity	true	false
+mrp.production	activity_state	Activity State	selection		false	true
+mrp.production	activity_user_id	Responsible User	many2one	res.users	false	false
+mrp.production	activity_type_id	Next Activity Type	many2one	mail.activity.type	false	false
+mrp.production	activity_type_icon	Activity Type Icon	char		false	true
+mrp.production	activity_date_deadline	Next Activity Deadline	date		false	true
+mrp.production	my_activity_date_deadline	My Activity Deadline	date		false	true
+mrp.production	activity_summary	Next Activity Summary	char		false	false
+mrp.production	activity_exception_decoration	Activity Exception Decoration	selection		false	true
+mrp.production	activity_exception_icon	Icon	char		false	true
+mrp.production	activity_calendar_event_id	Next Activity Calendar Event	many2one	calendar.event	false	true
+mrp.production	message_is_follower	Is Follower	boolean		false	true
+mrp.production	message_follower_ids	Followers	one2many	mail.followers	true	false
+mrp.production	message_partner_ids	Followers (Partners)	many2many	res.partner	false	true
+mrp.production	message_ids	Messages	one2many	mail.message	true	false
+mrp.production	has_message	Has Message	boolean		false	true
+mrp.production	message_unread	Unread Messages	boolean		false	true
+mrp.production	message_unread_counter	Unread Messages Counter	integer		false	true
+mrp.production	message_needaction	Action Needed	boolean		false	true
+mrp.production	message_needaction_counter	Number of Actions	integer		false	true
+mrp.production	message_has_error	Message Delivery error	boolean		false	true
+mrp.production	message_has_error_counter	Number of errors	integer		false	true
+mrp.production	message_attachment_count	Attachment Count	integer		false	true
+mrp.production	message_main_attachment_id	Main Attachment	many2one	ir.attachment	true	false
+mrp.production	website_message_ids	Website Messages	one2many	mail.message	true	false
+mrp.production	message_has_sms_error	SMS Delivery error	boolean		false	true
+mrp.production	name	Reference	char		true	true
+mrp.production	priority	Priority	selection		true	false
+mrp.production	backorder_sequence	Backorder Sequence	integer		true	false
+mrp.production	origin	Source	char		true	false
+mrp.production	product_id	Product	many2one	product.product	true	true
+mrp.production	product_tracking	Tracking	selection		false	true
+mrp.production	product_tmpl_id	Product Template	many2one	product.template	false	true
+mrp.production	product_qty	Quantity To Produce	float		true	true
+mrp.production	product_uom_id	Product Unit of Measure	many2one	uom.uom	true	true
+mrp.production	lot_producing_id	Lot/Serial Number	many2one	stock.production.lot	true	false
+mrp.production	qty_producing	Quantity Producing	float		true	false
+mrp.production	product_uom_category_id	Category	many2one	uom.category	false	true
+mrp.production	product_uom_qty	Total Quantity	float		true	true
+mrp.production	picking_type_id	Operation Type	many2one	stock.picking.type	true	true
+mrp.production	use_create_components_lots	Create New Lots/Serial Numbers for Components	boolean		false	true
+mrp.production	location_src_id	Components Location	many2one	stock.location	true	true
+mrp.production	location_dest_id	Finished Products Location	many2one	stock.location	true	true
+mrp.production	date_planned_start	Scheduled Date	datetime		true	false
+mrp.production	date_planned_finished	Scheduled End Date	datetime		true	false
+mrp.production	date_deadline	Deadline	datetime		true	true
+mrp.production	date_start	Start Date	datetime		true	true
+mrp.production	date_finished	End Date	datetime		true	true
+mrp.production	production_duration_expected	Expected Duration	float		false	true
+mrp.production	production_real_duration	Real Duration	float		false	true
+mrp.production	bom_id	Bill of Material	many2one	mrp.bom	true	true
+mrp.production	state	State	selection		true	true
+mrp.production	reservation_state	MO Readiness	selection		true	true
+mrp.production	move_raw_ids	Components	one2many	stock.move	true	false
+mrp.production	move_finished_ids	Finished Products	one2many	stock.move	true	false
+mrp.production	move_byproduct_ids	Move Byproduct	one2many	stock.move	false	false
+mrp.production	finished_move_line_ids	Finished Product	one2many	stock.move.line	false	false
+mrp.production	workorder_ids	Work Orders	one2many	mrp.workorder	true	false
+mrp.production	move_dest_ids	Stock Movements of Produced Goods	one2many	stock.move	true	false
+mrp.production	unreserve_visible	Allowed to Unreserve Production	boolean		false	true
+mrp.production	reserve_visible	Allowed to Reserve Production	boolean		false	true
+mrp.production	user_id	Responsible	many2one	res.users	true	false
+mrp.production	company_id	Company	many2one	res.company	true	false
+mrp.production	qty_produced	Quantity Produced	float		false	true
+mrp.production	procurement_group_id	Procurement Group	many2one	procurement.group	true	false
+mrp.production	product_description_variants	Custom Description	char		true	false
+mrp.production	orderpoint_id	Orderpoint	many2one	stock.warehouse.orderpoint	true	false
+mrp.production	propagate_cancel	Propagate cancel and split	boolean		true	false
+mrp.production	delay_alert_date	Delay Alert Date	datetime		false	true
+mrp.production	json_popover	JSON data for the popover widget	char		false	true
+mrp.production	scrap_ids	Scraps	one2many	stock.scrap	true	false
+mrp.production	scrap_count	Scrap Move	integer		false	true
+mrp.production	is_locked	Is Locked	boolean		true	false
+mrp.production	is_planned	Its Operations are Planned	boolean		true	true
+mrp.production	show_final_lots	Show Final Lots	boolean		false	true
+mrp.production	production_location_id	Production Location	many2one	stock.location	true	true
+mrp.production	picking_ids	Picking associated to this manufacturing order	many2many	stock.picking	false	true
+mrp.production	delivery_count	Delivery Orders	integer		false	true
+mrp.production	confirm_cancel	Confirm Cancel	boolean		false	true
+mrp.production	consumption	Consumption	selection		true	true
+mrp.production	mrp_production_child_count	Number of generated MO	integer		false	true
+mrp.production	mrp_production_source_count	Number of source MO	integer		false	true
+mrp.production	mrp_production_backorder_count	Count of linked backorder	integer		false	true
+mrp.production	show_lock	Show Lock/unlock buttons	boolean		false	true
+mrp.production	components_availability	Component Status	char		false	true
+mrp.production	components_availability_state	Components Availability State	selection		false	true
+mrp.production	show_lot_ids	Display the serial number shortcut on the moves	boolean		false	true
+mrp.production	forecasted_issue	Forecasted Issue	boolean		false	true
+mrp.production	show_serial_mass_produce	Display the serial mass product wizard action moves	boolean		false	true
+mrp.production	id	ID	integer		true	true
+mrp.production	__last_update	Last Modified on	datetime		false	true
+mrp.production	display_name	Display Name	char		false	true
+mrp.production	create_uid	Created by	many2one	res.users	true	true
+mrp.production	create_date	Created on	datetime		true	true
+mrp.production	write_uid	Last Updated by	many2one	res.users	true	true
+mrp.production	write_date	Last Updated on	datetime		true	true
+mrp.production	operation_ids	Operations	many2many	mrp.routing.workcenter	true	false
+mrp.production	extra_cost	Extra Cost	float		true	false
+mrp.production	show_valuation	Show Valuation	boolean		false	true
+mrp.production	analytic_account_id	Analytic Account	many2one	account.analytic.account	true	false
+mrp.production	move_line_raw_ids	Detail Component	one2many	stock.move.line	false	false
+mrp.production	subcontracting_has_been_recorded	Has been recorded?	boolean		true	false
+mrp.production	incoming_picking	Transfer	many2one	stock.picking	false	true
+mrp.production	check_ids	Checks	one2many	quality.check	true	false
+mrp.production	maintenance_count	Number of maintenance requests	integer		false	true
+mrp.production	request_ids	Request	one2many	maintenance.request	true	false
+mrp.production	quality_check_todo	Quality Check Todo	boolean		false	true
+mrp.production	quality_check_fail	Quality Check Fail	boolean		false	true
+mrp.production	quality_alert_ids	Alerts	one2many	quality.alert	true	false
+mrp.production	quality_alert_count	Quality Alert Count	integer		false	true
+mrp.production	sale_order_count	Count of Source SO	integer		false	true
+mrp.production	x_studio_render	Carpeta de Aprobación	binary		false	true
+mrp.production	x_studio_carpeta_de_ingeniera	Carpeta de Ingeniería 	html		true	false
+mrp.production	x_studio_carpeta_de_artes	Carpeta de Artes	binary		true	true
+mrp.production	x_studio_ticket_	Ticket # : 	integer		true	false
+mrp.production	x_studio_carpeta_de_medidas_1	Carpeta de Medidas	html		true	false
+mrp.production	x_studio_carpeta_de_aprobacin_1	Carpeta de Aprobación	html		true	false
+mrp.production	x_studio_costa_rica	Costa Rica	float		true	true
+mrp.production	x_studio_carpeta_de_aprobacin	Carpeta de Aprobación	binary		true	true
+mrp.production	x_studio_related_field_qjRzF		binary		true	true
+mrp.production	x_studio_carpeta_de_medidas	Carpeta de Medidas	binary		true	true
+mrp.production	x_studio_guatemala	Guatemala	float		true	true
+mrp.production	x_studio_related_field_PYzmV	Carpeta de Ingeniería 	binary		true	true
+mrp.production	x_studio_panam	Panamá	float		true	true
+mrp.production	x_studio_el_salvador	El Salvador	float		true	true
+mrp.production	x_studio_rd	RD	float		true	true
+mrp.production	x_studio_otro	Otro	float		true	true
+mrp.production	x_studio_notas_pm	Notas PM	char		true	false
+mrp.production	x_studio_carpeta_de_render	Carpeta de Render	binary		true	true
+mrp.production	x_studio_detalles	Detalles	html		true	true
+mrp.production	x_studio_one2many_field_jHMKd	Líneas nuevas	one2many	x_mrp_production_line_ab83d	true	false
+mrp.production	x_studio_one2many_field_Sr04O	Líneas nuevas	one2many	x_mrp_production_line_d2800	true	false
+mrp.production	x_studio_nota_5	Nota 5	char		true	false
+mrp.production	x_studio_mueble	Mueble	selection		false	true
+mrp.production	x_studio_honduras	Honduras	float		true	true
+mrp.production	x_studio_related_field_ZmcmX	New Campo relacionado	float		true	true
+mrp.production	x_studio_nicaragua	Nicaragua	float		true	true
+mrp.production	x_studio_total	Total	float		true	true
+mrp.production	x_studio_related_field_B2VRd	New Campo relacionado	binary		true	true
+mrp.production	x_studio_carpeta_de_render_1	Carpeta de Render	html		false	false
+mrp.production	x_studio_one2many_field_MtDqx	Líneas nuevas	one2many	x_mrp_production_line_aa04a	true	false
+mrp.production	x_studio_nota_5_1	Nota 5	char		false	true
+mrp.production	x_studio_artes	Artes	selection		false	true
+mrp.production	x_studio_status_de_arte	Status de Arte	selection		false	true
+mrp.production	x_studio_link_de_agencia	Link de Agencia	selection		false	true
+mrp.production	x_studio_status_de_estructura	Status de Estructura	selection		false	true
+mrp.production	x_studio_iluminacin	Iluminación	selection		false	true
+mrp.production	x_studio_medidas_finales	Medidas Finales	selection		false	true
+mrp.production	x_studio_producto_a_colocarmedidas	Producto a Colocar/Medidas	selection		false	true
+mrp.production	x_studio_related_field_j1GMH	New Campo relacionado	float		true	true
+mrp.production	x_studio_many2many_field_888K2	Cantidad por país	many2many	x_cantidad_por_pais	true	false
+mrp.production	x_studio_many2one_field_tg8aI	Cantidad por país	many2one	x_cantidad_por_pais	true	false
+mrp.production	x_studio_versin_de_artes_cenefa	Versión de Artes Cenefa	selection		false	true
+mrp.production	x_studio_nota_2	Nota 1	char		false	true
+mrp.production	x_studio_pantone	Pantone	selection		false	true
+mrp.production	x_studio_detalles_segn_cotizacin	Detalles según cotización	text		false	true
+mrp.production	x_studio_cantidad_por_pas	Cantidad por país	many2one	x_cantidad_por_pais	true	true
+mrp.production	x_studio_tablasdetallescomentarios	Tablas/Detalles/Comentarios	text		false	true
+mrp.production	x_studio_caractersticas_de_empaque	Características de empaque	text		false	true
+mrp.production	x_studio_related_field_p1xhD	Link	char		false	true
+mrp.production	x_studio_nota	Nota 2	char		false	true
+mrp.production	x_studio_one2many_field_sp0yH	Líneas nuevas	one2many	x_mrp_production_line_f72af	true	false
+mrp.production	x_studio_descripcin	Descripción	html		false	true
+mrp.production	x_studio_nota_7	Nota 7	char		false	true
+mrp.production	x_studio_many2one_field_IA1Oz	Plantilla de producto	many2one	product.product	true	true
+mrp.production	x_studio_nota_8	Nota 8	char		false	true
+mrp.production	x_studio_nota_1	Nota 3	char		false	true
+mrp.production	x_studio_nota_6	Nota 6	char		false	true
+mrp.production	x_studio_nota_9	Nota 9	char		false	true
+mrp.production	x_studio_carpeta_de_artes_1	Carpeta de Artes	html		true	true
+mrp.production	x_studio_ticket	Ticket	integer		true	false
+mrp.production	x_studio_nota_3	Nota 4	char		false	true
+mrp.production	x_studio_pas_1	País	char		true	true
+mrp.production	x_studio_pas	No usar	char		false	true
+mrp.production	x_studio_related_field_9Xpwy	Complemento	binary		true	true
+mrp.production	x_studio_marca	Marca	char		false	true
+mrp.production	x_studio_comercial	Vendedor	char		false	true
+mrp.production	x_studio_related_field_7gUyj	New Campo relacionado	char		false	true
+operation.costs	name	Nombre	char		true	false
+operation.costs	country_id	País	many2one	res.country	true	false
+operation.costs	extra_custom_charges	Otros Cargos Extra de Aduanas	float		true	false
+operation.costs	duca_scanner_transmission	Duca|Escáner|Transmisión	float		true	false
+operation.costs	destination_procedure	Trámite Destino	float		true	false
+operation.costs	finance_docs_shipping	Envíos Doctos Finanzas	float		true	false
+operation.costs	trsf_cost	Costo x TRSF	float		true	false
+operation.costs	received_transfer	Transferencia Recibida Banco destino / Agencia	float		true	false
+operation.costs	iva	IVA	float		true	false
+operation.costs	insurance	Seguro	float		true	false
+operation.costs	dai	DAI	float		true	false
+operation.costs	financing	Financiamiento	float		true	false
+operation.costs	product_id	Producto	many2one	product.product	true	false
+operation.costs	id	ID	integer		true	true
+operation.costs	__last_update	Last Modified on	datetime		false	true
+operation.costs	display_name	Display Name	char		false	true
+operation.costs	create_uid	Created by	many2one	res.users	true	true
+operation.costs	create_date	Created on	datetime		true	true
+operation.costs	write_uid	Last Updated by	many2one	res.users	true	true
+operation.costs	write_date	Last Updated on	datetime		true	true
