@@ -130,6 +130,20 @@ function buildQuotePropertiesToFetch(opts = {}) {
 
 const DEFAULT_DEAL_PROPERTIES_TO_FETCH = buildDealPropertiesToFetch()
 
+// operation.costs charge key -> HubSpot quote property (overridable via constructor)
+const DEFAULT_QUOTE_COST_PROPERTIES = {
+  extraCharges: 'cargos_extra_aduana',
+  scannerCharge: 'gastos_duca_escaner',
+  destinationProcess: 'honorarios_agencia',
+  documentsShipping: 'costo_envio_doctos',
+  transferCost: 'costo_trsf_enviada',
+  receivedTransfer: 'costo_trsf_recibida',
+  financing: 'porcentaje_financiamiento',
+  ivaRate: 'porcentaje_iva',
+  insuranceRate: 'porcentaje_seguro',
+  daiRate: 'porcentaje_dai'
+}
+
 class HubspotSourceGateway {
   constructor({
     apiClient,
@@ -146,6 +160,8 @@ class HubspotSourceGateway {
     closedWonStageId,
     quoteEligibleStatuses,
     echoGuard = null,
+    quoteCostWritebackEnabled = false,
+    propertyQuoteCosts = null,
     logger = null
   } = {}) {
     if (!apiClient) throw new Error('HubspotSourceGateway requires apiClient')
@@ -172,6 +188,8 @@ class HubspotSourceGateway {
       ? quoteEligibleStatuses
       : DEFAULT_QUOTE_ELIGIBLE_STATUSES
     this.echoGuard = echoGuard || createEchoGuard({ ttlMs: 10000 })
+    this.quoteCostWritebackEnabled = quoteCostWritebackEnabled === true
+    this.propertyQuoteCosts = { ...DEFAULT_QUOTE_COST_PROPERTIES, ...(propertyQuoteCosts || {}) }
     this.logger = logger
   }
 
@@ -234,6 +252,35 @@ class HubspotSourceGateway {
   }
 
   async writeBack(sourceId, payload = {}) {
+    await this.writeBackProperties(sourceId, payload)
+    await this.writeQuoteCosts(sourceId, payload)
+  }
+
+  // Best-effort, separate PATCH so a missing HubSpot property can never break the
+  // main write-back above. No echo guard: quote property changes raise no webhook
+  // the middleware listens to, so there is no echo loop to suppress.
+  async writeQuoteCosts(sourceId, payload) {
+    if (!this.quoteCostWritebackEnabled || !payload || typeof payload !== 'object') return
+    const charges = payload.quote_costs
+    if (!charges || typeof charges !== 'object') return
+    const { quoteId } = parseSourceId(sourceId)
+    if (!quoteId) return
+    const properties = {}
+    for (const [key, propertyName] of Object.entries(this.propertyQuoteCosts)) {
+      const value = charges[key]
+      if (value == null || value === '' || !Number.isFinite(Number(value))) continue
+      properties[propertyName] = String(value)
+    }
+    if (Object.keys(properties).length === 0) return
+    try {
+      await this.apiClient.updateQuote(quoteId, properties)
+      if (this.logger) this.logger.info('hubspot.quoteCostWriteback', { sourceId, quoteId, properties: Object.keys(properties) })
+    } catch (err) {
+      if (this.logger) this.logger.warn('hubspot.quoteCostWriteback.failed', { sourceId, quoteId, error: err.message })
+    }
+  }
+
+  async writeBackProperties(sourceId, payload = {}) {
     if (!payload || typeof payload !== 'object') return
     const { dealId, quoteId } = parseSourceId(sourceId)
     const properties = {}

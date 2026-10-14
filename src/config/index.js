@@ -61,7 +61,18 @@ const OPTIONAL_KEYS = [
   'PRODUCT_ORPHAN_RECONCILE_LIMIT',
   'PRODUCT_ORPHAN_RECONCILE_TRACK_A_ENABLED',
   'PRODUCT_ORPHAN_RECONCILE_TRACK_B_ENABLED',
-  'CONTACT_INBOUND_SYNC_ENABLED'
+  'CONTACT_INBOUND_SYNC_ENABLED',
+  'QUOTE_COST_WRITEBACK_ENABLED',
+  'HS_PROPERTY_QUOTE_COST_EXTRA_CHARGES',
+  'HS_PROPERTY_QUOTE_COST_SCANNER_CHARGE',
+  'HS_PROPERTY_QUOTE_COST_DESTINATION_PROCESS',
+  'HS_PROPERTY_QUOTE_COST_DOCUMENTS_SHIPPING',
+  'HS_PROPERTY_QUOTE_COST_TRANSFER_COST',
+  'HS_PROPERTY_QUOTE_COST_RECEIVED_TRANSFER',
+  'HS_PROPERTY_QUOTE_COST_FINANCING',
+  'HS_PROPERTY_QUOTE_COST_IVA_RATE',
+  'HS_PROPERTY_QUOTE_COST_INSURANCE_RATE',
+  'HS_PROPERTY_QUOTE_COST_DAI_RATE'
 ]
 
 function parseCsvList(raw) {
@@ -114,7 +125,20 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
       propertyQuoteState: env.HS_PROPERTY_QUOTE_STATE || 'estado_presupuesto_odoo',
       propertyQuoteInvoiceStatus: env.HS_PROPERTY_QUOTE_INVOICE_STATUS || 'estado_facturacion_odoo',
       propertyOdooPartnerId: env.HS_PROPERTY_ODOO_PARTNER_ID || 'id_contacto_odoo_v2',
-      propertyOdooProductId: env.HS_PROPERTY_ODOO_PRODUCT_ID || 'id_producto_odoo'
+      propertyOdooProductId: env.HS_PROPERTY_ODOO_PRODUCT_ID || 'id_producto_odoo',
+      // operation.costs charge key -> HubSpot quote property name (quote cost write-back)
+      propertyQuoteCosts: {
+        extraCharges: env.HS_PROPERTY_QUOTE_COST_EXTRA_CHARGES || 'cargos_extra_aduana',
+        scannerCharge: env.HS_PROPERTY_QUOTE_COST_SCANNER_CHARGE || 'gastos_duca_escaner',
+        destinationProcess: env.HS_PROPERTY_QUOTE_COST_DESTINATION_PROCESS || 'honorarios_agencia',
+        documentsShipping: env.HS_PROPERTY_QUOTE_COST_DOCUMENTS_SHIPPING || 'costo_envio_doctos',
+        transferCost: env.HS_PROPERTY_QUOTE_COST_TRANSFER_COST || 'costo_trsf_enviada',
+        receivedTransfer: env.HS_PROPERTY_QUOTE_COST_RECEIVED_TRANSFER || 'costo_trsf_recibida',
+        financing: env.HS_PROPERTY_QUOTE_COST_FINANCING || 'porcentaje_financiamiento',
+        ivaRate: env.HS_PROPERTY_QUOTE_COST_IVA_RATE || 'porcentaje_iva',
+        insuranceRate: env.HS_PROPERTY_QUOTE_COST_INSURANCE_RATE || 'porcentaje_seguro',
+        daiRate: env.HS_PROPERTY_QUOTE_COST_DAI_RATE || 'porcentaje_dai'
+      }
     },
     odoo: {
       mode: (env.ODOO_CLIENT_MODE || 'stub').toLowerCase(),
@@ -204,6 +228,11 @@ function load({ env = process.env, envFile = null, override = false } = {}) {
     // in production — this is a non-code, one-time dependency, not automated by this flag.
     contactInboundSync: {
       enabled: String(env.CONTACT_INBOUND_SYNC_ENABLED || 'false').toLowerCase() === 'true'
+    },
+    // Flag-gated, default OFF: after the Odoo sale order is created on closed-won, write the
+    // resolved operation.costs values into HubSpot quote properties (best-effort).
+    quoteCostWriteback: {
+      enabled: String(env.QUOTE_COST_WRITEBACK_ENABLED || 'false').toLowerCase() === 'true'
     }
   }
 }

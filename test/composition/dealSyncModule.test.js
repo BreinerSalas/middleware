@@ -527,6 +527,19 @@ describe('buildWriteBackPayload (quote flow)', () => {
     expect(payload).toEqual({ id_presupuesto_odoo: 'S06613', numero_orden_fabricacion: 'WH/MO/00042' })
   })
 
+  it('includes quote_costs when mapping.metadata carries costCharges', () => {
+    const charges = { extraCharges: 33, ivaRate: 0.13 }
+    const payload = buildWriteBackPayload({
+      sourceId: 'D-1', targetId: 'SO-1', targetRef: 'S06613', metadata: { costCharges: charges }
+    })
+    expect(payload).toEqual({ id_presupuesto_odoo: 'S06613', quote_costs: charges })
+  })
+
+  it('omits quote_costs when costCharges is null or absent (unchanged shape)', () => {
+    expect(buildWriteBackPayload({ targetRef: 'S1', metadata: { costCharges: null } })).toEqual({ id_presupuesto_odoo: 'S1' })
+    expect(buildWriteBackPayload({ targetRef: 'S1', metadata: {} })).toEqual({ id_presupuesto_odoo: 'S1' })
+  })
+
   it('omits numero_orden_fabricacion when there is no manufacturingOrder metadata (unchanged shape)', () => {
     const payload = buildWriteBackPayload({ sourceId: 'D-1', targetId: 'SO-1', targetRef: 'S06613' })
     expect(payload).not.toHaveProperty('numero_orden_fabricacion')
